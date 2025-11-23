@@ -1,11 +1,13 @@
-# Columnar ED-ANN - コラム構造を持つED法ニューラルネットワーク
+# コラムED法 for ANN (Columnar ED-ANN) - コラム構造を持つED法
 
 [**日本語**](README.md) | English (準備中)
 
 金子勇氏オリジナルError-Diffusion（ED）法に**コラム構造**を導入した純粋ANN実装です。<br>
 本実装では、脳の神経細胞の機能的なまとまり（コラム）を模倣し、各クラスに専用のニューロン群を割り当てることで、高精度な学習を実現します。
 
-## Columnar ED法の特徴
+** columnar_ed_ann.pyはANN用の実装です。SNNへの実装例については近日中にアップする予定です。
+
+## コラムED法 (Columnar ED法)の特徴
 
 ### 🧠 コラム構造とは
 
@@ -75,21 +77,10 @@
 | **高精度** | MNIST 95.01%達成 | 効率的な特徴空間の利用 |
 | **生物学的妥当性** | 脳の構造を模倣 | 視覚野のコラム構造に対応 |
 
-### 📊 学習結果例
-
-```
-大規模学習（train=10000, test=10000, epochs=20）
-├─ 訓練精度: 99.15%
-├─ テスト精度: 95.01%
-└─ 汎化ギャップ: 4.14%
-```
-
-この高精度は、コラム構造によって各クラスが独立した特徴空間を効率的に学習できるためです。
-
 ## ED法の詳細
 
 ED法(Error-Diffusion法)とは、故金子勇氏が1999年に考案された、「微分の連鎖律を用いた誤差逆伝播法」を用いない生物学的に妥当な多層ニューラルネットワークの学習方法です。<br>
-ED法の詳細については、[published/ed_snn/docs/ja/ED法_解説資料.md](../published/ed_snn/docs/ja/ED法_解説資料.md)をご覧ください。
+ED法の詳細については、[docs/ja/ED法_解説資料.md](docs/ja/ED法_解説資料.md)をご覧ください。
 
 ## ED法の技術的メリット
 
@@ -119,26 +110,34 @@ columnar_ed_ann.pyによる、MNISTデータとFashion-MNISTデータの学習�
 
 ### MNISTデータでの学習例
 
-**大規模学習での高精度達成**
+**高精度学習の達成**
 
 ```bash
-python columnar_ed_ann.py --train 10000 --test 10000 --epochs 20 --hidden 64 --viz
+python columnar_ed_ann.py --train 10000 --test 10000 --epochs 40 --lr 0.1
 ```
 
-- **訓練精度**: 99.15%
-- **テスト精度**: 95.01%
-- **汎化ギャップ**: 4.14%
+- **学習率**: 0.1（ed_multi_snn.prompt.md推奨範囲: 0.1-1.0に準拠）
+- **訓練精度**: 87.76%
+- **テスト精度**: 85.32%
+- **汎化ギャップ**: 2.44%
 
-MNISTで**95%超え**の優れた性能を達成。コラム構造により、各クラスが効率的に特徴を学習しています。
+MNISTで**85%超え**の性能を達成。安定した学習と優れた汎化性能を実現しています。
 
 ### Fashion-MNISTデータでの学習例
 
+**複雑なデータセットでの安定学習**
+
 ```bash
-python columnar_ed_ann.py --fashion --train 5000 --test 1000 --epochs 15 --hidden 128 --viz
+python columnar_ed_ann.py --fashion --train 10000 --test 10000 --epochs 40 --lr 0.05
 ```
 
-- より複雑なFashion-MNISTデータセットでも高精度な学習が可能
-- コラム構造が衣類カテゴリの特徴抽出に効果的
+- **学習率**: 0.05
+- **訓練精度**: 79.87%
+- **テスト精度**: 78.80%
+- **汎化ギャップ**: 1.07%
+
+CNN無しでも、Fashion-MNISTで高い精度と優れた安定性を達成。
+コラム構造がFashion-MNISTの衣類カテゴリの特徴抽出に効果的に機能しています。
 
 ## 主要な特徴
 
@@ -146,7 +145,7 @@ python columnar_ed_ann.py --fashion --train 5000 --test 1000 --epochs 15 --hidde
 - ✅ **コラム構造**: 各クラスに専用のニューロン群を割り当てる脳型アーキテクチャ
 - ✅ **コラム帰属度マップ**: ニューロンの所属関係を定義し、効率的な誤差伝播を実現
 - ✅ **コラム占有チェック**: 学習前にコラム構造の妥当性を自動検証
-- ✅ **高精度**: MNIST 95.01%達成（train=10000, test=10000, epochs=20）
+- ✅ **高精度**: MNIST 83.21%達成（学習率修正後、train=10000, test=10000, epochs=20, hidden=64）
 - ✅ **多層対応**: 任意の隠れ層構造（単層・多層）をサポート
 - ✅ **高速化**: NumPy行列演算による効率的な実装
 - ✅ **バッチ処理**: ミニバッチ学習による安定した学習
@@ -158,13 +157,16 @@ python columnar_ed_ann.py --fashion --train 5000 --test 1000 --epochs 15 --hidde
 ```text
 column_ed_snn/
 ├── README.md                      # このファイル
-├── columnar_ed_ann.py             # メインプログラム（1164行）
-├── columnar_ed_test.py            # テスト用プログラム（732行）
-├── ed_multi_snn.prompt.md         # 実装仕様書
-└── viz_results/                   # 可視化結果保存ディレクトリ
+└── columnar_ed_ann.py             # メインプログラム（1164行）
 ```
 
 ## 基本的な使い方
+
+### MNIST学習（デフォルト実行）
+
+```bash
+python columnar_ed_ann.py
+```
 
 ### MNIST学習（基本）
 
@@ -219,7 +221,7 @@ python columnar_ed_ann.py --mnist --train 1000 --test 100 --epochs 10 --viz --he
 ### 必要パッケージ
 
 ```bash
-pip install numpy tensorflow matplotlib seaborn tqdm
+pip install numpy tensorflow matplotlib seaborn tqdm psutil
 ```
 
 ### クイックスタート
@@ -427,6 +429,9 @@ amine_hidden[j] = u1 × Σ(amine_output[k] × attribution_map[k, j])
 
 Original ED method by Isamu Kaneko (1999)  
 Columnar structure extension implementation (2025)
+
+本プロジェクトのライセンスはデュアルライセンス方式となっています。
+ライセンス内容の詳細についてはLICENSEファイルを参照ください。
 
 ## 開発情報
 
