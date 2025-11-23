@@ -1,6 +1,20 @@
-MIT License
+# License
 
-Copyright (c) 2025 yoiwa0714
+This project is available under a dual-license model:
+
+## Copyright Notice
+
+This software contains two layers of copyright:
+
+1. **Original ED Method Algorithm and Theory**  
+   Copyright (c) 1999 Isamu Kaneko (金子勇)  
+   The Error-Diffusion (ED) learning method, its theoretical foundation, and core algorithm.
+
+2. **Columnar Structure Extension and Implementation**  
+   Copyright (c) 2025 yoiwa0714  
+   The columnar structure architecture, implementation extensions, and source code.
+
+## For Non-Commercial Use: MIT License
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -20,11 +34,48 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
+**Scope of Non-Commercial Use:**
+- Personal use
+- Academic research
+- Educational purposes
+- Non-profit organizations
+
+## For Commercial Use: Commercial License Required
+
+**Commercial use includes, but is not limited to:**
+- Selling products or services that incorporate this software
+- Using this software in a commercial product or service
+- Offering this software as part of a paid subscription
+- Any use where revenue is generated directly or indirectly through this software
+
+**Requirements for Commercial Use:**
+1. Prior written contact with the copyright holder (yoiwa0714) is mandatory
+2. A separate commercial license agreement must be obtained
+3. Contact: [Please provide contact information via GitHub Issues]
+
+**To request a commercial license:**
+Please open an issue on the GitHub repository or contact the copyright holder
+directly to discuss terms and conditions for commercial use.
+
 ---
 
-MIT ライセンス（日本語参考訳）
+## 日本語版ライセンス
 
-Copyright (c) 2025 yoiwa0714
+本プロジェクトはデュアルライセンス方式で提供されます：
+
+## 著作権表示
+
+本ソフトウェアは2層の著作権を含んでいます：
+
+1. **オリジナルED法のアルゴリズムと理論**  
+   Copyright (c) 1999 金子勇（Isamu Kaneko）  
+   Error-Diffusion（ED）学習法、その理論的基盤、およびコアアルゴリズム
+
+2. **コラム構造の拡張と実装**  
+   Copyright (c) 2025 yoiwa0714  
+   コラム構造アーキテクチャ、実装の拡張、およびソースコード
+
+## 非商用利用の場合: MIT ライセンス
 
 以下に定める条件に従い、本ソフトウェアおよび関連文書のファイル（以下「ソフトウェア」）の複製を取得するすべての人に対し、ソフトウェアを無制限に扱うことを無償で許可します。これには、ソフトウェアの複製を使用、複写、変更、結合、掲載、頒布、サブライセンス、および/または販売する権利、およびソフトウェアを提供する相手に同じことを許可する権利も無制限に含まれます。
 
@@ -32,4 +83,38 @@ Copyright (c) 2025 yoiwa0714
 
 ソフトウェアは「現状のまま」で、明示であるか暗黙であるかを問わず、何らの保証もなく提供されます。ここでいう保証とは、商品性、特定の目的への適合性、および権利非侵害についての保証も含みますが、それに限定されるものではありません。作者または著作権者は、契約行為、不法行為、またはそれ以外であろうと、ソフトウェアに起因または関連し、あるいはソフトウェアの使用またはその他の扱いによって生じる一切の請求、損害、その他の義務について何らの責任も負わないものとします。
 
-※ この日本語訳は参考のためのものであり、法的効力を持つのは英語の原文のみです。
+**非商用利用の範囲:**
+- 個人利用
+- 学術研究
+- 教育目的
+- 非営利組織による利用
+
+## 商用利用の場合: 商用ライセンスが必要
+
+**商用利用には以下が含まれますが、これらに限定されません:**
+- 本ソフトウェアを組み込んだ製品またはサービスの販売
+- 商用製品またはサービスにおける本ソフトウェアの使用
+- 有料サブスクリプションの一部として本ソフトウェアを提供すること
+- 本ソフトウェアを通じて直接的または間接的に収益が発生するあらゆる利用
+
+**商用利用の要件:**
+1. 著作権者（yoiwa0714）への事前の書面による連絡が必須
+2. 別途商用ライセンス契約の締結が必要
+3. 連絡先: [GitHubのIssuesを通じて連絡情報をご提供ください]
+
+**商用ライセンスの申請方法:**
+GitHubリポジトリでIssueを開くか、著作権者に直接連絡して、商用利用の条件について相談してください。
+
+---
+
+## Acknowledgment | 謝辞
+
+This implementation is based on the Error-Diffusion (ED) learning method invented by the late Isamu Kaneko in 1999. We express our deepest respect and gratitude for his pioneering work in biologically plausible neural network learning algorithms.
+
+本実装は、故・金子勇氏が1999年に考案されたError-Diffusion（ED）学習法に基づいています。生物学的に妥当なニューラルネットワーク学習アルゴリズムにおける氏の先駆的な業績に対し、深い敬意と感謝の意を表します。
+
+---
+
+**Note:** The English version is the legally binding version. The Japanese translation is provided for reference only.
+
+**注記:** 法的効力を持つのは英語版です。日本語訳は参考のためのものです。
