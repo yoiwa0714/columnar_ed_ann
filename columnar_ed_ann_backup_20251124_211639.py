@@ -386,15 +386,9 @@ class ColumnarEDNetwork:
         """
         コラム帰属度マップの初期化
         
-        【改善版】全ニューロンを有効活用する動的割り当て
-        - 各クラスに基本的なニューロン数を割り当て
-        - 余剰ニューロンを均等に分配
-        - 生物学的妥当性: 全ニューロンがいずれかのコラムに所属
-        
-        例: 64ニューロン、10クラスの場合
-        - 基本: 6ニューロン/コラム
-        - 余剰: 64 - 6*10 = 4ニューロン
-        - 配分: 4コラムに+1ニューロン → [6,6,6,6,7,7,7,7,6,6]
+        各クラスに専用のニューロングループを割り当て
+        隣接コラムにも弱い帰属度を設定(生物学的特徴)
+        最終隠れ層に対して適用
         
         Returns:
         --------
@@ -404,59 +398,31 @@ class ColumnarEDNetwork:
         n_final_hidden = self.n_hidden[-1]
         column_affinity = np.zeros((self.n_output, n_final_hidden))
         
-        # 基本ニューロン数と余剰ニューロン数を計算
-        base_neurons = self.column_neurons
-        total_assigned = base_neurons * self.n_output
-        remaining_neurons = n_final_hidden - total_assigned
-        
-        if self.verbose:
-            print(f"[初期化] コラム帰属度マップ作成開始")
-            print(f"  - 総ニューロン数: {n_final_hidden}")
-            print(f"  - 基本ニューロン/コラム: {base_neurons}")
-            print(f"  - 余剰ニューロン: {remaining_neurons}")
-        
-        # 各コラムのニューロン数を決定（余剰を均等分配）
-        neurons_per_column_list = [base_neurons] * self.n_output
-        for i in range(remaining_neurons):
-            neurons_per_column_list[i] += 1
-        
-        # 各クラスにニューロンを割り当て
-        current_pos = 0
-        column_positions = []  # 各コラムの開始位置とニューロン数を記録
+        # 各クラスに均等にニューロンを割り当て
+        neurons_per_column = self.column_neurons
         
         for c in range(self.n_output):
-            neurons_count = neurons_per_column_list[c]
-            column_positions.append((current_pos, neurons_count))
-            
             # そのクラス専用のニューロン: 帰属度1.0
-            column_affinity[c, current_pos:current_pos + neurons_count] = 1.0
+            start = c * neurons_per_column
+            end = start + neurons_per_column
+            column_affinity[c, start:end] = 1.0
             
-            current_pos += neurons_count
-        
-        # ★生物学的特徴★: 巡回コラム構造による隣接関係
-        # 各コラムは両隣のコラムと重複領域を持つ（円環状配置）
-        for c in range(self.n_output):
-            current_start, current_count = column_positions[c]
+            # ★生物学的特徴★: 隣接コラムにも弱い帰属度
+            # コラムC₀は、隣のコラムC₁にも少し影響を与える
+            if c > 0:
+                prev_start = (c-1) * neurons_per_column
+                prev_end = prev_start + neurons_per_column
+                column_affinity[c, prev_start:prev_end] = self.column_overlap
             
-            # 左隣のコラム（巡回: コラム0の左隣はコラム9）
-            prev_c = (c - 1) % self.n_output
-            prev_start, prev_count = column_positions[prev_c]
-            prev_overlap = min(prev_count, current_count)
-            column_affinity[c, prev_start:prev_start + prev_overlap] = self.column_overlap
-            
-            # 右隣のコラム（巡回: コラム9の右隣はコラム0）
-            next_c = (c + 1) % self.n_output
-            next_start, next_count = column_positions[next_c]
-            next_overlap = min(current_count, next_count)
-            column_affinity[c, next_start:next_start + next_overlap] = self.column_overlap
+            if c < self.n_output - 1:
+                next_start = (c+1) * neurons_per_column
+                next_end = next_start + neurons_per_column
+                column_affinity[c, next_start:next_end] = self.column_overlap
         
         if self.verbose:
             print(f"[初期化] コラム帰属度マップ作成完了")
-            print(f"  - コラム別ニューロン数: {neurons_per_column_list}")
-            print(f"  - 隣接コラム重複度: {self.column_overlap}")
-            print(f"  - コラム構造: 巡回（円環状配置）")
-            print(f"  - コラム0 ← コラム9 → コラム0 (両端が隣接)")
-            print(f"  - 全ニューロン使用率: {current_pos}/{n_final_hidden} (100%)")
+            print(f"  - 各コラム: {neurons_per_column} ニューロン専有")
+            print(f"  - 隣接コラム重複: {self.column_overlap}")
         
         return column_affinity
     
@@ -1116,28 +1082,18 @@ def main():
                     fontsize=14, fontweight='bold', color=pred_color, 
                     ha='left', va='top', transform=fig_heatmap.transFigure)
             
-            # 表示する層を選択（入力層 + 隠れ層 + 出力層）（8層超の場合は最初の4層と最後の4層）
-            # -2は入力層、-1は出力層
-            total_layers = 1 + len(z_hiddens) + 1  # 入力層 + 隠れ層 + 出力層
+            # 表示する層を選択（8層超の場合は最初の4層と最後の4層）
+            total_layers = len(z_hiddens) + 1  # 隠れ層 + 出力層
             if total_layers <= 8:
                 # 全層表示
-                display_layers = [-2] + list(range(len(z_hiddens))) + [-1]  # -2:入力層、-1:出力層
+                display_layers = list(range(len(z_hiddens))) + [-1]  # -1は出力層
             else:
-                # 最初の4層と最後の4層のみ表示（入力層を含む）
-                if len(z_hiddens) <= 6:
-                    # 隠れ層が6層以下: 入力層 + 全隠れ層 + 出力層
-                    display_layers = [-2] + list(range(len(z_hiddens))) + [-1]
-                else:
-                    # 隠れ層が7層以上: 入力層 + 最初の3層 + 最後の3層 + 出力層
-                    display_layers = [-2] + list(range(3)) + list(range(len(z_hiddens) - 3, len(z_hiddens))) + [-1]
+                # 最初の4層と最後の4層のみ表示
+                display_layers = list(range(4)) + list(range(len(z_hiddens) - 3, len(z_hiddens))) + [-1]
             
             # 各層を表示
             for plot_idx, layer_idx in enumerate(display_layers[:8]):  # 最大8層
-                if layer_idx == -2:
-                    # 入力層
-                    z_data = sample_x
-                    layer_name = f'Input Layer ({len(sample_x)})'
-                elif layer_idx == -1:
+                if layer_idx == -1:
                     # 出力層
                     z_data = z_output
                     layer_name = f'Output Layer ({len(z_output)})'
