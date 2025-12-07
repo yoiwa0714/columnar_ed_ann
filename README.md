@@ -4,15 +4,15 @@
 
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue.svg)](https://www.python.org/)
 [![NumPy](https://img.shields.io/badge/NumPy-1.19%2B-orange.svg)](https://numpy.org/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ## プロジェクト概要
 
 - 金子勇氏提唱の**ED法 (Error Diffusion Learning Algorithm)**に、人間の脳の大脳皮質に見られる**コラム構造（Columnar Architecture）**<span style="font-size: small;">(詳細は後述)</span>を導入することによってED法の拡張を行ったものです。
 
 - 現在公開しているのは、ANN実装版のみになります。
+- (注) 本プロジェクトはペアプログラミングを用いて作成したものになります。
 
-### 主な特徴
+### 本プロジェクトの特徴
 
 1. **オリジナルED法の実装**
    - **微分の連鎖律を用いた誤差逆伝播法**を一切使用せず
@@ -70,10 +70,10 @@
    - 生物学的な大脳皮質のコラム配置に近い構造
    - 10クラスを以下の2-3-3-2配置で六角格子状に配置:
      ```
-     行1:  [0]  [1]
-     行2:  [2]  [3]  [4]
-     行3:  [5]  [6]  [7]
-     行4:  [8]  [9]
+         [0]  [1]
+      [2]  [3]  [4]
+      [5]  [6]  [7]
+         [8]  [9]
      ```
    - 各数字はクラスラベル（0-9）を表し、六角形の頂点として均等配置される
    - **実装**: `create_hexagonal_column_affinity()` 関数
@@ -152,8 +152,8 @@ python columnar_ed_ann.py --train 3000 --test 1000 --epochs 30 --seed 42 --hidde
 
 ```bash
 # リポジトリのクローン
-git clone https://github.com/yourusername/columnar-ed-ann.git
-cd columnar-ed-ann
+git clone https://github.com/yoiwa0714/columnar_ed_ann.git
+cd columnar_ed_-_ann
 
 # 依存パッケージのインストール
 pip install -r requirements.txt
@@ -163,10 +163,10 @@ pip install -r requirements.txt
 
 ```bash
 # 単層構造を最適パラメータで実行（MNIST）
-python columnar_ed_ann_v026_multiclass_multilayer.py
+python columnar_ed_ann.py
 
 # 単層構造を最適パラメータで実行（Fashion-MNIST）
-python columnar_ed_ann_v026_multiclass_multilayer.py --fashion
+python columnar_ed_ann.py --fashion
 ```
 
 ## ディレクトリ構造
@@ -177,6 +177,8 @@ python columnar_ed_ann_v026_multiclass_multilayer.py --fashion
 ├── README.md                # 本ファイル
 ├── docs/                    # 関連ドキュメント
 ├── modules/                 # 共通モジュール
+├── viz_results              # 学習可視化ファイル
+├── requirements.txt         # 依存パッケージ情報
 └── original-c-source-code   # 金子勇氏 オリジナルED法のCソースコード
 ```
 
@@ -243,11 +245,13 @@ python columnar_ed_ann_v026_multiclass_multilayer.py --fashion
 
 ## ドキュメント
 
-- [docs/ja/ED法_解説資料.md](docs/ja/ED法_解説資料.md) - オリジナルED法 解説資料
+- [docs/ja/ED法_解説資料.md](https://github.com/yoiwa0714/columnar_ed_ann/tree/main/docs/ja/ED法_解説資料.md) - オリジナルED法 解説資料
 
 ## 参考情報
 
-- Kaneko, I. (1999). Error Diffusion Learning Algorithm. (オリジナルC実装)
+- [金子勇氏 (1999) ED法オリジナルCソースコード](https://github.com/yoiwa0714/columnar_ed_ann/tree/main/original-c-source-code/main.c)
+- [GitHubリポジトリ](https://github.com/yoiwa0714/columnar_ed_ann)
+- [大脳皮質のコラム構造について](https://neu-brains.co.jp/neuro-plus/glossary/ka/140/)
 
 ## ライセンス
 
@@ -263,4 +267,4 @@ yoiwa0714
 
 ---
 
-**注意**: 本実装は研究・教育目的です。商用利用する場合は、適切なライセンスを確認してください。
+**注意**: 本実装とアイデアは研究・教育目的です。本実装とアイデアを商用利用する場合は、適切なライセンスを確認してください。
