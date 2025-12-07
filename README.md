@@ -113,13 +113,13 @@ python columnar_ed_ann.py --train 3000 --test 1000 --epochs 30 --seed 42 --hidde
 ![学習曲線](viz_results/fashion_tr3000_te1000_ep30_sd42_hd512_viz.png)
 
 #### 隠れ層 1層 [1024ニューロン]:
-  - Test精度 77.90%
-  - Train精度: 74.23%
+  - Test精度 77.80%
+  - Train精度: 74.00%
   - コマンド (学習は30エポックまで)
 ```python
 python columnar_ed_ann.py --train 3000 --test 1000 --epochs 30 --seed 42 --hidden 1024 --fashion
 ```
-![学習曲線]()
+![学習曲線](viz_results/fashion_tr3000_te3000_ep30_sd42_hd1024_viz.png)
 
 ## クイックスタート
 
