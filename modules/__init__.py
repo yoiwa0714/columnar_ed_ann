@@ -1,25 +1,14 @@
 """
-ED-SNN プロジェクトメインモジュール
+Columnar ED-ANN プロジェクトモジュール
 
 モジュール構成:
-- snn: スパイキングニューラルネットワーク
-- ed_learning: エラー拡散学習法 (後で追加)
-- utils: 共通ユーティリティ (後で追加)
+- visualization_manager: リアルタイム学習進捗・ヒートマップ表示
 """
 
-# SNNモジュール
-from .snn import *
+# 可視化モジュール
+from .visualization_manager import VisualizationManager
 
-# ED学習モジュール
-from .ed_learning import *
+__all__ = ['VisualizationManager']
 
-# ユーティリティモジュール (後で追加)
-# from .utils import *
-
-# 現在利用可能なモジュールのみインポート
-from .snn import *
-# from .ed_learning import *  # 後で追加
-# from .utils import *        # 後で追加
-
-__version__ = "0.0.1"
-__author__ = "ED-SNN Team"
+__version__ = "1.0.0"
+__author__ = "yoiwa0714"
