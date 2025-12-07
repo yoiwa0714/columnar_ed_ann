@@ -315,10 +315,10 @@ class VisualizationManager:
         is_correct = (sample_y_pred == sample_y_true)
         pred_color = 'blue' if is_correct else 'red'
         
-        # 3行表示（行間を広げて文字の重なりを防止）
+        # 3行表示（行間を広げて文字の重なりを防止）- 英語表記でTkinter警告回避
         y_start = 0.98
         line_height = 0.03  # 0.02 → 0.03に拡大
-        self.fig_heatmap.text(0.5, y_start, f'エポック: {epoch}', 
+        self.fig_heatmap.text(0.5, y_start, f'Epoch: {epoch}', 
                 fontsize=14, fontweight='bold', 
                 ha='center', va='top', transform=self.fig_heatmap.transFigure)
         
@@ -326,21 +326,21 @@ class VisualizationManager:
         if sample_y_true_name is not None:
             # Fashion-MNIST等のクラス名あり
             self.fig_heatmap.text(0.5, y_start - line_height, 
-                    f'正解クラス: {sample_y_true} ({sample_y_true_name})', 
+                    f'True Class: {sample_y_true} ({sample_y_true_name})', 
                     fontsize=14, fontweight='bold', 
                     ha='center', va='top', transform=self.fig_heatmap.transFigure)
             self.fig_heatmap.text(0.5, y_start - 2*line_height, 
-                    f'予測クラス: {sample_y_pred} ({sample_y_pred_name})', 
+                    f'Predicted Class: {sample_y_pred} ({sample_y_pred_name})', 
                     fontsize=14, fontweight='bold', color=pred_color, 
                     ha='center', va='top', transform=self.fig_heatmap.transFigure)
         else:
             # MNISTの場合はクラス番号のみ
             self.fig_heatmap.text(0.5, y_start - line_height, 
-                    f'正解クラス: {sample_y_true}', 
+                    f'True Class: {sample_y_true}', 
                     fontsize=14, fontweight='bold', 
                     ha='center', va='top', transform=self.fig_heatmap.transFigure)
             self.fig_heatmap.text(0.5, y_start - 2*line_height, 
-                    f'予測クラス: {sample_y_pred}', 
+                    f'Predicted Class: {sample_y_pred}', 
                     fontsize=14, fontweight='bold', color=pred_color, 
                     ha='center', va='top', transform=self.fig_heatmap.transFigure)
         
