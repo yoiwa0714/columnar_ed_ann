@@ -24,14 +24,14 @@
    - コラム間の側方抑制による競合
    - 特徴の多様性と汎化性能の向上
 
-## コラム構造
+## コラム構造とは
 
-### コラムとは
+### コラム構造
 
-- 新皮質は「分子層」、「外顆粒層」、「外錐体細胞層」、「内顆粒層」、「内錐体細胞層」、「多形細胞層」の6層から成り、この6層が0.5~1㎜程度の直径の円柱の様に縦に積み重なっていて、この１つのまとまりのことを「コラム」と言います
-上記の様な様々な大きさのコラムが数百万個存在し、情報処理を行っていると考えられています[^1]<br>
+- 大脳皮質の第一次視覚野や連合野で見られる柱状の構造を指す。コラム構造では、似た特性をもったニューロンが近くに配置されている。そのため、似た特性をもったニューロン同士が情報を共有しやすく、効率的に情報処理を行うことができるとされている。[*1]<br>
 
-[^1] 大脳皮質の構造と役割 (https://imok-academy.com/structure-and-role-of-the-cerebral-cortex/#:~:text=%E4%B8%80%E8%88%AC%E7%9A%84%E3%81%AB%E3%80%8C%E8%84%B3%E3%81%BF%E3%81%9D%E3%80%8D%E3%81%A8%E3%81%84%E3%81%86%E3%81%A8%E3%80%81%E3%82%B7%E3%83%AF%E3%82%B7%E3%83%AF%E3%81%8C%E3%81%82)
+[*1] 「NeUro+( ニューロプラス )」東北大学の知見✕日立の技術による脳科学ベンチャー<br>
+(https://neu-brains.co.jp/neuro-plus/glossary/ka/140/)
 
 ### コラムの動作原理(実装上)
 
@@ -45,7 +45,7 @@
 2. **アミン拡散の重み付け**
    - 出力層からのアミン濃度（誤差信号）がコラム帰属度に応じて各ニューロンに拡散
    - 計算式: `amine_hidden = amine_output * diffusion_coef * column_affinity`
-   - 各クラスの誤差が対応するコラムのニューロンに優先的に伝播
+   - 各クラスの誤差が、対応するコラムのニューロンに優先的に伝播
 
 3. **コラム構造による特徴分散**
    - 各クラスが異なる空間位置のニューロン群を活性化
@@ -54,14 +54,14 @@
 
 ### コラム実装のポイント
 
-1. **ハニカム構造の採用理由**
-   - 六角格子は最も効率的な2次元充填構造
+1. **ハニカム構造の採用**
+   - ハニカム構造は最も効率的な2次元充填構造
    - 各コラムが等距離の隣接コラムを持つため、空間的に均一な配置が可能
    - 生物学的な大脳皮質のコラム配置に近い構造
 
 2. **参加率（Participation Rate）の最適化**
    - `participation_rate=1.0`: 全ニューロンがいずれかのコラムに参加、重複なし
-   - 各クラスに約51ニューロン（512÷10）を均等割り当て
+   - 例) 層が512ニューロンで構成されている場合、各クラスには約51ニューロン（512÷10）を均等割り当て(余ったニューロンは先頭クラスから振り当て)
    - 完全分割により各ニューロンの役割が明確化
 
 3. **コラム半径（Column Radius）の調整**
@@ -76,54 +76,50 @@
 
 5. **ED法との統合**
    - コラム構造は特徴抽出の多様性を提供
-   - アミン拡散は依然として微分の連鎖律を使用せず
+   - ED法と同様に、アミン拡散(誤差拡散)に「微分の連鎖律による誤差逆伝播法」を用いず
    - 飽和項`abs(z) * (1 - abs(z))`によりED法の原理を維持
 
 ## 学習精度 (2025年12月6日時点)
 
 ### MNIST
 
-- 隠れ層 1層 [512ニューロン]:
-  - Test精度 83.80%
-  - Train精度: 86.77%
-
-  - コマンド
-
+#### 隠れ層 1層 [512ニューロン]:
+  - Test精度 82.70%
+  - Train精度: 84.87%
+  - コマンド (学習は20エポックまで)
 ```python
-python columnar_ed_ann_v026_multiclass_multilayer.py --train 3000 --test 1000 --epochs 100 --seed 42 --hidden 512
+python columnar_ed_ann.py --train 3000 --test 1000 --epochs 20 --seed 42 --hidden 512
 ```
+![学習曲線](viz_results/mnist_tr3000_te1000_ep20_sd42_hd512_viz.png)
 
-- 隠れ層 1層 [1024ニューロン]:
-  - Test精度 85.60%
-  - Train精度: 86.20%
-
-  - コマンド
-
+#### 隠れ層 1層 [1024ニューロン]:
+  - Test精度 86.30%
+  - Train精度: 84.50%
+  - コマンド (学習は20エポックまで)
 ```python
-python columnar_ed_ann_v026_multiclass_multilayer.py --train 3000 --test 1000 --epochs 100 --seed 42 --hidden 1024
+python columnar_ed_ann.py --train 3000 --test 1000 --epochs 20 --seed 42 --hidden 1024
 ```
+![学習曲線](viz_results/mnist_tr3000_te1000_ep20_sd42_hd1024_viz.png)
 
 ### Fashion-MNIST
 
-- 隠れ層 1層 [512ニューロン]:
-  - Test精度 78.60%
-  - Train精度: 76.53%
-
-  - コマンド
-
+#### 隠れ層 1層 [512ニューロン]:
+  - Test精度 77.90%
+  - Train精度: 74.97%
+  - コマンド (学習は30エポックまで)
 ```python
-python columnar_ed_ann_v026_multiclass_multilayer.py --train 3000 --test 1000 --epochs 100 --seed 42 --hidden 512 --fashion
+python columnar_ed_ann.py --train 3000 --test 1000 --epochs 30 --seed 42 --hidden 512 --fashion
 ```
+![学習曲線](viz_results/fashion_tr3000_te1000_ep30_sd42_hd512_viz.png)
 
-- 隠れ層 1層 [1024ニューロン]:
+#### 隠れ層 1層 [1024ニューロン]:
   - Test精度 77.90%
   - Train精度: 74.23%
-
-  - コマンド
-
+  - コマンド (学習は30エポックまで)
 ```python
-python columnar_ed_ann_v026_multiclass_multilayer.py --train 3000 --test 1000 --epochs 100 --seed 42 --hidden 1024 --fashion
+python columnar_ed_ann.py --train 3000 --test 1000 --epochs 30 --seed 42 --hidden 1024 --fashion
 ```
+![学習曲線]()
 
 ## クイックスタート
 
@@ -152,17 +148,48 @@ python columnar_ed_ann_v026_multiclass_multilayer.py --fashion
 
 グリッドサーチにより得られた隠れ層1層の場合の最適パラメータをデフォルト値として設定済み
 
+### 実行関連のパラメータ
+
 | パラメータ | 値 | 備考 |
 |-----------|-----|------|
-| `learning_rate` | 0.20 |  |
-| `u1` | 0.5 | アミン拡散係数 |
-| `lateral_lr` | 0.08 | 側方抑制学習率 |
-| `base_column_radius` | 1.0 |  |
-| `participation_rate` | 1.0 | 全ニューロンがコラムに参加・コラム間の重複なし |
-| `hidden` | [512] | 隠れ層1層構成 |
-| `train_samples` | 3000 |  |
-| `epochs` | 100 |  |
-| `seed` | 42 | 再現性確保 |
+| `--train` | 3000 | 訓練サンプル数 |
+| `--test` | 1000 | テストサンプル数 |
+| `--epochs` | 100 | エポック数 |
+| `--seed` | 42 | 乱数シード（再現性確保用） |
+| `--fashion` | - | Fashion-MNISTを使用（フラグ） |
+| `--use_hyperparams` | - | HyperParamsテーブルから設定を自動取得（フラグ） |
+| `--list_hyperparams` | - | 利用可能なHyperParams設定一覧を表示（フラグ） |
+
+### ED法関連のパラメータ
+
+| パラメータ | 値 | 備考 |
+|-----------|-----|------|
+| `--hidden` | 512 | 隠れ層ニューロン数（1層で83.80%達成） |
+| `--lr` | 0.20 | 学習率（Phase 1 Extended Overall Best） |
+| `--u1` | 0.5 | アミン拡散係数（Phase 1 Extended Overall Best） |
+| `--u2` | 0.8 | アミン拡散係数（隠れ層間） |
+| `--lateral_lr` | 0.08 | 側方抑制の学習率（Phase 1 Extended Overall Best） |
+| `--gradient_clip` | 0.05 | gradient clipping値 |
+
+### コラム関連のパラメータ
+
+| パラメータ | 値 | 備考 |
+|-----------|-----|------|
+| `--base_column_radius` | 1.0 | 基準コラム半径（Phase 2完全評価Best、256ニューロン層での値） |
+| `--column_radius` | None | コラム影響半径（Noneなら層ごとに自動計算） |
+| `--participation_rate` | 1.0 | コラム参加率（Phase 2で確定、1.0=全参加・重複なし、優先度：最高） |
+| `--column_neurons` | - | 各クラスの明示的ニューロン数（重複許容、優先度：中） |
+| `--use_circular` | - | 旧円環構造を使用（デフォルトはハニカム、フラグ） |
+| `--overlap` | 0.0 | コラム間の重複度（0.0-1.0、円環構造でのみ有効） |
+| `--diagnose_column` | - | コラム構造の詳細診断を実行（フラグ） |
+
+### 可視化関連のパラメータ
+
+| パラメータ | 値 | 備考 |
+|-----------|-----|------|
+| `--viz` | - | 学習曲線のリアルタイム可視化を有効化（フラグ） |
+| `--heatmap` | - | 活性化ヒートマップの表示を有効化（--vizと併用、フラグ） |
+| `--save_viz` | - | 可視化結果を保存（パス指定可能） |
 
 ## ED法への準拠
 
