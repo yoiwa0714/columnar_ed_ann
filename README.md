@@ -158,7 +158,7 @@ python columnar_ed_ann.py --train 3000 --test 1000 --epochs 30 --seed 42 --hidde
 ```bash
 # リポジトリのクローン
 git clone https://github.com/yoiwa0714/columnar_ed_ann.git
-cd columnar_ed_-_ann
+cd columnar_ed_ann
 
 # 依存パッケージのインストール
 pip install -r requirements.txt
