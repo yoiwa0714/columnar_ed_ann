@@ -29,6 +29,11 @@ def setup_japanese_font():
     2. Noto Sans JP
     3. IPAexGothic / IPAGothic
     4. TakaoPGothic / VL PGothic
+    
+    Returns:
+    --------
+    str or None
+        選択されたフォント名（見つからない場合はNone）
     """
     import matplotlib.font_manager as fm
     
@@ -61,10 +66,16 @@ def setup_japanese_font():
     
     # フォントを設定
     if selected_font:
+        # matplotlibのフォント設定（より強力な設定）
         plt.rcParams['font.family'] = selected_font
+        plt.rcParams['font.sans-serif'] = [selected_font] + plt.rcParams['font.sans-serif']
+        # マイナス記号の文字化け対策
+        plt.rcParams['axes.unicode_minus'] = False
         print(f"日本語フォント設定: {selected_font}")
+        return selected_font
     else:
         print("警告: 日本語フォントが見つかりませんでした。デフォルトフォントを使用します。")
+        return None
 
 
 def determine_save_path(save_fig_arg):
@@ -145,6 +156,9 @@ class VisualizationManager:
         self.enable_viz = enable_viz
         self.enable_heatmap = enable_heatmap
         
+        # 日本語フォント設定（matplotlib用）
+        setup_japanese_font()
+        
         # save_pathの処理
         if save_path is not None:
             save_path_obj = Path(save_path)
@@ -174,12 +188,14 @@ class VisualizationManager:
         if self.enable_viz:
             plt.ion()
             self.fig_viz = plt.figure(figsize=(15, 5))
-            self.fig_viz.canvas.manager.set_window_title('学習曲線 + 混同行列')
+            # Tkinterウィンドウタイトルは英語に変更（フォント問題回避）
+            self.fig_viz.canvas.manager.set_window_title('Learning Curve + Confusion Matrix')
         
         if self.enable_heatmap:
             plt.ion()
             self.fig_heatmap = plt.figure(figsize=(16, 8))
-            self.fig_heatmap.canvas.manager.set_window_title('層別活性化ヒートマップ')
+            # Tkinterウィンドウタイトルは英語に変更（フォント問題回避）
+            self.fig_heatmap.canvas.manager.set_window_title('Layer-wise Activation Heatmap')
     
     def update_learning_curve(self, train_acc_history, test_acc_history, x_test, y_test, network):
         """
