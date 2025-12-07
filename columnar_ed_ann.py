@@ -1553,21 +1553,89 @@ if __name__ == "__main__":
         n_train=args.train, n_test=args.test, dataset=dataset
     )
     
+    # パラメータ表示関数
+    def print_parameters(args, hidden_sizes):
+        """実行パラメータを整理して表示"""
+        print("\n" + "="*70)
+        print("実行パラメータ")
+        print("="*70)
+        
+        # デフォルト値定義
+        defaults = {
+            'train': 3000, 'test': 1000, 'epochs': 100, 'seed': 42,
+            'hidden': '512', 'lr': 0.20, 'u1': 0.5, 'u2': 0.8,
+            'lateral_lr': 0.08, 'gradient_clip': 0.05,
+            'base_column_radius': 1.0, 'column_radius': None,
+            'participation_rate': 1.0, 'column_neurons': None,
+            'overlap': 0.0
+        }
+        
+        def format_value(name, value, default):
+            """値とデフォルト状態を整形"""
+            if value == default:
+                return f"{value} (デフォルト)"
+            else:
+                return f"{value}"
+        
+        # 実行関連
+        print("実行関連:")
+        print(f"  --train             {format_value('train', args.train, defaults['train'])}")
+        print(f"  --test              {format_value('test', args.test, defaults['test'])}")
+        print(f"  --epochs            {format_value('epochs', args.epochs, defaults['epochs'])}")
+        print(f"  --seed              {format_value('seed', args.seed, defaults['seed'])}")
+        print(f"  --fashion           {'有効 (Fashion-MNIST)' if args.fashion else '無効 (MNIST)'}")
+        print(f"  --use_hyperparams   {'有効' if args.use_hyperparams else '無効'}")
+        
+        # ED法関連
+        print("\nED法関連:")
+        print(f"  --hidden            {hidden_sizes}")
+        print(f"  --lr                {format_value('lr', args.lr, defaults['lr'])}")
+        print(f"  --u1                {format_value('u1', args.u1, defaults['u1'])}")
+        print(f"  --u2                {format_value('u2', args.u2, defaults['u2'])}")
+        print(f"  --lateral_lr        {format_value('lateral_lr', args.lateral_lr, defaults['lateral_lr'])}")
+        print(f"  --gradient_clip     {format_value('gradient_clip', args.gradient_clip, defaults['gradient_clip'])}")
+        
+        # コラム関連
+        print("\nコラム関連:")
+        print(f"  --base_column_radius    {format_value('base_column_radius', args.base_column_radius, defaults['base_column_radius'])}")
+        
+        if args.column_radius is not None:
+            print(f"  --column_radius         {args.column_radius} (固定)")
+        else:
+            # 自動計算値を表示
+            radii = []
+            for size in hidden_sizes:
+                radius = args.base_column_radius * np.sqrt(size / 256)
+                radii.append(f"{radius:.2f}")
+            radii_str = ", ".join([f"Layer{i}:{r}" for i, r in enumerate(radii)])
+            print(f"  --column_radius         自動計算 [{radii_str}]")
+        
+        print(f"  --participation_rate    {args.participation_rate} ({args.participation_rate * 100:.0f}%参加・重複なし)")
+        
+        if args.column_neurons is not None:
+            print(f"  --column_neurons        {args.column_neurons} (各クラス)")
+        else:
+            print(f"  --column_neurons        未指定")
+        
+        print(f"  --use_circular          {'有効 (Circular)' if args.use_circular else '無効 (Hexagonal 2-3-3-2)'}")
+        print(f"  --overlap               {format_value('overlap', args.overlap, defaults['overlap'])}")
+        
+        # 可視化関連
+        print("\n可視化関連:")
+        print(f"  --viz               {'有効' if args.viz else '無効'}")
+        print(f"  --heatmap           {'有効' if args.heatmap else '無効'}")
+        if args.save_viz:
+            print(f"  --save_viz          有効 (保存先: {args.save_viz})")
+        else:
+            print(f"  --save_viz          無効")
+        
+        print("="*70)
+    
+    # パラメータ表示
+    print_parameters(args, hidden_sizes)
+    
     # ネットワーク作成
     print("\nネットワーク初期化中...")
-    print(f"  隠れ層: {hidden_sizes}ニューロン")
-    print(f"  学習率: {args.lr}")
-    print(f"  アミン拡散係数(u1): {args.u1}, (u2): {args.u2}")
-    print(f"  方式: {'Hexagonal Column (2-3-3-2)' if not args.use_circular else 'Circular Column'}")
-    print(f"  側方抑制学習率: {args.lateral_lr}")
-    if args.column_radius is not None:
-        print(f"  コラムモード: 固定radius={args.column_radius}")
-    else:
-        print(f"  コラムモード: 層依存自動計算（base_radius={args.base_column_radius}）")
-    if args.participation_rate is not None:
-        print(f"  参加率: {args.participation_rate * 100:.0f}%（デフォルト=全参加・重複なし）")
-    if args.column_neurons is not None:
-        print(f"  明示的ニューロン数: 各クラス{args.column_neurons}個")
     
     net = RefinedDistributionEDNetwork(
         n_input=784,
