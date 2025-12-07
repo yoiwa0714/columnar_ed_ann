@@ -1596,21 +1596,7 @@ if __name__ == "__main__":
     
     # 学習
     print("\n" + "="*70)
-    print("学習開始 [v023 - Pure ED Output Layer]")
-    print("="*70)
-    print("実装内容: 出力層も含めて完全に純粋なED法で実装")
-    print("           誤差逆伝播法の要素を完全に排除")
-    print("  1. Dale's Principleの正しい実装")
-    print("  2. ハニカム構造のコラム帰属度マップ")
-    print("  3. アミン濃度の計算と拡散")
-    print("  4. ED法の重み更新則（出力層・隠れ層共通）← ★修正★")
-    print("  5. Winner-Takes-All方式")
-    print("  6. 側方抑制（動的lateral_weights + アミン増強）")
-    print("  7. 興奮性・抑制性ニューロンペア構造")
-    print("  8. シグモイド活性化関数（微分は不使用）← ★修正★")
-    print("  8. シグモイド活性化関数と微分")
-    print("  9. 適切なハイパーパラメータ")
-    print("  10. データ正規化とone-hot エンコーディング")
+    print("学習開始")
     print("="*70)
     
     from tqdm import tqdm
