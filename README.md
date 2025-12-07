@@ -1,6 +1,4 @@
-# **コラムED法 - コラム構造を持ったED法**
-
-## Columnar ED: Error Diffusion with Columnar Architecture
+# **コラムED法 - コラム構造を持つED法**
 
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue.svg)](https://www.python.org/)
 [![NumPy](https://img.shields.io/badge/NumPy-1.19%2B-orange.svg)](https://numpy.org/)
@@ -8,13 +6,13 @@
 ## プロジェクト概要
 
 - 金子勇氏提唱の**ED法 (Error Diffusion Learning Algorithm)**に、人間の脳の大脳皮質に見られる**コラム構造（Columnar Architecture）**<span style="font-size: small;">(詳細は後述)</span>を導入することによってED法の拡張を行ったものです。
-
+- 1つの重み空間で多クラス分類に対応しています。
 - 現在公開しているのは、ANN実装版のみになります。
-- (注) 本プロジェクトはペアプログラミングを用いて作成したものになります。
+- ペアプログラミングを用いて作成しています。
 
 ### 本プロジェクトの特徴
 
-1. **オリジナルED法の実装**
+1. **オリジナルED法の忠実な実装**
    - **微分の連鎖律を用いた誤差逆伝播法**を一切使用せず
    - ED法の飽和項: `abs(z) * (1 - abs(z))` を使用
    - 生物学的に妥当なアミン拡散メカニズム
@@ -40,7 +38,7 @@
 - オリジナルED法が多クラス分類を苦手とする理由を考えた時、個々のニューロンが出力クラスと結び付いていないため、今の誤差に対する自ニューロンの学習方向が分からないということであると理解しました。
 - そこで、出力クラスと個々のニューロンを紐付ける方法を色々と検討していた中で、人間の脳の大脳皮質の視覚野などには前項「コラム構造」に記載したような特徴のあるコラム構造があることを知り、これをED法の多クラス分類にうまく取り込めないかと思い、挑戦してみたというのが背景になります。
 
-### 実装上のコラムの動作原理
+### コラムの動作の詳細
 
 本実装では、隠れ層の各ニューロンが特定のクラスに対して選択的に応答するようにコラム構造を組み込んでいます。
 
@@ -115,7 +113,8 @@
 ```python
 python columnar_ed_ann.py --train 3000 --test 1000 --epochs 20 --seed 42 --hidden 512
 ```
-![学習曲線](viz_results/mnist_tr3000_te1000_ep20_sd42_hd512_viz.png)
+![グラフ1](viz_results/mnist_tr3000_te1000_ep20_sd42_hd512_viz.png)
+**左:学習曲線、右:混同行列(最終エポック)**
 
 #### 隠れ層 1層 [1024ニューロン]:
   - Test精度 86.30%
@@ -124,7 +123,8 @@ python columnar_ed_ann.py --train 3000 --test 1000 --epochs 20 --seed 42 --hidde
 ```python
 python columnar_ed_ann.py --train 3000 --test 1000 --epochs 20 --seed 42 --hidden 1024
 ```
-![学習曲線](viz_results/mnist_tr3000_te1000_ep20_sd42_hd1024_viz.png)
+![グラフ2](viz_results/mnist_tr3000_te1000_ep20_sd42_hd1024_viz.png)
+**左:学習曲線、右:混同行列(最終エポック)**
 
 ### Fashion-MNIST
 
@@ -135,7 +135,8 @@ python columnar_ed_ann.py --train 3000 --test 1000 --epochs 20 --seed 42 --hidde
 ```python
 python columnar_ed_ann.py --train 3000 --test 1000 --epochs 30 --seed 42 --hidden 512 --fashion
 ```
-![学習曲線](viz_results/fashion_tr3000_te1000_ep30_sd42_hd512_viz.png)
+![グラフ3](viz_results/fashion_tr3000_te1000_ep30_sd42_hd512_viz.png)
+**左:学習曲線、右:混同行列(最終エポック)**
 
 #### 隠れ層 1層 [1024ニューロン]:
   - Test精度 77.80%
@@ -144,7 +145,8 @@ python columnar_ed_ann.py --train 3000 --test 1000 --epochs 30 --seed 42 --hidde
 ```python
 python columnar_ed_ann.py --train 3000 --test 1000 --epochs 30 --seed 42 --hidden 1024 --fashion
 ```
-![学習曲線](viz_results/fashion_tr3000_te3000_ep30_sd42_hd1024_viz.png)
+![グラフ4](viz_results/fashion_tr3000_te3000_ep30_sd42_hd1024_viz.png)
+**左:学習曲線、右:混同行列(最終エポック)**
 
 ## クイックスタート
 
@@ -167,6 +169,21 @@ python columnar_ed_ann.py
 
 # 単層構造を最適パラメータで実行（Fashion-MNIST）
 python columnar_ed_ann.py --fashion
+
+# 可視化表示付きで実行
+python columnar_ed_ann.py --viz --heatmap
+
+# 学習曲線の可視化結果保存付きで実行(--vizと--save_vizを同時に指定)
+python columnar_ed_ann.py --viz --save_viz viz_result
+
+# 学習曲線とヒートマップの可視化結果保存付きで実行(--vizと--heatmap、および--save_vizを同時に指定)
+python columnar_ed_ann.py --viz --heatmap --save_viz viz_result
+
+# (注) --save_vizオプションの動作は以下のようになります。
+# ディレクトリ名/ファイル名形式で指定した場合: 指定されたディレクトリ(存在しなければ作成)下に指定されたファイル名で保存
+# ディレクトリ名(拡張子無し)のみを指定した場合: 指定されたディレクトリ(存在しなければ作成)下にデフォルトのファイル名(タイムスタンプ付き)で保存
+# ファイル名(拡張子有り)のみを指定した場合: カレントディレクトリ(プログラム実行ディレクトリ)に保存
+# 引数無しで--save_vizのみを指定した場合: viz_resultsディレクトリ(存在しなければ作成)下にデフォルトのファイル名(タイムスタンプ付き)で保存
 ```
 
 ## ディレクトリ構造
