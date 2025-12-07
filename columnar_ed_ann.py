@@ -1436,7 +1436,7 @@ if __name__ == "__main__":
     exec_group.add_argument('--fashion', action='store_true', 
                            help='Fashion-MNISTを使用')
     exec_group.add_argument('--use_hyperparams', action='store_true', 
-                           help='HyperParamsテーブルから設定を自動取得（層数に基づく）')
+                           help='隠れ層数に基づきHyperParamsテーブルから設定を自動取得(隠れ層数1はサポート対象外)')
     exec_group.add_argument('--list_hyperparams', action='store_true',
                            help='利用可能なHyperParams設定一覧を表示して終了')
     
