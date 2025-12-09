@@ -206,9 +206,9 @@ python columnar_ed_ann.py --viz --heatmap --save_viz viz_result
 
 グリッドサーチにより得られた「隠れ層1層の場合のパラメータ」をデフォルト値としてコード内に設定済みです。そのため、隠れ層1層の場合には学習関連のパラメータを指定しなくても、ある程度高い学習精度が得られます。
 
-(注1) 隠れ層が2層から5層の構成の場合のパラメータは内部テーブルに設定してあります。--use_hyperparamsを指定すると、隠れ層の層数が自動判別され、このテーブルに設定してあるパラメータが呼び出されて使用されます。
+(注1) 隠れ層が1層から5層の構成の場合のパラメータは内部テーブルに設定してあります。隠れ層の層数が自動判別され、このテーブルに設定してあるパラメータが自動的に使用されます。
 
-(注2) 前項のテーブルのパラメータは最適なパラメータではない可能性があるため、このテーブルに設定してあるパラメータで学習を実行した場合には学習精度が低くなる可能性がありますので、ご注意ください。
+(注2) 前項のテーブルのパラメータのうち、1層と2層の構成についてはグリッドサーチとエポック収束分析により最適化済みです。3層から5層の構成については暫定値が設定されており、今後の最適化により学習精度が向上する可能性があります。
 
 (注3) このテーブルに設定されているパラメータは、--list_hyperparamsオプションを指定して実行することで表示させ確認することができます。
 
@@ -220,10 +220,9 @@ python columnar_ed_ann.py --viz --heatmap --save_viz viz_result
 |-----------|-----|------|
 | `--train` | 3000 | 訓練サンプル数 |
 | `--test` | 1000 | テストサンプル数 |
-| `--epochs` | 100 | エポック数 |
+| `--epochs` | 40-50 | エポック数（層数により自動設定: 1層=40, 2層=45, 3-5層=50） |
 | `--seed` | 42 | 乱数シード（再現性確保用） |
 | `--fashion` | - | Fashion-MNISTを使用（フラグ） |
-| `--use_hyperparams` | - | HyperParamsテーブルから設定を自動取得（フラグ） |
 | `--list_hyperparams` | - | 利用可能なHyperParams設定一覧を表示（フラグ） |
 
 ### ED法関連のパラメータ
@@ -271,19 +270,18 @@ python columnar_ed_ann.py --viz --heatmap --save_viz viz_result
 | SoftMax |出力の確率化のみに使用(順伝播)| OK |
 | アミン拡散 |確率誤差（target_prob - softmax_prob）から計算| OK |
 
-## ドキュメント
+## オリジナルED法 解説資料
 
-- [docs/ja/ED法_解説資料.md](https://github.com/yoiwa0714/columnar_ed_ann/tree/main/docs/ja/ED法_解説資料.md) - オリジナルED法 解説資料
+- [docs/ja/ED法_解説資料.md](https://github.com/yoiwa0714/columnar_ed_ann/tree/main/docs/ja/ED法_解説資料.md)
 
 ## 参考情報
 
 - [金子勇氏 (1999) ED法オリジナルCソースコード](https://github.com/yoiwa0714/columnar_ed_ann/tree/main/original-c-source-code/main.c)
-- [GitHubリポジトリ](https://github.com/yoiwa0714/columnar_ed_ann)
 - [大脳皮質のコラム構造について](https://neu-brains.co.jp/neuro-plus/glossary/ka/140/)
 
 ## ライセンス
 
-LICENSEファイルを参照
+[LICENSE](https://github.com/yoiwa0714/columnar_ed_ann/tree/main/LICENSE)ファイルを参照
 
 ## 著者
 
@@ -295,4 +293,4 @@ yoiwa0714
 
 ---
 
-**注意**: 本実装とアイデアは研究・教育目的です。本実装とアイデアを商用利用する場合は、適切なライセンスを確認してください。
+**注意**: 本実装とアイデアは、ネットワークの種類を問わず、研究・教育目的です。本実装とアイデアを商用利用する場合は、適切なライセンスを確認してください。
