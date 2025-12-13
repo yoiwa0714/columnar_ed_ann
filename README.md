@@ -62,47 +62,223 @@
    - クラス間の特徴表現が自然に分離される
    - 過度な重複を避けつつ、適度な情報共有を実現
 
-### コラム実装のポイント
-
-1. **ハニカム構造の採用**
-   - ハニカム構造は最も効率的な2次元充填構造
-   - 各コラムが等距離の隣接コラムを持つため、空間的に均一な配置が可能
-   - 生物学的な大脳皮質のコラム配置に近い構造
-   - 10クラスを以下の2-3-3-2配置で六角格子状に配置:
-     ```
-         [0]  [1]
-      [2]  [3]  [4]
-      [5]  [6]  [7]
-         [8]  [9]
-     ```
-   - 各数字はクラスラベル（0-9）を表し、六角形の頂点として均等配置される
-   - **実装**: `create_hexagonal_column_affinity()` 関数
-
-2. **参加率（Participation Rate）の最適化**
-   - `participation_rate=1.0`の場合: 全ニューロンがいずれかのコラムに参加、重複なし
-   - (例) 層が512ニューロンで構成されている場合、各クラスには約51ニューロン（512÷10）を均等割り当て(余ったニューロンは先頭クラスから振り当て)
-   - 全ニューロンを全コラムに完全割り当てすることにより各ニューロンの役割が明確化
-   - `participation_rate≠1.0`の場合: 各ニューロンについて帰属度の高い上位N個のクラスを選択し、それ以外の帰属度を0にする方式（公開時点では十分な試行ができておらず、効果は未検証）
-   - **実装**: `create_hexagonal_column_affinity()` 関数
-
-3. **コラム半径（Column Radius）の調整**
-   - `base_column_radius=1.0`: 256ニューロン層での基準値
-   - 層のニューロン数に応じて`sqrt(n/256)`でスケーリング
-   - 小さすぎると学習が不安定、大きすぎると過学習傾向
-   - **機能**: コラム中心からの影響範囲を制御し、ガウス分布の広がりを決定。半径が大きいほど、より遠くのニューロンまでコラムの影響が及ぶ
-   - **実装**: `create_hexagonal_column_affinity()` 関数
-
-4. **側方抑制（Lateral Inhibition）**
-   - Winner-Takes-All方式により最も活性化したクラスを選択
-   - 誤った予測クラスのコラムを抑制する学習的側方抑制
-   - `lateral_weights`を動的に学習し、クラス間競合を強化
-   - **詳細**: 出力層で最も強く活性化したニューロン（クラス）を勝者として選択。誤答が発生した場合、勝者クラスから正解クラスへの側方抑制重み `lateral_weights[winner_class, true_class]` を学習率に応じて減少（負の値として記録）。繰り返し誤答するクラスペアの抑制関係を強化し、競合するクラス間の分離性を向上
-   - **実装**: `create_lateral_weights()` 関数（初期化）、`RefinedDistributionEDNetwork.train_epoch()` メソッド内（動的更新）
-
-5. **オリジナルED法との統合による相乗効果**
+4. **オリジナルED法との統合による相乗効果**
    - コラム構造は特徴抽出の多様性を提供
    - オリジナルED法と同様に、アミン拡散(誤差拡散)に「微分の連鎖律による誤差逆伝播法」を用いず
    - 飽和項`abs(z) * (1 - abs(z))`によりオリジナルED法の原理を維持
+
+### コラム実装のポイント
+
+#### ハニカム構造の場合
+
+##### 1. クラス座標の中心化配置
+
+**実装の目的:**  
+全10クラスがグリッド中心に配置されることで、各クラスが均等にニューロンへアクセスできる環境を実現
+
+**その実装を行う理由:**  
+- 従来実装ではクラス座標が(0,0)～(2,3)のグリッドエッジに配置されていた
+- 結果、Class 0は距離≤3で12個のニューロンしかアクセスできず、Class 9は37個アクセス可能という不均等が発生
+- 中心化により全クラスが43-44個のニューロンに均等アクセス可能となり、学習の公平性が向上
+- 生物学的にも、大脳皮質のコラム構造はエッジではなく中心的領域に配置されている
+
+**コードサンプル:**
+```python
+# 10クラスをグリッド中心に配置
+grid_size = int(np.ceil(np.sqrt(n_hidden)))  # 例: 512ニューロン → 23×23グリッド
+grid_center = grid_size / 2.0  # 11.5
+
+# 中心化した2-3-3-2配置
+class_coords = {
+    0: (grid_center - 1, grid_center - 1),   1: (grid_center + 1, grid_center - 1),  # 行1: 2個
+    2: (grid_center - 2, grid_center),       3: (grid_center, grid_center),           # 行2: 3個
+    4: (grid_center + 2, grid_center),
+    5: (grid_center - 2, grid_center + 1),   6: (grid_center, grid_center + 1),       # 行3: 3個
+    7: (grid_center + 2, grid_center + 1),
+    8: (grid_center - 1, grid_center + 2),   9: (grid_center + 1, grid_center + 2)    # 行4: 2個
+}
+```
+
+**実装場所:** `modules/column_structure.py` - `create_hexagonal_column_affinity()` 関数
+
+---
+
+##### 2. participation_rate（コラム参加率）の意義
+
+**実装の目的:**  
+全ニューロンではなく、約70%のニューロンのみがコラムに参加することで、学習の柔軟性と安定性を両立
+
+**その実装を行う理由:**  
+- 過去の実装分析により、意図せず364/512ニューロン（71%）のみが学習に参加していたことが判明
+- participation_rate=1.0（全ニューロン参加）では学習が不安定になり、精度がランダム出力レベルに低下
+- 約30%の非参加ニューロンが「遊び」として機能し、過学習を防ぎ汎化性能を向上
+- 生物学的にも、すべての皮質ニューロンが常に活動するわけではなく、一部は休止状態
+- **重要:** 0.0（コラム無意味）と1.0（学習失敗）は禁止値として明示的にエラー化
+
+**コードサンプル:**
+```python
+# participation_rate検証
+if participation_rate is not None:
+    if participation_rate <= 0.0 or participation_rate >= 1.0:
+        raise ValueError(
+            f"participation_rate must be in range (0.0, 1.0), exclusive. "
+            f"Got {participation_rate}. "
+            f"0.0 makes columns meaningless, 1.0 causes learning instability."
+        )
+    if participation_rate < 0.01 or participation_rate > 0.99:
+        print(f"⚠️  Warning: participation_rate={participation_rate:.2f} is outside recommended range.")
+        print(f"    Recommended: 0.01 <= participation_rate <= 0.99")
+        print(f"    (Based on analysis: ~0.71 worked well)")
+
+# 使用例
+affinity = create_hexagonal_column_affinity(512, 10, participation_rate=0.71)
+# → 363/512ニューロン（70.9%）がコラムに参加
+# → 各クラスに36-37個のニューロンが均等割り当て
+```
+
+**実装場所:** `modules/column_structure.py` - `create_hexagonal_column_affinity()` 関数
+
+---
+
+##### 3. 極小アフィニティ値の自然フィルタリング
+
+**実装の目的:**  
+極端に低いaffinity値（10⁻¹¹オーダー）をそのまま保持し、後段の閾値判定（1e-8）で自動除外させることで部分参加を実現
+
+**その実装を行う理由:**  
+- 当初、最小affinity=1e-7を強制保証する実装を試みたが、512/512ニューロン全参加となり学習が失敗
+- 過去の実装を分析した結果、極小affinity値（~10⁻¹¹）を意図的に残していたことが判明
+- `amine_hidden_3d >= 1e-8`の閾値判定により、極小affinity値は自動的にマスクアウト
+- この自然なフィルタリングが364/512ニューロンの部分参加を実現し、学習成功につながった
+- 人為的な最小値保証は、この生物学的に妥当なメカニズムを破壊する
+
+**コードサンプル:**
+```python
+# 元のマスク方式
+# 極小アフィニティ値は自然に閾値判定で除外される（意図的な部分参加）
+mask = np.zeros(n_hidden)
+mask[selected] = 1
+affinity[class_idx] *= mask  # ← 極小値も保持（人為的な1e-7強制なし）
+
+# 後段の学習ループで自動フィルタリング（ed_network.py内）
+neuron_mask = np.any(amine_hidden_3d >= 1e-8, axis=(1, 2))
+# → affinity < 1e-8のニューロンは学習から除外
+# → 結果として約70%のニューロンのみが参加
+```
+
+**実装場所:** `modules/column_structure.py` - `create_hexagonal_column_affinity()` 関数、`modules/ed_network.py` - `RefinedDistributionEDNetwork` クラス
+
+---
+
+##### 4. 余りニューロンの適切な分配
+
+**実装の目的:**  
+ニューロン数÷クラス数で割り切れない場合の余りを、先頭クラスから順に+1個ずつ分配
+
+**その実装を行う理由:**  
+- 512÷10=51余り2の場合、単純実装では510個しか使われず2個が未使用
+- 過去の実装では余り処理がなく、一部のクラスが不利な状態だった
+- 余りを先頭クラスに分配することで、全ニューロンを有効活用
+- 実際にはparticipation_rate<1.0のため全体の70%程度が使用される
+
+**コードサンプル:**
+```python
+if participation_rate is not None:
+    # 参加するニューロン数を計算
+    target_neurons = int(n_hidden * participation_rate)  # 512 * 0.71 = 363
+    neurons_per_class = target_neurons // n_classes       # 363 // 10 = 36
+    remainder = target_neurons % n_classes                # 363 % 10 = 3
+    
+    for class_idx in range(n_classes):
+        # 余りニューロンを最初のremainder個のクラスに+1個ずつ分配
+        n_neurons_for_this_class = neurons_per_class + (1 if class_idx < remainder else 0)
+        # Class 0,1,2: 37個、Class 3-9: 36個
+        
+        selected = sorted_indices[:n_neurons_for_this_class]
+        # ...
+```
+
+**実装場所:** `modules/column_structure.py` - `create_hexagonal_column_affinity()` 関数
+
+---
+
+##### 5. 距離ベースのガウス型アフィニティ分布
+
+**実装の目的:**  
+コラム中心からの距離に応じて滑らかに影響力が減衰するアフィニティマップを生成
+
+**その実装を行う理由:**  
+- 生物学的なコラム構造では、中心ほど強く、周辺ほど弱い活性化が見られる
+- ステップ関数的な閾値ではなく、ガウス分布により自然な遷移領域を実現
+- 六角距離（hex_distance）により、ハニカム構造に適した等方的な距離計算
+- column_radius（σ）により影響範囲を制御可能
+
+**コードサンプル:**
+```python
+def hex_distance(q1, r1, q2, r2):
+    """六角格子上の距離計算（Cube座標系）"""
+    return (abs(q1 - q2) + abs(q1 + r1 - q2 - r2) + abs(r1 - r2)) / 2
+
+# アフィニティ計算
+for class_idx, (cx, cy) in class_coords.items():
+    for neuron_idx, (nx, ny) in enumerate(neuron_coords):
+        # 六角距離計算
+        dist = hex_distance(nx, ny, cx, cy)
+        
+        # ガウス型減衰（σ = column_radius）
+        affinity[class_idx, neuron_idx] = np.exp(-0.5 * (dist / column_radius) ** 2)
+        # 例: dist=0 → affinity=1.0
+        #     dist=σ → affinity=0.606
+        #     dist=2σ → affinity=0.135
+        #     dist=3σ → affinity=0.011
+```
+
+**実装場所:** `modules/column_structure.py` - `hex_distance()` 関数、`create_hexagonal_column_affinity()` 関数
+
+---
+
+##### 6. 3つのコラム生成モードの優先順位
+
+**実装の目的:**  
+異なるユースケースに対応するため、3つのコラム生成モードを優先度付けで実装
+
+**その実装を行う理由:**  
+- **モード1（最優先）: participation_rate指定** - 推奨方式、過去の分析に基づく最適値（0.71）使用可能
+- **モード2（中優先）: column_neurons指定** - 明示的なニューロン数指定、実験的用途
+- **モード3（最低優先）: column_radius指定** - 従来方式、互換性維持
+- 複数指定時は優先度に従って選択し、混乱を防ぐ
+
+**コードサンプル:**
+```python
+def create_hexagonal_column_affinity(n_hidden, n_classes=10, 
+                                      column_radius=3.0, 
+                                      column_neurons=None, 
+                                      participation_rate=None):
+    """
+    使用例:
+        # モード1: 参加率指定（推奨）
+        affinity = create_hexagonal_column_affinity(512, 10, participation_rate=0.71)
+        # → 71%のニューロンがコラムに参加、残り29%は非コラム
+        
+        # モード2: 明示的なニューロン数指定
+        affinity = create_hexagonal_column_affinity(512, 10, column_neurons=51)
+        # → 各クラス51個、重複なし
+        
+        # モード3: 従来のradius方式（互換性維持）
+        affinity = create_hexagonal_column_affinity(512, 10, column_radius=3.0)
+        # → ガウス分布ベース、重複あり
+    """
+    if participation_rate is not None:
+        # モード1実行
+    elif column_neurons is not None:
+        # モード2実行
+    else:
+        # モード3実行（デフォルト）
+```
+
+**実装場所:** `modules/column_structure.py` - `create_hexagonal_column_affinity()` 関数
+
+---
 
 ## 学習精度(試行結果)
 
@@ -258,7 +434,7 @@ python columnar_ed_ann.py --viz --heatmap --save_viz viz_result
 | `--heatmap` | - | 活性化ヒートマップの表示を有効化（--vizと併用、フラグ） |
 | `--save_viz` | - | 可視化結果を保存（パス指定可能） |
 
-## ED法への準拠
+## オリジナルED法への準拠
 
 金子勇氏のCコードをオリジナルED法のリファレンスとし、オリジナルED法に反しない実装であることを確認済み
 
