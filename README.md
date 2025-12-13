@@ -108,47 +108,19 @@
 
 ### MNIST
 
-#### 隠れ層 1層 [512ニューロン]:
-  - Test精度 %
-  - Train精度: %
+#### 隠れ層 1層 [512ニューロン] - v1.026.1（中心化コラム構造）:
+  - Test精度: **78.10%**
+  - Train精度: **79.70%**
+  - 検証日: 2025-12-13
   - コマンド
 ```python
-python columnar_ed_ann.py --train 3000 --test 1000 --epochs 20 --seed 42 --hidden 512
+python columnar_ed_ann.py --train 3000 --test 3000 --epochs 30 --hidden 512 --lr 0.20 --u1 0.5 --lateral_lr 0.08 --participation_rate 0.71 --seed 42
 ```
-![グラフ1]()
-**左:学習曲線、右:混同行列(最終エポック)**
 
-#### 隠れ層 1層 [1024ニューロン]:
-  - Test精度 %
-  - Train精度: %
-  - コマンド
-```python
-python columnar_ed_ann.py --train 3000 --test 1000 --epochs 20 --seed 42 --hidden 1024
-```
-![グラフ2]()
-**左:学習曲線、右:混同行列(最終エポック)**
+**注記**: 上記の結果は、中心化ハニカムコラム構造（2-3-3-2配置）を採用し、全クラスに均等なニューロンアクセスを実現した最新実装（v1.026.1）での検証結果です。participation_rate=0.71により、約71%のニューロンが学習に参加し、各クラスに36-37個のニューロンが均等に割り当てられています。
 
-### Fashion-MNIST
-
-#### 隠れ層 1層 [512ニューロン]:
-  - Test精度 %
-  - Train精度: %
-  - コマンド
-```python
-python columnar_ed_ann.py --train 3000 --test 1000 --epochs 30 --seed 42 --hidden 512 --fashion
-```
-![グラフ3]()
-**左:学習曲線、右:混同行列(最終エポック)**
-
-#### 隠れ層 1層 [1024ニューロン]:
-  - Test精度 %
-  - Train精度: %
-  - コマンド
-```python
-python columnar_ed_ann.py --train 3000 --test 1000 --epochs 30 --seed 42 --hidden 1024 --fashion
-```
-![グラフ4]()
-**左:学習曲線、右:混同行列(最終エポック)**
+#### その他の構成:
+現在、他のニューロン数構成やFashion-MNISTでの検証結果は取得中です。今後のバージョンアップで順次追加予定です。
 
 ## クイックスタート
 
@@ -199,13 +171,35 @@ python columnar_ed_ann.py --viz --heatmap --save_viz viz_result
 
 ```bash
 /
-├── columnar_ed_ann.py       # メイン実装ファイル
-├── README.md                # 本ファイル
-├── docs/                    # 関連ドキュメント
-├── modules/                 # 共通モジュール
-├── viz_results              # 学習可視化ファイル
-├── requirements.txt         # 依存パッケージ情報
-└── original-c-source-code   # 金子勇氏 オリジナルED法のCソースコード
+├── columnar_ed_ann.py              # メイン実装ファイル
+├── README.md                       # 本ファイル
+├── LICENSE                         # ライセンスファイル
+├── requirements.txt                # 依存パッケージ情報
+├── docs/                           # 関連ドキュメント
+│   ├── en/                         # 英語ドキュメント
+│   │   ├── ED_Method_Explanation.md
+│   │   ├── EDLA_Isamu_Kaneko.md
+│   │   └── fig*.gif
+│   └── ja/                         # 日本語ドキュメント
+│       ├── ED法_解説資料.md
+│       ├── EDLA_金子勇氏.md
+│       └── fig*.gif
+├── modules/                        # モジュール化された実装
+│   ├── __init__.py
+│   ├── activation_functions.py     # 活性化関数
+│   ├── amine_diffusion.py          # アミン拡散機構
+│   ├── column_structure.py         # コラム構造生成
+│   ├── data_loader.py              # データセット読み込み
+│   ├── ed_network.py               # EDネットワーク本体
+│   ├── hyperparameters.py          # パラメータテーブル
+│   ├── neuron_structure.py         # E/Iペア構造
+│   └── visualization_manager.py    # 可視化機能
+├── viz_results/                    # 学習可視化結果保存先
+└── original-c-source-code/         # 金子勇氏 オリジナルED法のCソースコード
+    ├── main.c
+    ├── neuro.c
+    ├── weight_calc.c
+    └── (その他のCファイル)
 ```
 
 ## パラメータのデフォルト値の設定
