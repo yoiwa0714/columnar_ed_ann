@@ -73,7 +73,7 @@
 
 #### ハニカム構造（2次元六角格子配置）
 
-![ハニカム構造の空間配置](viz_results/hexagonal_column_structure.png)
+![ハニカム構造の空間配置](images/hexagonal_column_structure.png)
 
 **特徴:**
 - 23×23の六角格子上に512ニューロンを配置
@@ -84,7 +84,7 @@
 
 #### 円環構造（1次元円形配置）
 
-![円環構造の空間配置](viz_results/circular_column_structure.png)
+![円環構造の空間配置](images/circular_column_structure.png)
 
 **特徴:**
 - 512ニューロンを円周上に配置（1次元トーラストポロジー）
@@ -493,6 +493,7 @@ python columnar_ed_ann.py --viz --heatmap --save_viz viz_result
 │   ├── hyperparameters.py          # パラメータテーブル
 │   ├── neuron_structure.py         # E/Iペア構造
 │   └── visualization_manager.py    # 可視化機能
+├── images/                         # コラム構造図などの画像ファイル
 ├── viz_results/                    # 学習可視化結果保存先
 └── original-c-source-code/         # 金子勇氏 オリジナルED法のCソースコード
     ├── main.c
