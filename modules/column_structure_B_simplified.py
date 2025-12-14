@@ -107,15 +107,12 @@ def create_hexagonal_column_affinity(n_hidden, n_classes=10, column_radius=3.0,
     """
     ハニカム構造（六角格子）に基づくコラム帰属度マップの作成
     
-    ★v027更新★ クラス座標の中心化により全クラスが均等なアフィニティ分布を獲得
-    
     Args:
         n_hidden: 隠れ層のニューロン数（例: 250）
         n_classes: クラス数（デフォルト: 10）
         column_radius: コラムの影響半径（六角距離単位）- column_neuronsが指定されない場合に使用
         column_neurons: 各クラスのコラムに割り当てるニューロン数（指定時はradiusより優先）
-        participation_rate: コラム参加率（0.01-0.99）。コラムに参加するニューロンの割合
-                           0.0と1.0は禁止（0.0=コラム無意味、1.0=学習不安定）
+        participation_rate: コラム参加率（0.0-1.0）。1.0で全ニューロンがいずれかのコラムに参加
                            column_neuronsが指定されていない場合のみ有効
     
     Returns:
@@ -127,39 +124,20 @@ def create_hexagonal_column_affinity(n_hidden, n_classes=10, column_radius=3.0,
         affinity = create_hexagonal_column_affinity(250, 10, column_neurons=25)
         # → 各クラス25個、重複なし、全ニューロン参加
         
-        # モード2: 参加率指定（推奨）
-        affinity = create_hexagonal_column_affinity(250, 10, participation_rate=0.71)
-        # → 71%のニューロンがコラムに参加、残り29%は非コラム（柔軟性保持）
+        # モード2: 参加率指定
+        affinity = create_hexagonal_column_affinity(250, 10, participation_rate=1.0)
+        # → 全ニューロンが参加するよう上位N個を選択
         
         # モード3: 従来のradius方式（互換性維持）
         affinity = create_hexagonal_column_affinity(250, 10, column_radius=3.0)
         # → ガウス分布ベース、重複あり
     """
-    # participation_rate検証
-    if participation_rate is not None:
-        if participation_rate <= 0.0 or participation_rate >= 1.0:
-            raise ValueError(
-                f"participation_rate must be in range (0.0, 1.0), exclusive. "
-                f"Got {participation_rate}. "
-                f"0.0 makes columns meaningless, 1.0 causes learning instability."
-            )
-        if participation_rate < 0.01 or participation_rate > 0.99:
-            print(f"⚠️  Warning: participation_rate={participation_rate:.2f} is outside recommended range.")
-            print(f"    Recommended: 0.01 <= participation_rate <= 0.99")
-            print(f"    (Based on v026 analysis: ~0.71 worked well)")
-    
-    # 1. ★v027改善★ 10クラスをグリッド中心に配置（全クラス均等なニューロンアクセス）
-    grid_size = int(np.ceil(np.sqrt(n_hidden)))
-    grid_center = grid_size / 2.0
-    
-    # 中心化した2-3-3-2配置（従来の相対配置を保持しつつ中心に移動）
+    # 1. 10クラスを2-3-3-2配置の六角格子に配置
     class_coords = {
-        0: (grid_center - 1, grid_center - 1),   1: (grid_center + 1, grid_center - 1),  # 行1: 2個
-        2: (grid_center - 2, grid_center),       3: (grid_center, grid_center),           # 行2: 3個
-        4: (grid_center + 2, grid_center),
-        5: (grid_center - 2, grid_center + 1),   6: (grid_center, grid_center + 1),       # 行3: 3個
-        7: (grid_center + 2, grid_center + 1),
-        8: (grid_center - 1, grid_center + 2),   9: (grid_center + 1, grid_center + 2)    # 行4: 2個
+        0: (0, 0),   1: (1, 0),                    # 行1: 2個
+        2: (0, 1),   3: (1, 1),   4: (2, 1),       # 行2: 3個
+        5: (0, 2),   6: (1, 2),   7: (2, 2),       # 行3: 3個
+        8: (1, 3),   9: (2, 3)                      # 行4: 2個
     }
     
     # 2. ニューロンを2次元格子に配置（16×16グリッド）
@@ -201,42 +179,59 @@ def create_hexagonal_column_affinity(n_hidden, n_classes=10, column_radius=3.0,
     # 4. コラム参加ニューロンの決定（優先度: participation_rate > column_neurons > radius）
     # ★v026修正★ participation_rateを最優先に変更（デフォルト1.0で意図しない重複回避）
     if participation_rate is not None:
+        # ★v026_modular_B_simplified修正★
+        # ガウス距離ベースのaffinity値を保持しつつ、均等分配を実現
+        
         # モード1（最優先）: 参加率指定
-        # 全体で(n_hidden * participation_rate)個のニューロンが参加するように調整
         target_neurons = int(n_hidden * participation_rate)
         neurons_per_class = target_neurons // n_classes
-        remainder = target_neurons % n_classes  # 余りのニューロン
+        remainder = target_neurons % n_classes
         
-        assigned = np.zeros(n_hidden, dtype=bool)
-        # ★重要★ participation_rate=1.0（デフォルト）では重複なし（overlap_factor=0.0）
-        # participation_rate<1.0では重複許容（overlap_factor=0.3）
-        overlap_factor = 0.0 if participation_rate >= 0.99 else 0.3
-        
-        for class_idx in range(n_classes):
-            available_mask = ~assigned
-            available_affinity = affinity[class_idx].copy()
+        if participation_rate >= 0.99:
+            # participation_rate ≈ 1.0: ラウンドロビン方式で均等分配
+            # ガウス距離計算済みのaffinity値を利用し、未割り当てニューロンから選択
+            assigned = np.zeros(n_hidden, dtype=bool)
             
-            # overlap許容の場合のみ、割り当て済みニューロンも重み付けで考慮
-            if overlap_factor > 0:
+            for class_idx in range(n_classes):
+                # このクラスに割り当てる個数（余りを最初のクラスに+1）
+                n_neurons = neurons_per_class + (1 if class_idx < remainder else 0)
+                
+                # 未割り当てニューロンの中からaffinity上位を選択
+                available_affinity = affinity[class_idx].copy()
+                available_affinity[assigned] = -np.inf  # 割り当て済みは除外
+                
+                sorted_indices = np.argsort(available_affinity)[::-1]
+                selected = sorted_indices[:n_neurons]
+                
+                # マスク適用（選択されたニューロンのみ affinity値を保持）
+                mask = np.zeros(n_hidden)
+                mask[selected] = 1
+                affinity[class_idx] *= mask
+                
+                assigned[selected] = True
+        else:
+            # participation_rate < 0.99の場合: 従来のガウス距離ベース重複許容方式
+            # モード1: 参加率指定
+            # 全体で(n_hidden * participation_rate)個のニューロンが参加するように調整
+            assigned = np.zeros(n_hidden, dtype=bool)
+            # participation_rate<1.0では重複許容（overlap_factor=0.3）
+            overlap_factor = 0.3
+            
+            for class_idx in range(n_classes):
+                available_mask = ~assigned
+                available_affinity = affinity[class_idx].copy()
+                
+                # overlap許容の場合、割り当て済みニューロンも重み付けで考慮
                 available_affinity[~available_mask] *= overlap_factor
-            else:
-                # overlap_factor=0の場合、割り当て済みニューロンは完全に除外
-                available_affinity[~available_mask] = 0
-            
-            sorted_indices = np.argsort(available_affinity)[::-1]
-            
-            # 余りニューロンを最初のremainder個のクラスに+1個ずつ分配
-            n_neurons_for_this_class = neurons_per_class + (1 if class_idx < remainder else 0)
-            
-            selected = sorted_indices[:n_neurons_for_this_class]
-            
-            # ★v027修正★ v026の元のマスク方式に戻す
-            # 極小アフィニティ値は自然に閾値判定で除外される（意図的な部分参加）
-            mask = np.zeros(n_hidden)
-            mask[selected] = 1
-            affinity[class_idx] *= mask
-            
-            assigned[selected] = True
+                
+                sorted_indices = np.argsort(available_affinity)[::-1]
+                selected = sorted_indices[:neurons_per_class]
+                
+                mask = np.zeros(n_hidden)
+                mask[selected] = 1
+                affinity[class_idx] *= mask
+                
+                assigned[selected] = True
     
     elif column_neurons is not None:
         # モード2（中優先）: 明示的なニューロン数指定
@@ -283,58 +278,30 @@ def create_hexagonal_column_affinity(n_hidden, n_classes=10, column_radius=3.0,
     return affinity
 
 
-def create_column_affinity(n_hidden, n_classes, column_size=30, overlap=0.3, use_gaussian=True,
-                           column_neurons=None, participation_rate=None):
+def create_column_affinity(n_hidden, n_classes, column_size=30, overlap=0.3, use_gaussian=True):
     """
-    コラム帰属度マップの作成(ガウス型または固定型) - 円環構造（v027更新）
-    
-    ★v027更新★ ハニカム構造の知見を反映:
-    - participation_rate対応: 部分参加による学習促進
-    - 中心化配置: 全クラスの均等なニューロンアクセス
-    - 検証ロジック: 0.0と1.0の禁止
+    コラム帰属度マップの作成(ガウス型または固定型) - 旧実装（円環構造）
     
     Args:
         n_hidden: 隠れ層のニューロン数
         n_classes: クラス数
-        column_size: 各コラムの基準サイズ(ニューロン数) - column_neurons/participation_rateが未指定時に使用
-        overlap: コラム間の重複度(0.0-1.0) - participation_rate未指定時に使用
+        column_size: 各コラムの基準サイズ(ニューロン数)
+        overlap: コラム間の重複度(0.0-1.0)
         use_gaussian: Trueならガウス型、Falseなら固定型
-        column_neurons: 各クラスのコラムに割り当てるニューロン数（指定時はcolumn_sizeより優先）
-        participation_rate: コラム参加率（0.01-0.99）。指定時はcolumn_neurons/column_sizeより優先
-                           0.0と1.0は禁止（0.0=コラム無意味、1.0=学習不安定）
     
     Returns:
         affinity: コラム帰属度マップ shape [n_classes, n_hidden]
                   各要素は0.0-1.0の値(ニューロンがそのクラスに帰属する度合い)
     """
-    # ★v027追加★ participation_rate検証（ハニカム構造と同じ）
-    if participation_rate is not None:
-        if participation_rate <= 0.0 or participation_rate >= 1.0:
-            raise ValueError(
-                f"participation_rate must be in range (0.0, 1.0), exclusive. "
-                f"Got {participation_rate}. "
-                f"0.0 makes columns meaningless, 1.0 causes learning instability."
-            )
-        if participation_rate < 0.01 or participation_rate > 0.99:
-            print(f"⚠️  Warning: participation_rate={participation_rate:.2f} is outside recommended range.")
-            print(f"    Recommended: 0.01 <= participation_rate <= 0.99")
-            print(f"    (Based on v026 analysis: ~0.71 worked well)")
-    
     affinity = np.zeros((n_classes, n_hidden))
     
     if use_gaussian:
-        # ガウス型コラム帰属度
-        # ★v027改善★ 中心化した等間隔配置（エッジ効果を軽減）
+        # ガウス型コラム帰属度(ドキュメント提案方式)
+        # 各クラスのコラム中心を等間隔に配置
         centers = np.linspace(0, n_hidden, n_classes, endpoint=False).astype(int)
-        # 中心化オフセット: 各コラムをセグメント中央に配置
-        center_offset = n_hidden // (2 * n_classes)
-        centers = centers + center_offset
         
-        # ガウス分布の標準偏差（優先度: column_neurons > column_size）
-        if column_neurons is not None:
-            sigma = column_neurons / 3.0  # 仕様書準拠: 3σ点で帰属度がほぼゼロ
-        else:
-            sigma = column_size / 3.0
+        # ガウス分布の標準偏差
+        sigma = column_size / 3.0  # 3σ点で帰属度がほぼゼロ
         
         for class_idx in range(n_classes):
             center = centers[class_idx]
@@ -357,69 +324,16 @@ def create_column_affinity(n_hidden, n_classes, column_size=30, overlap=0.3, use
                 
                 affinity[class_idx, neuron_idx] = aff
         
-        # ★v027追加★ participation_rate対応（優先度: participation_rate > column_neurons > overlap）
-        if participation_rate is not None:
-            # モード1（最優先）: 参加率指定
-            target_neurons = int(n_hidden * participation_rate)
-            neurons_per_class = target_neurons // n_classes
-            remainder = target_neurons % n_classes
-            
-            assigned = np.zeros(n_hidden, dtype=bool)
-            overlap_factor = 0.0 if participation_rate >= 0.99 else 0.3
-            
-            for class_idx in range(n_classes):
-                available_mask = ~assigned
-                available_affinity = affinity[class_idx].copy()
-                
-                # overlap許容の場合のみ、割り当て済みニューロンも重み付けで考慮
-                if overlap_factor > 0:
-                    available_affinity[~available_mask] *= overlap_factor
-                else:
-                    available_affinity[~available_mask] = 0
-                
-                sorted_indices = np.argsort(available_affinity)[::-1]
-                
-                # 余りニューロンを最初のremainder個のクラスに+1個ずつ分配
-                n_neurons_for_this_class = neurons_per_class + (1 if class_idx < remainder else 0)
-                selected = sorted_indices[:n_neurons_for_this_class]
-                
-                # v026マスク方式（極小アフィニティは自然にフィルタリング）
-                mask = np.zeros(n_hidden)
-                mask[selected] = 1
-                affinity[class_idx] *= mask
-                
-                assigned[selected] = True
-        
-        elif column_neurons is not None:
-            # モード2（中優先）: 明示的なニューロン数指定
-            assigned = np.zeros(n_hidden, dtype=bool)
-            overlap_factor = 0.3
-            
-            for class_idx in range(n_classes):
-                available_mask = ~assigned
-                available_affinity = affinity[class_idx].copy()
-                available_affinity[~available_mask] *= overlap_factor
-                
-                sorted_indices = np.argsort(available_affinity)[::-1]
-                selected = sorted_indices[:column_neurons]
-                
-                mask = np.zeros(n_hidden)
-                mask[selected] = 1
-                affinity[class_idx] *= mask
-                
-                assigned[selected] = True
-        
-        else:
-            # モード3（最低優先）: 従来のoverlap制御
-            if overlap < 1.0:
-                for neuron_idx in range(n_hidden):
-                    total_affinity = np.sum(affinity[:, neuron_idx])
-                    if total_affinity > 1.0:
-                        # 最大帰属度を持つクラスを優先
-                        max_class = np.argmax(affinity[:, neuron_idx])
-                        for class_idx in range(n_classes):
-                            if class_idx != max_class:
-                                affinity[class_idx, neuron_idx] *= overlap
+        # 重複制御: 複数クラスに帰属するニューロンの帰属度を調整
+        if overlap < 1.0:
+            for neuron_idx in range(n_hidden):
+                total_affinity = np.sum(affinity[:, neuron_idx])
+                if total_affinity > 1.0:
+                    # 最大帰属度を持つクラスを優先
+                    max_class = np.argmax(affinity[:, neuron_idx])
+                    for class_idx in range(n_classes):
+                        if class_idx != max_class:
+                            affinity[class_idx, neuron_idx] *= overlap
     else:
         # 固定型コラム帰属度(v011方式)
         neurons_per_column = n_hidden // n_classes
@@ -430,17 +344,12 @@ def create_column_affinity(n_hidden, n_classes, column_size=30, overlap=0.3, use
                 end = n_hidden  # 最後のクラスは残り全部
             affinity[class_idx, start:end] = 1.0
     
-    # 正規化: 各クラスの帰属度マップを正規化
+    # 正規化: 各クラスの帰属度マップを正規化(合計が1.0前後になるように)
     for class_idx in range(n_classes):
         total = np.sum(affinity[class_idx])
         if total > 1e-8:
-            if column_neurons is not None:
-                # 明示的ニューロン数の場合: 合計をcolumn_neuronsに正規化
-                affinity[class_idx] *= (column_neurons / total)
-            else:
-                # radius方式: 合計をcolumn_sizeに正規化
-                affinity[class_idx] /= total
-                affinity[class_idx] *= column_size  # スケール調整
+            affinity[class_idx] /= total
+            affinity[class_idx] *= column_size  # スケール調整
     
     return affinity
 

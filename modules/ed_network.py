@@ -183,13 +183,15 @@ class RefinedDistributionEDNetwork:
                     participation_rate=participation_rate
                 )
             else:
-                # 旧円環構造（互換性維持）
+                # 円環構造（v027更新: participation_rate対応）
                 affinity = create_column_affinity(
                     n_hidden=layer_size,
                     n_classes=n_output,
                     column_size=int(layer_radius * 10),  # 層ごとのradiusをsizeに変換
                     overlap=overlap,
-                    use_gaussian=True
+                    use_gaussian=True,
+                    column_neurons=column_neurons,
+                    participation_rate=participation_rate
                 )
             self.column_affinity_all_layers.append(affinity)
         
@@ -206,8 +208,15 @@ class RefinedDistributionEDNetwork:
             else:
                 print(f"  - モード: 半径ベース（radius={self.column_radius_per_layer[0]:.2f}）")
         else:
-            print(f"  - 方式: 円環構造")
-            print(f"  - コラムサイズ: {int(self.column_radius_per_layer[0] * 10)}ニューロン")
+            print(f"  - 方式: 円環構造（v027更新: 中心化配置+participation_rate対応）")
+            if column_neurons is not None:
+                print(f"  - モード: 完全コラム化（各クラス{column_neurons}ニューロン）")
+                print(f"  - 参加率: {column_neurons * n_output / self.n_hidden[0] * 100:.1f}%")
+            elif participation_rate is not None:
+                print(f"  - モード: 参加率指定（{participation_rate * 100:.0f}%）")
+                print(f"  - 各クラス約{int(self.n_hidden[0] * participation_rate / n_output)}ニューロン")
+            else:
+                print(f"  - モード: 従来方式（コラムサイズ: {int(self.column_radius_per_layer[0] * 10)}）")
         
         for layer_idx, affinity in enumerate(self.column_affinity_all_layers):
             non_zero_counts = [np.count_nonzero(affinity[c] > 1e-8) for c in range(n_output)]

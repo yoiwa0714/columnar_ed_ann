@@ -1,25 +1,12 @@
 #!/usr/bin/env python3
 """
-Columnar ED-ANN v1.026.1
-多層多クラス分類対応 (モジュール化版)
-
-モジュール構成:
-  - modules/hyperparameters.py: パラメータテーブル
-  - modules/data_loader.py: データセット読み込み
-  - modules/activation_functions.py: 活性化関数
-  - modules/neuron_structure.py: E/Iペア構造
-  - modules/amine_diffusion.py: アミン拡散
-  - modules/column_structure.py: コラム構造
-  - modules/ed_network.py: メインネットワーク
-  - modules/visualization_manager.py: 可視化
-
-検証結果:
-    テスト精度 78.10% 達成 (2025-12-13)
-    コマンド:
-        python3 columnar_ed_ann.py \\
-            --train 3000 --test 3000 --epochs 30 --hidden 512 --lr 0.20 \\
-            --u1 0.5 --lateral_lr 0.08 --participation_rate 0.71 --seed 42
+columnar_ed_ann.py
+バージョン: 1.027.1
 """
+
+import os
+# TensorFlowのログメッセージを抑制（情報・警告を非表示）
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 import argparse
 import numpy as np
@@ -38,7 +25,7 @@ def parse_args():
         description='コラムED法 多層ニューラルネットワーク実装 (モジュール化版)\n'
                     '\n'
                     '【重要】層数に基づく自動パラメータ設定:\n'
-                    '  - 1層から5層までの構成には最適化済みパラメータが自動適用されます\n'
+                    '  - 1層から5層までの構成には内部テーブルで保持しているパラメータが自動適用されます\n'
                     '  - 6層以上の構成には5層のパラメータがフォールバックとして適用されます\n'
                     '  - コマンドライン引数で明示的に指定した値は自動設定より優先されます\n'
                     '  - --list_hyperparams で利用可能な設定一覧を確認できます\n',
@@ -50,13 +37,13 @@ def parse_args():
     # ========================================
     exec_group = parser.add_argument_group('実行関連のパラメータ')
     exec_group.add_argument('--train', type=int, default=3000,
-                           help='訓練サンプル数（最適値: 3000）')
+                           help='訓練サンプル数（デフォルト値: 3000）')
     exec_group.add_argument('--test', type=int, default=1000,
-                           help='テストサンプル数')
-    exec_group.add_argument('--epochs', type=int, default=100,
-                           help='エポック数（最適値: 100）')
+                           help='テストサンプル数（デフォルト値: 1000）')
+    exec_group.add_argument('--epochs', type=int, default=40,
+                           help='エポック数（デフォルト値: 40）')
     exec_group.add_argument('--seed', type=int, default=42,
-                           help='乱数シード（最終確定: 42、再現性確保用）')
+                           help='乱数シード（デフォルト値: 42、再現性確保用）')
     exec_group.add_argument('--fashion', action='store_true',
                            help='Fashion-MNISTを使用')
     
@@ -65,21 +52,20 @@ def parse_args():
     # ========================================
     ed_group = parser.add_argument_group('ED法関連のパラメータ')
     ed_group.add_argument('--hidden', type=str, default='512',
-                         help='隠れ層ニューロン数（例: 512=1層, 256,128=2層）'
-                              '層数に応じて最適化済みパラメータが自動適用されます')
+                         help='隠れ層ニューロン数（例: 512=1層, 256,128=2層）（デフォルト値: 512）')
     ed_group.add_argument('--activation', type=str, default='tanh',
                          choices=['tanh', 'sigmoid', 'leaky_relu'],
                          help='活性化関数（デフォルト: tanh）※グリッドサーチ用、将来的に削除予定')
     ed_group.add_argument('--lr', type=float, default=0.20,
                          help='学習率（層数により自動設定: 1層=0.20, 2層=0.35）')
     ed_group.add_argument('--u1', type=float, default=0.5,
-                         help='アミン拡散係数u1（層数により自動設定）')
+                         help='アミン拡散係数u1（層数により自動設定: 1層=0.5, 2層=0.5）')
     ed_group.add_argument('--u2', type=float, default=0.8,
-                         help='アミン拡散係数（隠れ層間、デフォルト0.8）')
+                         help='アミン拡散係数u2（層数により自動設定: 1層=0.8, 2層=0.5）')
     ed_group.add_argument('--lateral_lr', type=float, default=0.08,
-                         help='側方抑制の学習率（Phase 1 Extended Overall Best: 0.08）')
+                         help='側方抑制の学習率（デフォルト値: 0.08）')
     ed_group.add_argument('--gradient_clip', type=float, default=0.05,
-                         help='gradient clipping値（デフォルト0.05）')
+                         help='gradient clipping値（デフォルト値: 0.05）')
     
     # ========================================
     # コラム関連のパラメータ
@@ -87,18 +73,18 @@ def parse_args():
     column_group = parser.add_argument_group('コラム関連のパラメータ')
     column_group.add_argument('--list_hyperparams', action='store_true',
                              help='利用可能なHyperParams設定一覧を表示して終了')
-    column_group.add_argument('--base_column_radius', type=float, default=1.0,
-                             help='基準コラム半径（Phase 2完全評価Best: 1.0、256ニューロン層での値）')
+    column_group.add_argument('--base_column_radius', type=float, default=0.4,
+                             help='基準コラム半径（デフォルト値: 0.4、256ニューロン層での値）')
     column_group.add_argument('--column_radius', type=float, default=None,
-                             help='コラム影響半径（Noneなら層ごとに自動計算、デフォルト: None=自動）')
-    column_group.add_argument('--participation_rate', type=float, default=1.0,
-                             help='コラム参加率（Phase 2で確定: 1.0=全参加・重複なし、優先度：最高）')
+                             help='コラム影響半径（デフォルト値: None、Noneなら層ごとに自動計算）')
+    column_group.add_argument('--participation_rate', type=float, default=0.1,
+                             help='コラム参加率（デフォルト値: 0.1、スパース表現、優先度：最高）')
     column_group.add_argument('--column_neurons', type=int, default=None,
-                             help='各クラスの明示的ニューロン数（重複許容、優先度：中）')
+                             help='各クラスの明示的ニューロン数（デフォルト値: None、重複許容、優先度：中）')
     column_group.add_argument('--use_circular', action='store_true',
                              help='旧円環構造を使用（デフォルトはハニカム）')
     column_group.add_argument('--overlap', type=float, default=0.0,
-                             help='コラム間の重複度（0.0-1.0、円環構造でのみ有効、デフォルト0.0=重複なし）')
+                             help='コラム間の重複度（デフォルト値: 0.0、0.0-1.0、円環構造でのみ有効、0.0=重複なし）')
     column_group.add_argument('--diagnose_column', action='store_true',
                              help='コラム構造の詳細診断を実行')
     
@@ -136,7 +122,7 @@ def main():
         print("再現性モード: 無効（毎回異なる結果）\n")
     
     print("=" * 80)
-    print("Columnar ED-ANN v026 - Modular Version")
+    print("Columnar ED-ANN v027 - Modular Version")
     print("=" * 80)
     
     # HyperParams設定一覧の表示
@@ -163,16 +149,15 @@ def main():
     try:
         config = hp.get_config(n_layers)
         print(f"\n=== 層数に基づくHyperParams設定を自動適用（{n_layers}層） ===")
-        print(f"Description: {config['description']}")
+        print("*** コマンドライン引数で明示的に値を指定をされた場合は、指定された値が設定されています。")
         print(f"hidden_layers: {config['hidden']}")
-        print(f"learning_rate: {config['learning_rate']} (参考値)")
+        print(f"learning_rate: {config['learning_rate']}")
         print(f"u1: {config.get('u1', 'N/A')}")
         print(f"u2: {config.get('u2', 'N/A')}")
         print(f"lateral_lr: {config.get('lateral_lr', 'N/A')}")
         print(f"base_column_radius: {config['base_column_radius']}")
         print(f"participation_rate: {config.get('participation_rate', 'N/A')}")
-        print(f"epochs: {config['epochs']} (参考値)")
-        print("\n※ 上記は推奨値です。コマンドライン引数で明示的に指定された値がある場合はそちらが優先されます\n")
+        print(f"epochs: {config['epochs']}")
         
         # デフォルト値の定義（argparseのデフォルト値）
         DEFAULT_LR = 0.20

@@ -48,18 +48,18 @@ class HyperParams:
         # - スケーリング則: radius = base × sqrt(neurons/256)
         # - 各構成は個別に最適化済み
         self.layer_configs = {
-            # 1層構成（Phase 1 Extended Overall Best）
+            # 1層構成（最適パラメータ確定）
             1: {
                 'hidden': [512],
                 'learning_rate': 0.20,
                 'u1': 0.5,
                 'u2': 0.8,
                 'lateral_lr': 0.08,
-                'base_column_radius': 1.0,
-                'column_radius_per_layer': [1.41],  # [sqrt(512/256)]
-                'participation_rate': 1.0,
-                'epochs': 40,
-                'description': '1層最適構成、83.80%テスト精度達成（2025-12-04）'
+                'base_column_radius': 0.4,
+                'column_radius_per_layer': [0.57],  # [sqrt(512/256) * 0.4]
+                'participation_rate': 0.1,
+                'epochs': 30,
+                'description': '1層最適構成、84.50%テスト精度達成（2025-12-14）'
             },
             
             # 2層構成（Fine-tuning完了）
