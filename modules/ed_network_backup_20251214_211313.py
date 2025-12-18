@@ -36,8 +36,8 @@ ED法ネットワークモジュール（統合クラス）
 """
 
 import numpy as np
-from .activation_functions import sigmoid, tanh_activation, softmax, softmax_batch, cross_entropy_loss
-from .neuron_structure import create_ei_pairs, create_ei_pairs_batch, create_ei_flags
+from .activation_functions import sigmoid, tanh_activation, softmax, cross_entropy_loss
+from .neuron_structure import create_ei_pairs, create_ei_flags
 from .amine_diffusion import (
     initialize_activity_association,
     update_activity_association,
@@ -335,41 +335,34 @@ class RefinedDistributionEDNetwork:
         
         return z_hiddens, z_output, x_paired
     
-    def _compute_gradients(self, x_paired, z_hiddens, z_output, y_true):
+    def update_weights(self, x_paired, z_hiddens, z_output, y_true):
         """
-        勾配の計算（ED法準拠、微分の連鎖律不使用）
+        重みの更新（多層多クラス分類版 + ED法、微分の連鎖律不使用）
+        
+        v026変更点: 多層アミン拡散対応
+        - u1: 出力層→最終隠れ層の拡散係数
+        - u2: 隠れ層間の拡散係数
+        - 各層で独立に重み更新（微分の連鎖律不使用）
         
         Args:
             x_paired: 入力ペア
             z_hiddens: 各隠れ層の出力のリスト
             z_output: 出力層の確率分布（SoftMax）
             y_true: 正解クラス
-            
-        Returns:
-            gradients: {
-                'w_output': 出力層の勾配,
-                'w_hidden': 隠れ層の勾配リスト,
-                'lateral_weights': 側方抑制の勾配
-            }
         """
-        gradients = {
-            'w_output': None,
-            'w_hidden': [None] * self.n_layers,
-            'lateral_weights': np.zeros_like(self.lateral_weights)
-        }
-        
         # ============================================
-        # 1. 出力層の勾配計算
+        # 1. 出力層の重み更新
         # ============================================
         target_probs = np.zeros(self.n_output)
         target_probs[y_true] = 1.0
         error_output = target_probs - z_output
         
         saturation_output = np.abs(z_output) * (1.0 - np.abs(z_output))
-        gradients['w_output'] = self.learning_rate * np.outer(
+        delta_w_output = self.learning_rate * np.outer(
             error_output * saturation_output,
             z_hiddens[-1]
         )
+        self.w_output += delta_w_output
         
         # ============================================
         # 2. 出力層のアミン濃度計算
@@ -395,11 +388,15 @@ class RefinedDistributionEDNetwork:
                     enhanced_amine = self.initial_amine
                 amine_concentration_output[y_true, 0] = error_correct * enhanced_amine
             
-            gradients['lateral_weights'][winner_class, y_true] = -self.lateral_lr * (1.0 + self.lateral_weights[winner_class, y_true])
+            self.lateral_weights[winner_class, y_true] -= self.lateral_lr * (1.0 + self.lateral_weights[winner_class, y_true])
         
         # ============================================
-        # 3. 多層アミン拡散と勾配計算（逆順、微分の連鎖律不使用）
+        # 3. 多層アミン拡散と重み更新（逆順、微分の連鎖律不使用）
         # ============================================
+        # ★重要★ ED法の原理：出力層のアミン濃度を全ての隠れ層で使用
+        # 微分の連鎖律を使わず、誤差信号（アミン濃度）を直接各層に拡散
+        
+        # 出力層から第1層へ逆順にアミン拡散
         for layer_idx in range(self.n_layers - 1, -1, -1):
             # 入力の取得
             if layer_idx == 0:
@@ -407,60 +404,103 @@ class RefinedDistributionEDNetwork:
             else:
                 z_input = z_hiddens[layer_idx - 1]
             
-            # 拡散係数の選択
+            # 拡散係数の選択（最終層はu1、それ以外はu2）
             if layer_idx == self.n_layers - 1:
                 diffusion_coef = self.u1
             else:
                 diffusion_coef = self.u2
             
-            # アミン拡散
-            amine_mask = amine_concentration_output >= 1e-8
+            # ========== ベクトル化された重み更新（4重ループを解消）==========
+            # 元のループ構造:
+            #   for class_idx (10クラス):
+            #     for amine_type (興奮性/抑制性):
+            #       for neuron_idx (512ニューロン):
+            #         重み更新 (同じニューロンに複数回加算)
+            # 
+            # ベクトル化戦略:
+            #   - [class, amine_type, neuron]の3次元配列で一括計算
+            #   - 全組み合わせ(10×2=20)の更新を一度に実行
+            
+            # 1. 有意なアミンのマスク (閾値1e-8以上)
+            amine_mask = amine_concentration_output >= 1e-8  # [n_output, 2]
+            
+            # 2. コラム帰属度による重み付け拡散 (ブロードキャスト)
+            # amine_concentration_output[:, :, np.newaxis]: [n_output, 2, 1]
+            # column_affinity_all_layers[layer_idx][:, np.newaxis, :]: [n_output, 1, n_hidden]
+            # 結果: [n_output, 2, n_hidden] (各クラス×各アミンタイプ×各ニューロン)
             amine_hidden_3d = (
                 amine_concentration_output[:, :, np.newaxis] * 
                 diffusion_coef * 
                 self.column_affinity_all_layers[layer_idx][:, np.newaxis, :]
             )
+            
+            # 3. マスク適用（有意なアミンのみ処理）
             amine_hidden_3d = amine_hidden_3d * amine_mask[:, :, np.newaxis]
             
-            # 活性ニューロンの特定
-            neuron_mask = np.any(amine_hidden_3d >= 1e-8, axis=(0, 1))
+            # 4. ニューロンマスク：少なくとも1つのクラス/アミンで閾値超え
+            neuron_mask = np.any(amine_hidden_3d >= 1e-8, axis=(0, 1))  # [n_hidden]
             active_neurons = np.where(neuron_mask)[0]
             
             if len(active_neurons) == 0:
-                gradients['w_hidden'][layer_idx] = np.zeros_like(self.w_hidden[layer_idx])
-                continue
+                continue  # 有意なニューロンがなければスキップ
             
-            # 活性化関数の勾配
-            z_active = z_hiddens[layer_idx][active_neurons]
+            # 5. 活性化関数の勾配（saturation_term）をベクトル化
+            z_active = z_hiddens[layer_idx][active_neurons]  # [n_active]
+            
             if self.activation == 'leaky_relu':
                 saturation_term_raw = np.where(z_active > 0, 1.0, self.leaky_alpha)
-            else:
+            else:  # sigmoid
                 saturation_term_raw = np.abs(z_active) * (1.0 - np.abs(z_active))
-            saturation_term = np.maximum(saturation_term_raw, 1e-3)
             
-            # 学習信号強度の計算
+            saturation_term = np.maximum(saturation_term_raw, 1e-3)  # [n_active]
+            
+            # 6. 学習信号強度の計算（3次元配列のまま）
             layer_lr = self.layer_specific_lr[layer_idx]
+            # amine_hidden_3d[:, :, active_neurons]: [n_output, 2, n_active]
+            # saturation_term[np.newaxis, np.newaxis, :]: [1, 1, n_active]
+            # 結果: [n_output, 2, n_active]
             learning_signals_3d = (
                 layer_lr * 
                 amine_hidden_3d[:, :, active_neurons] * 
                 saturation_term[np.newaxis, np.newaxis, :]
             )
             
-            # 勾配の計算
-            n_combinations = self.n_output * 2
-            learning_signals_flat = learning_signals_3d.reshape(n_combinations, -1).T
-            delta_w_3d = learning_signals_flat[:, :, np.newaxis] * z_input[np.newaxis, np.newaxis, :]
-            delta_w_batch = np.sum(delta_w_3d, axis=1)
+            # 7. 重み更新の計算（バッチ処理）
+            # learning_signals_3d: [n_output, 2, n_active]
+            # z_input: [n_input]
+            # 
+            # 戦略：各（class, amine）ペアごとの更新を計算し、最後に加算
+            # 
+            # learning_signals_3d.reshape(-1, n_active): [n_output*2, n_active]
+            # これを転置: [n_active, n_output*2]
+            # 外積: [n_active, n_output*2] × [n_input] → [n_active, n_output*2, n_input]
+            # 最後にn_output*2次元を合算
             
-            # 層ごとの符号制約
-            if layer_idx > 0:
+            n_combinations = self.n_output * 2  # 10クラス × 2アミンタイプ = 20
+            learning_signals_flat = learning_signals_3d.reshape(n_combinations, -1).T  # [n_active, 20]
+            
+            # 各組み合わせの重み更新を計算
+            # learning_signals_flat[:, :, np.newaxis]: [n_active, 20, 1]
+            # z_input[np.newaxis, np.newaxis, :]: [1, 1, n_input]
+            # 結果: [n_active, 20, n_input]
+            delta_w_3d = learning_signals_flat[:, :, np.newaxis] * z_input[np.newaxis, np.newaxis, :]
+            
+            # 8. 全組み合わせの更新を合算（元のコードの複数回加算を再現）
+            delta_w_batch = np.sum(delta_w_3d, axis=1)  # [n_active, n_input]
+            
+            # 9. 層ごとの重み更新ルールを適用
+            if layer_idx == 0:
+                # 第1層: Dale's Principle適用（符号は後で強制）
+                pass  # delta_w_batchはそのまま
+            else:
+                # 第2層以降: 符号保持
                 w_sign = np.sign(self.w_hidden[layer_idx][active_neurons, :])
                 w_sign[w_sign == 0] = 1
                 delta_w_batch *= w_sign
             
-            # gradient clipping
+            # 10. gradient clipping（行ごとにクリッピング）
             if self.gradient_clip > 0:
-                delta_w_norms = np.linalg.norm(delta_w_batch, axis=1, keepdims=True)
+                delta_w_norms = np.linalg.norm(delta_w_batch, axis=1, keepdims=True)  # [n_active, 1]
                 clip_mask = delta_w_norms > self.gradient_clip
                 delta_w_batch = np.where(
                     clip_mask,
@@ -468,72 +508,17 @@ class RefinedDistributionEDNetwork:
                     delta_w_batch
                 )
             
-            # 勾配を保存（スパース形式）
-            full_gradient = np.zeros_like(self.w_hidden[layer_idx])
-            full_gradient[active_neurons, :] = delta_w_batch
-            gradients['w_hidden'][layer_idx] = full_gradient
-        
-        return gradients
-    
-    def update_weights(self, x_paired, z_hiddens, z_output, y_true):
-        """
-        重みの更新（多層多クラス分類版 + ED法、微分の連鎖律不使用）
-        
-        v026変更点: 多層アミン拡散対応
-        - u1: 出力層→最終隠れ層の拡散係数
-        - u2: 隠れ層間の拡散係数
-        - 各層で独立に重み更新（微分の連鎖律不使用）
-        
-        Args:
-            x_paired: 入力ペア
-            z_hiddens: 各隠れ層の出力のリスト
-            z_output: 出力層の確率分布（SoftMax）
-            y_true: 正解クラス
-        """
-        # 勾配計算
-        gradients = self._compute_gradients(x_paired, z_hiddens, z_output, y_true)
-        
-        # 勾配適用
-        self.w_output += gradients['w_output']
-        self.lateral_weights += gradients['lateral_weights']
-        
-        for layer_idx in range(self.n_layers):
-            self.w_hidden[layer_idx] += gradients['w_hidden'][layer_idx]
+            # 11. 重み更新の適用
+            self.w_hidden[layer_idx][active_neurons, :] += delta_w_batch
             
-            # 第1層のDale's Principle強制
+            # 第1層の場合、Dale's Principleで符号強制
             if layer_idx == 0:
                 sign_matrix = np.outer(self.ei_flags_hidden[0], self.ei_flags_input)
                 self.w_hidden[0] = np.abs(self.w_hidden[0]) * sign_matrix
         
-        # 出力重みの正則化
+        # 出力重みの軽度な正則化
         weight_penalty = 0.00001 * self.w_output
         self.w_output -= weight_penalty
-    
-    def update_weights_batch(self, x_paired_batch, z_hiddens_batch, z_output_batch, y_batch):
-        """
-        ミニバッチ重み更新（ED法準拠、サンプルごとに即座更新）
-        
-        Args:
-            x_paired_batch: 入力ペアのバッチ [batch_size, n_input]
-            z_hiddens_batch: 隠れ層出力のリスト（各要素は [batch_size, n_hidden]）
-            z_output_batch: 出力層の確率分布 [batch_size, n_output]
-            y_batch: 正解クラスのバッチ [batch_size]
-        
-        Notes:
-            - ED法準拠: 各サンプルごとに重みを即座に更新
-            - オンライン学習と完全に同じ処理（バッチ内でサンプルを順次処理）
-            - 勾配を累積せず、サンプルごとに update_weights を呼び出し
-        """
-        batch_size = len(y_batch)
-        
-        # 各サンプルごとに重み更新（オンライン学習と同じ）
-        for i in range(batch_size):
-            self.update_weights(
-                x_paired_batch[i],
-                [z[i] for z in z_hiddens_batch],
-                z_output_batch[i],
-                y_batch[i]
-            )
     
     def train_one_sample(self, x, y_true):
         """
@@ -614,241 +599,6 @@ class RefinedDistributionEDNetwork:
         avg_loss = total_loss / n_samples
         
         return accuracy, avg_loss
-    
-    def forward_batch(self, x_batch):
-        """
-        バッチ順伝播（ミニバッチ学習用）
-        
-        Args:
-            x_batch: 入力データバッチ shape: [batch_size, n_input]
-        
-        Returns:
-            z_hiddens_batch: 各隠れ層の出力リスト、各要素 shape: [batch_size, n_hidden]
-            z_output_batch: 出力層の確率分布 shape: [batch_size, n_output]
-            x_paired_batch: 入力ペアバッチ shape: [batch_size, n_input_paired]
-        """
-        batch_size = len(x_batch)
-        
-        # 入力ペア構造（バッチ対応）
-        x_paired_batch = create_ei_pairs_batch(x_batch)  # [batch_size, 1568]
-        
-        # 各隠れ層の順伝播
-        z_hiddens_batch = []
-        z_current = x_paired_batch
-        
-        for layer_idx in range(self.n_layers):
-            # 重み行列との積（バッチ対応）
-            # W: [n_hidden, n_input], z_current: [batch_size, n_input]
-            # 結果: [batch_size, n_hidden]
-            a_hidden_batch = np.dot(z_current, self.w_hidden[layer_idx].T)
-            
-            # 活性化関数（要素ごとの演算なのでそのまま適用可能）
-            if self.activation == 'leaky_relu':
-                z_hidden_batch = np.where(a_hidden_batch > 0, 
-                                          a_hidden_batch, 
-                                          self.leaky_alpha * a_hidden_batch)
-            else:  # tanh
-                z_hidden_batch = tanh_activation(a_hidden_batch)
-            
-            z_hiddens_batch.append(z_hidden_batch)
-            z_current = z_hidden_batch
-            
-            # 層間正規化（必要な場合）
-            if self.use_layer_norm:
-                mean = np.mean(z_current, axis=1, keepdims=True)
-                std = np.std(z_current, axis=1, keepdims=True) + 1e-8
-                z_current = (z_current - mean) / std
-        
-        # 出力層（バッチ対応SoftMax）
-        a_output_batch = np.dot(z_current, self.w_output.T)  # [batch_size, n_output]
-        z_output_batch = softmax_batch(a_output_batch)
-        
-        return z_hiddens_batch, z_output_batch, x_paired_batch
-    
-    def train_epoch_minibatch(self, x_train, y_train, batch_size=32):
-        """
-        ミニバッチ学習版エポック
-        
-        Args:
-            x_train: 訓練データ shape [n_samples, n_input]
-            y_train: 正解ラベル shape [n_samples]
-            batch_size: ミニバッチサイズ（デフォルト32）
-        
-        Returns:
-            accuracy: 訓練精度
-            avg_loss: 平均損失
-        
-        Notes:
-            - ED法準拠: バッチ内の勾配を合計して一括更新
-            - 個別順伝播: 各サンプルは個別にforward（精度保証）
-            - 勾配合計: バッチ内の全勾配を累積
-            - 一括更新: 累積勾配で1回だけ重み更新
-            - エポックごとにデータをシャッフル（過学習防止）
-        """
-        n_samples = len(x_train)
-        
-        # エポックごとにデータをシャッフル
-        indices = np.arange(n_samples)
-        np.random.shuffle(indices)
-        x_train_shuffled = x_train[indices]
-        y_train_shuffled = y_train[indices]
-        
-        n_batches = (n_samples + batch_size - 1) // batch_size
-        
-        total_loss = 0.0
-        n_correct = 0
-        
-        for batch_idx in range(n_batches):
-            start_idx = batch_idx * batch_size
-            end_idx = min(start_idx + batch_size, n_samples)
-            
-            # バッチ内の各サンプルを個別に処理し、即座に更新
-            for i in range(start_idx, end_idx):
-                x_sample = x_train_shuffled[i]
-                y_sample = y_train_shuffled[i]
-                
-                # 順伝播
-                z_hiddens, z_output, x_paired = self.forward(x_sample)
-                
-                # 予測と損失
-                y_pred = np.argmax(z_output)
-                n_correct += (y_pred == y_sample)
-                total_loss += cross_entropy_loss(z_output, y_sample)
-                
-                # 重み更新（即座に実行）
-                self.update_weights(x_paired, z_hiddens, z_output, y_sample)
-        
-        accuracy = n_correct / n_samples
-        avg_loss = total_loss / n_samples
-        
-        return accuracy, avg_loss
-    
-    def _compute_gradients(self, x_paired, z_hiddens, z_output, y_true):
-        """
-        勾配を計算（更新はしない）
-        
-        Args:
-            x_paired: 入力ベクトル（興奮性・抑制性ペア）
-            z_hiddens: 隠れ層出力のリスト
-            z_output: 出力層出力
-            y_true: 正解ラベル
-        
-        Returns:
-            gradients: 各層の勾配を含む辞書
-        """
-        # ============================================
-        # 1. 出力層の勾配計算
-        # ============================================
-        target_probs = np.zeros(self.n_output)
-        target_probs[y_true] = 1.0
-        error_output = target_probs - z_output
-        
-        saturation_output = np.abs(z_output) * (1.0 - np.abs(z_output))
-        delta_w_output = self.learning_rate * np.outer(
-            error_output * saturation_output,
-            z_hiddens[-1]
-        )
-        
-        # ============================================
-        # 2. 出力層のアミン濃度計算と側方抑制
-        # ============================================
-        winner_class = np.argmax(z_output)
-        delta_lateral = np.zeros_like(self.lateral_weights)
-        amine_concentration_output = np.zeros((self.n_output, 2))
-        
-        if winner_class == y_true:
-            error_correct = 1.0 - z_output[y_true]
-            if error_correct > 0:
-                amine_concentration_output[y_true, 0] = error_correct * self.initial_amine
-        else:
-            error_winner = 0.0 - z_output[winner_class]
-            if error_winner < 0:
-                amine_concentration_output[winner_class, 1] = -error_winner * self.initial_amine
-            
-            error_correct = 1.0 - z_output[y_true]
-            if error_correct > 0:
-                lateral_effect = self.lateral_weights[winner_class, y_true]
-                if lateral_effect < 0:
-                    enhanced_amine = self.initial_amine * (1.0 - lateral_effect)
-                else:
-                    enhanced_amine = self.initial_amine
-                amine_concentration_output[y_true, 0] = error_correct * enhanced_amine
-            
-            delta_lateral[winner_class, y_true] = -self.lateral_lr * (1.0 + self.lateral_weights[winner_class, y_true])
-        
-        # ============================================
-        # 3. 隠れ層の勾配計算（多層アミン拡散）
-        # ============================================
-        delta_w_hidden = []
-        
-        for layer_idx in range(self.n_layers - 1, -1, -1):
-            # 入力の取得
-            if layer_idx == 0:
-                z_input = x_paired
-            else:
-                z_input = z_hiddens[layer_idx - 1]
-            
-            # 拡散係数の選択
-            if layer_idx == self.n_layers - 1:
-                diffusion_coef = self.u1
-            else:
-                diffusion_coef = self.u2
-            
-            # アミン拡散
-            amine_mask = amine_concentration_output >= 1e-8
-            amine_hidden_3d = (
-                amine_concentration_output[:, :, np.newaxis] * 
-                diffusion_coef * 
-                self.column_affinity_all_layers[layer_idx][:, np.newaxis, :]
-            )
-            amine_hidden_3d = amine_hidden_3d * amine_mask[:, :, np.newaxis]
-            
-            # 活性ニューロンの特定
-            neuron_mask = np.any(amine_hidden_3d >= 1e-8, axis=(0, 1))
-            active_neurons = np.where(neuron_mask)[0]
-            
-            if len(active_neurons) == 0:
-                delta_w_hidden.insert(0, np.zeros_like(self.w_hidden[layer_idx]))
-                continue
-            
-            # 活性化関数の勾配
-            z_active = z_hiddens[layer_idx][active_neurons]
-            if self.activation == 'leaky_relu':
-                saturation_term_raw = np.where(z_active > 0, 1.0, self.leaky_alpha)
-            else:
-                saturation_term_raw = np.abs(z_active) * (1.0 - np.abs(z_active))
-            saturation_term = np.maximum(saturation_term_raw, 1e-3)
-            
-            # 学習信号強度の計算
-            layer_lr = self.layer_specific_lr[layer_idx]
-            learning_signals_3d = (
-                layer_lr * 
-                amine_hidden_3d[:, :, active_neurons] * 
-                saturation_term[np.newaxis, np.newaxis, :]
-            )
-            
-            # 勾配の計算
-            n_combinations = self.n_output * 2
-            learning_signals_2d = learning_signals_3d.reshape(n_combinations, -1)
-            z_input_tile = np.tile(z_input, (len(active_neurons), 1))
-            
-            learning_signals_expanded = learning_signals_2d.T[:, :, np.newaxis]
-            z_input_expanded = z_input_tile[:, np.newaxis, :]
-            delta_w_active = np.sum(
-                learning_signals_expanded * z_input_expanded,
-                axis=1
-            )
-            
-            # フルサイズの勾配行列を構築
-            dw = np.zeros_like(self.w_hidden[layer_idx])
-            dw[active_neurons, :] = delta_w_active
-            delta_w_hidden.insert(0, dw)
-        
-        return {
-            'w_output': delta_w_output,
-            'lateral_weights': delta_lateral,
-            'w_hidden': delta_w_hidden
-        }
     
     def get_debug_info(self, monitor_classes=[0, 1]):
         """

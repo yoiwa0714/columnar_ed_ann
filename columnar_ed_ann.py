@@ -2,6 +2,28 @@
 """
 columnar_ed_ann.py
 バージョン: 1.027.1
+多層多クラス分類対応 (モジュール化版)
+
+【v027について】
+本ファイルは columnar_ed_ann_v026_multiclass_multilayer_modular_B_simplified.py からコピーして作成されました。
+v026_B_simplifiedをベースとして、今後の実装変更はv027で行います。
+
+モジュール構成:
+  - modules/hyperparameters.py: パラメータテーブル
+  - modules/data_loader.py: データセット読み込み
+  - modules/activation_functions.py: 活性化関数
+  - modules/neuron_structure.py: E/Iペア構造
+  - modules/amine_diffusion.py: アミン拡散
+  - modules/column_structure.py: コラム構造
+  - modules/ed_network.py: メインネットワーク
+  - modules/visualization_manager.py: 可視化
+
+検証結果 (v026_B_simplified時点):
+    テスト精度 78.10% 達成 (2025-12-13)
+    コマンド:
+        python3 columnar_ed_ann_v026_multiclass_multilayer_modular_B_simplified.py \\
+            --train 3000 --test 3000 --epochs 30 --hidden 512 --lr 0.20 \\
+            --u1 0.5 --lateral_lr 0.08 --participation_rate 0.71 --seed 42
 """
 
 import os
@@ -40,8 +62,8 @@ def parse_args():
                            help='訓練サンプル数（デフォルト値: 3000）')
     exec_group.add_argument('--test', type=int, default=1000,
                            help='テストサンプル数（デフォルト値: 1000）')
-    exec_group.add_argument('--epochs', type=int, default=40,
-                           help='エポック数（デフォルト値: 40）')
+    exec_group.add_argument('--epochs', type=int, default=None,
+                           help='エポック数（デフォルト値: 層数に応じた自動設定）')
     exec_group.add_argument('--seed', type=int, default=42,
                            help='乱数シード（デフォルト値: 42、再現性確保用）')
     exec_group.add_argument('--fashion', action='store_true',
@@ -66,6 +88,8 @@ def parse_args():
                          help='側方抑制の学習率（デフォルト値: 0.08）')
     ed_group.add_argument('--gradient_clip', type=float, default=0.05,
                          help='gradient clipping値（デフォルト値: 0.05）')
+    ed_group.add_argument('--batch', type=int, default=0,
+                         help='ミニバッチサイズ（デフォルト: 0=オンライン学習、32推奨）')
     
     # ========================================
     # コラム関連のパラメータ
@@ -122,7 +146,7 @@ def main():
         print("再現性モード: 無効（毎回異なる結果）\n")
     
     print("=" * 80)
-    print("Columnar ED-ANN v027 - Modular Version")
+    print("Columnar ED-ANN v1.027.1 - Modular Version")
     print("=" * 80)
     
     # HyperParams設定一覧の表示
@@ -148,16 +172,6 @@ def main():
     
     try:
         config = hp.get_config(n_layers)
-        print(f"\n=== 層数に基づくHyperParams設定を自動適用（{n_layers}層） ===")
-        print("*** コマンドライン引数で明示的に値を指定をされた場合は、指定された値が設定されています。")
-        print(f"hidden_layers: {config['hidden']}")
-        print(f"learning_rate: {config['learning_rate']}")
-        print(f"u1: {config.get('u1', 'N/A')}")
-        print(f"u2: {config.get('u2', 'N/A')}")
-        print(f"lateral_lr: {config.get('lateral_lr', 'N/A')}")
-        print(f"base_column_radius: {config['base_column_radius']}")
-        print(f"participation_rate: {config.get('participation_rate', 'N/A')}")
-        print(f"epochs: {config['epochs']}")
         
         # デフォルト値の定義（argparseのデフォルト値）
         DEFAULT_LR = 0.20
@@ -166,7 +180,6 @@ def main():
         DEFAULT_LATERAL_LR = 0.08
         DEFAULT_BASE_RADIUS = 1.0
         DEFAULT_PARTICIPATION_RATE = 1.0
-        DEFAULT_EPOCHS = 100
         
         # コマンドラインで明示されていないパラメータのみHyperParamsテーブルの値で上書き
         # hidden_sizesは常にテーブルの値を使用（層数はユーザーが指定したものを尊重）
@@ -185,8 +198,20 @@ def main():
             args.base_column_radius = config['base_column_radius']
         if args.participation_rate == DEFAULT_PARTICIPATION_RATE and 'participation_rate' in config:
             args.participation_rate = config['participation_rate']
-        if args.epochs == DEFAULT_EPOCHS:
+        if args.epochs is None:  # Noneの場合のみテーブルの値を使用
             args.epochs = config['epochs']
+        
+        # 適用後の実際の値を表示
+        print(f"\n=== 層数に基づくHyperParams設定を自動適用（{n_layers}層） ===")
+        print("*** コマンドライン引数で明示的に値を指定をされた場合は、指定された値が設定されています。")
+        print(f"hidden_layers: {hidden_sizes}")
+        print(f"learning_rate: {args.lr}")
+        print(f"u1: {args.u1}")
+        print(f"u2: {args.u2}")
+        print(f"lateral_lr: {args.lateral_lr}")
+        print(f"base_column_radius: {args.base_column_radius}")
+        print(f"participation_rate: {args.participation_rate}")
+        print(f"epochs: {args.epochs}")
         
         print("="*70 + "\n")
     except ValueError as e:
@@ -277,8 +302,15 @@ def main():
     for epoch in pbar:
         epoch_start = time.time()
         
-        # 訓練
-        train_acc, train_loss = network.train_epoch(x_train, y_train)
+        # 訓練（ミニバッチまたはオンライン学習）
+        if args.batch > 0:
+            # ミニバッチ学習
+            train_acc, train_loss = network.train_epoch_minibatch(
+                x_train, y_train, batch_size=args.batch
+            )
+        else:
+            # オンライン学習（既存）
+            train_acc, train_loss = network.train_epoch(x_train, y_train)
         
         # テスト
         test_acc, test_loss = network.evaluate(x_test, y_test)

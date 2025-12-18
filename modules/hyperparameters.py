@@ -57,23 +57,23 @@ class HyperParams:
                 'lateral_lr': 0.08,
                 'base_column_radius': 0.4,
                 'column_radius_per_layer': [0.57],  # [sqrt(512/256) * 0.4]
-                'participation_rate': 0.1,
+                'participation_rate': 0.1,  # 最適値確定（2025-12-15）
                 'epochs': 30,
-                'description': '1層最適構成、84.50%テスト精度達成（2025-12-14）'
+                'description': '1層最適構成、84.50%テスト精度達成（2025-12-14、pr=0.1確定）'
             },
             
-            # 2層構成（Fine-tuning完了）
+            # 2層構成（最適化完了）
             2: {
                 'hidden': [256, 128],
-                'learning_rate': 0.35,  # Fine-tuning結果: 64.27%テスト精度
+                'learning_rate': 0.7,  # 最適値: 0.35→0.7で大幅改善（79.0%達成）
                 'u1': 0.5,
                 'u2': 0.5,
-                'lateral_lr': 0.08,
-                'base_column_radius': 1.0,
-                'column_radius_per_layer': [1.0, 0.71],  # [sqrt(256/256), sqrt(128/256)]
-                'participation_rate': 1.0,
-                'epochs': 45,
-                'description': '2層最適構成、64.27%テスト精度達成（2025-12-09）'
+                'lateral_lr': 0.6,  # 最適値: 0.08→0.6（グリッドサーチ結果、79.20%達成、Epoch 36）
+                'base_column_radius': 0.2,  # 最適値: 1.0→0.2（bcr探索結果）
+                'column_radius_per_layer': [0.2, 0.14],  # [sqrt(256/256) * 0.2, sqrt(128/256) * 0.2]
+                'participation_rate': 0.1,  # 最適値: 1.0→0.1（1層と共通）
+                'epochs': 70,  # 最適値: 45→70（Epoch 63で最高精度）
+                'description': '2層最適構成、79.20%テスト精度達成（2025-12-17、1024,512構成、lateral_lr=0.6）'
             },
             
             # 3層構成（最適化予定）

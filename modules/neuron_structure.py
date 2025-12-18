@@ -47,6 +47,19 @@ def create_ei_pairs(x):
     return np.concatenate([x, x])
 
 
+def create_ei_pairs_batch(x_batch):
+    """
+    バッチ対応E/Iペア構造作成
+    
+    Args:
+        x_batch: 入力データバッチ shape [batch_size, n_input]
+    
+    Returns:
+        x_paired_batch: ペア構造バッチ shape [batch_size, n_input * 2]
+    """
+    return np.concatenate([x_batch, x_batch], axis=1)
+
+
 def create_ei_flags(n_neurons, layer_idx=0):
     """
     興奮性・抑制性フラグ配列を生成

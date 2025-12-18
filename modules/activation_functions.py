@@ -81,6 +81,22 @@ def softmax(x):
     return exp_x / np.sum(exp_x)
 
 
+def softmax_batch(x_batch):
+    """
+    バッチ対応SoftMax関数
+    
+    Args:
+        x_batch: 出力層の活性値バッチ shape: [batch_size, n_output]
+    
+    Returns:
+        確率分布バッチ shape: [batch_size, n_output] (各行の合計=1.0)
+    """
+    # 各行の最大値を引く（数値安定性）
+    x_shifted = x_batch - np.max(x_batch, axis=1, keepdims=True)
+    exp_x = np.exp(np.clip(x_shifted, -500, 500))
+    return exp_x / np.sum(exp_x, axis=1, keepdims=True)
+
+
 def cross_entropy_loss(probs, target_class):
     """
     Cross-Entropy損失関数
