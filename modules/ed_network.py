@@ -665,47 +665,50 @@ class RefinedDistributionEDNetwork:
         
         return z_hiddens_batch, z_output_batch, x_paired_batch
     
-    def train_epoch_minibatch(self, x_train, y_train, batch_size=32):
+    def train_epoch_minibatch_tf(self, train_dataset):
         """
-        ミニバッチ学習版エポック
+        ミニバッチ学習版エポック（TensorFlow Dataset API使用）
+        
+        この関数はTensorFlow Data API (tf.data.Dataset) を使用します。
+        これは業界標準の手法であり、以下の利点があります：
+          1. データ処理パイプラインの信頼性が国際的に認知されている
+          2. シャッフル機能が最適化され、再現性が保証される
+          3. バッチ処理が効率的に実行される
         
         Args:
-            x_train: 訓練データ shape [n_samples, n_input]
-            y_train: 正解ラベル shape [n_samples]
-            batch_size: ミニバッチサイズ（デフォルト32）
+            train_dataset: tf.data.Dataset（バッチ化・シャッフル済み）
         
         Returns:
             accuracy: 訓練精度
             avg_loss: 平均損失
         
         Notes:
-            - ED法準拠: バッチ内の勾配を合計して一括更新
-            - 個別順伝播: 各サンプルは個別にforward（精度保証）
-            - 勾配合計: バッチ内の全勾配を累積
-            - 一括更新: 累積勾配で1回だけ重み更新
-            - エポックごとにデータをシャッフル（過学習防止）
+            - TensorFlow Dataset APIで前処理（シャッフル・バッチ化）済み
+            - ED法準拠: サンプルごとに即座に重み更新
+            - Tensorをループ処理でNumPyに変換
+            - 既存のED法ロジック（update_weights）をそのまま使用
+        
+        使用例:
+            >>> from modules.data_loader import create_tf_dataset
+            >>> train_dataset = create_tf_dataset(
+            ...     x_train, y_train, batch_size=128, shuffle=True, seed=42
+            ... )
+            >>> train_acc, train_loss = network.train_epoch_minibatch_tf(train_dataset)
         """
-        n_samples = len(x_train)
-        
-        # エポックごとにデータをシャッフル
-        indices = np.arange(n_samples)
-        np.random.shuffle(indices)
-        x_train_shuffled = x_train[indices]
-        y_train_shuffled = y_train[indices]
-        
-        n_batches = (n_samples + batch_size - 1) // batch_size
-        
         total_loss = 0.0
         n_correct = 0
+        n_samples = 0
         
-        for batch_idx in range(n_batches):
-            start_idx = batch_idx * batch_size
-            end_idx = min(start_idx + batch_size, n_samples)
+        # TensorFlow Datasetからバッチを取得
+        for x_batch_tf, y_batch_tf in train_dataset:
+            # TensorをNumPyに変換（既存コードとの互換性）
+            x_batch = x_batch_tf.numpy()
+            y_batch = y_batch_tf.numpy()
             
-            # バッチ内の各サンプルを個別に処理し、即座に更新
-            for i in range(start_idx, end_idx):
-                x_sample = x_train_shuffled[i]
-                y_sample = y_train_shuffled[i]
+            # バッチ内の各サンプルを個別処理（ED法準拠）
+            for i in range(len(x_batch)):
+                x_sample = x_batch[i]
+                y_sample = y_batch[i]
                 
                 # 順伝播
                 z_hiddens, z_output, x_paired = self.forward(x_sample)
@@ -715,11 +718,13 @@ class RefinedDistributionEDNetwork:
                 n_correct += (y_pred == y_sample)
                 total_loss += cross_entropy_loss(z_output, y_sample)
                 
-                # 重み更新（即座に実行）
+                # 重み更新（即座に実行、ED法準拠）
                 self.update_weights(x_paired, z_hiddens, z_output, y_sample)
+                
+                n_samples += 1
         
-        accuracy = n_correct / n_samples
-        avg_loss = total_loss / n_samples
+        accuracy = n_correct / n_samples if n_samples > 0 else 0.0
+        avg_loss = total_loss / n_samples if n_samples > 0 else 0.0
         
         return accuracy, avg_loss
     

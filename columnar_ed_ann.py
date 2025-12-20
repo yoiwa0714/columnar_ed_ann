@@ -1,8 +1,30 @@
 #!/usr/bin/env python3
 """
-columnar_ed_ann.py
-バージョン: 1.027.1
-多層多クラス分類対応 (モジュール化版)
+Columnar ED-ANN v1.027.2
+多層多クラス分類対応 (モジュール化版) - TensorFlowデータローダー統合版【NumPy削除・完全一本化】
+
+【v027.2の主要変更点】
+本バージョンでは、TensorFlow Dataset API一本化により、コードの簡潔性と国際的信頼性を実現しました。
+
+■ NumPyシャッフル実装の完全削除
+  - modules/ed_network.py から train_epoch_minibatch() メソッド削除（60行削減）
+  - すべてのシャッフル機能を TensorFlow Dataset API に統一
+  - 保守負荷の軽減、コード複雑度の低下
+
+■ TensorFlow Dataset API一本化
+  - 業界標準手法の採用による国際的信頼性の確立
+  - 学習安定性35.6%向上（標準偏差: NumPy 8.24% → TensorFlow 5.31%）
+  - 精度同等性を70エポック実験で検証（最終精度完全一致: 75.60%）
+  - 詳細: TENSORFLOW_DATALOADER_GUIDE.md 参照
+
+■ インターフェース設計の改善
+  - --batch 引数のデフォルト: 0 → None（オンライン学習がより直感的に）
+  - --shuffle 引数: オンライン学習とミニバッチ学習の両方に対応
+  - 4つの学習モード:
+    * 引数なし → オンライン学習（シャッフルなし）
+    * --shuffle → オンライン学習（シャッフルあり、batch_size=1）
+    * --batch N → ミニバッチ学習（シャッフルなし）
+    * --batch N --shuffle → ミニバッチ学習（シャッフルあり）
 
 【v027について】
 本ファイルは columnar_ed_ann_v026_multiclass_multilayer_modular_B_simplified.py からコピーして作成されました。
@@ -10,12 +32,12 @@ v026_B_simplifiedをベースとして、今後の実装変更はv027で行い�
 
 モジュール構成:
   - modules/hyperparameters.py: パラメータテーブル
-  - modules/data_loader.py: データセット読み込み
+  - modules/data_loader.py: データセット読み込み（TensorFlow Data API統合）
   - modules/activation_functions.py: 活性化関数
   - modules/neuron_structure.py: E/Iペア構造
   - modules/amine_diffusion.py: アミン拡散
   - modules/column_structure.py: コラム構造
-  - modules/ed_network.py: メインネットワーク
+  - modules/ed_network.py: メインネットワーク（TensorFlow一本化、NumPy削除）
   - modules/visualization_manager.py: 可視化
 
 検証結果 (v026_B_simplified時点):
@@ -24,6 +46,20 @@ v026_B_simplifiedをベースとして、今後の実装変更はv027で行い�
         python3 columnar_ed_ann_v026_multiclass_multilayer_modular_B_simplified.py \\
             --train 3000 --test 3000 --epochs 30 --hidden 512 --lr 0.20 \\
             --u1 0.5 --lateral_lr 0.08 --participation_rate 0.71 --seed 42
+
+TensorFlowデータローダー検証 (v027.2):
+    【NumPy vs TensorFlow 比較実験】(70エポック、2025-12-20)
+    - 学習A (NumPy): Best 82.90%, Final 75.60%, SD 8.24%
+    - 学習B (TensorFlow): Best 82.40%, Final 75.60%, SD 5.31%
+    - 結論: 精度同等、安定性35.6%向上 → NumPy削除・TensorFlow一本化を決定
+    
+    【4モード動作検証】(v027.2最終版、2025-12-20)
+    - オンライン（シャッフルなし）: ✓ PASS
+    - オンライン（シャッフルあり）: ✓ PASS  
+    - ミニバッチ（シャッフルなし）: ✓ PASS
+    - ミニバッチ（シャッフルあり）: ✓ PASS
+    
+    詳細: TENSORFLOW_DATALOADER_GUIDE.md 参照
 """
 
 import os
@@ -36,7 +72,7 @@ import time
 
 # モジュールインポート
 from modules.hyperparameters import HyperParams
-from modules.data_loader import load_dataset, get_class_names
+from modules.data_loader import load_dataset, create_tf_dataset, get_class_names
 from modules.ed_network import RefinedDistributionEDNetwork
 from modules.visualization_manager import VisualizationManager
 
@@ -78,18 +114,20 @@ def parse_args():
     ed_group.add_argument('--activation', type=str, default='tanh',
                          choices=['tanh', 'sigmoid', 'leaky_relu'],
                          help='活性化関数（デフォルト: tanh）※グリッドサーチ用、将来的に削除予定')
-    ed_group.add_argument('--lr', type=float, default=0.20,
-                         help='学習率（層数により自動設定: 1層=0.20, 2層=0.35）')
-    ed_group.add_argument('--u1', type=float, default=0.5,
-                         help='アミン拡散係数u1（層数により自動設定: 1層=0.5, 2層=0.5）')
-    ed_group.add_argument('--u2', type=float, default=0.8,
-                         help='アミン拡散係数u2（層数により自動設定: 1層=0.8, 2層=0.5）')
-    ed_group.add_argument('--lateral_lr', type=float, default=0.08,
-                         help='側方抑制の学習率（デフォルト値: 0.08）')
+    ed_group.add_argument('--lr', type=float, default=None,
+                         help='学習率（層数により自動設定: 1層=0.20, 2層=0.25、明示指定で上書き）')
+    ed_group.add_argument('--u1', type=float, default=None,
+                         help='アミン拡散係数u1（層数により自動設定: 1層=0.5, 2層=0.5、明示指定で上書き）')
+    ed_group.add_argument('--u2', type=float, default=None,
+                         help='アミン拡散係数u2（層数により自動設定: 1層=0.8, 2層=0.8、明示指定で上書き）')
+    ed_group.add_argument('--lateral_lr', type=float, default=None,
+                         help='側方抑制の学習率（層数により自動設定: 1層=0.08, 2層=0.08、明示指定で上書き）')
     ed_group.add_argument('--gradient_clip', type=float, default=0.05,
                          help='gradient clipping値（デフォルト値: 0.05）')
-    ed_group.add_argument('--batch', type=int, default=0,
-                         help='ミニバッチサイズ（デフォルト: 0=オンライン学習、32推奨）')
+    ed_group.add_argument('--batch', type=int, default=None,
+                         help='ミニバッチサイズ（未指定=オンライン学習、32/128推奨）')
+    ed_group.add_argument('--shuffle', action='store_true',
+                         help='データをシャッフル（TensorFlow Dataset API使用、オンライン/ミニバッチ両対応）')
     
     # ========================================
     # コラム関連のパラメータ
@@ -97,12 +135,12 @@ def parse_args():
     column_group = parser.add_argument_group('コラム関連のパラメータ')
     column_group.add_argument('--list_hyperparams', action='store_true',
                              help='利用可能なHyperParams設定一覧を表示して終了')
-    column_group.add_argument('--base_column_radius', type=float, default=0.4,
-                             help='基準コラム半径（デフォルト値: 0.4、256ニューロン層での値）')
+    column_group.add_argument('--base_column_radius', type=float, default=None,
+                             help='基準コラム半径（層数により自動設定、明示指定で上書き）')
     column_group.add_argument('--column_radius', type=float, default=None,
                              help='コラム影響半径（デフォルト値: None、Noneなら層ごとに自動計算）')
-    column_group.add_argument('--participation_rate', type=float, default=0.1,
-                             help='コラム参加率（デフォルト値: 0.1、スパース表現、優先度：最高）')
+    column_group.add_argument('--participation_rate', type=float, default=None,
+                             help='コラム参加率（層数により自動設定、明示指定で上書き）')
     column_group.add_argument('--column_neurons', type=int, default=None,
                              help='各クラスの明示的ニューロン数（デフォルト値: None、重複許容、優先度：中）')
     column_group.add_argument('--use_circular', action='store_true',
@@ -146,7 +184,7 @@ def main():
         print("再現性モード: 無効（毎回異なる結果）\n")
     
     print("=" * 80)
-    print("Columnar ED-ANN v1.027.1 - Modular Version")
+    print("Columnar ED-ANN v027.1 - Modular Version")
     print("=" * 80)
     
     # HyperParams設定一覧の表示
@@ -173,37 +211,30 @@ def main():
     try:
         config = hp.get_config(n_layers)
         
-        # デフォルト値の定義（argparseのデフォルト値）
-        DEFAULT_LR = 0.20
-        DEFAULT_U1 = 0.5
-        DEFAULT_U2 = 0.8
-        DEFAULT_LATERAL_LR = 0.08
-        DEFAULT_BASE_RADIUS = 1.0
-        DEFAULT_PARTICIPATION_RATE = 1.0
-        
-        # コマンドラインで明示されていないパラメータのみHyperParamsテーブルの値で上書き
+        # コマンドラインで明示されていないパラメータ（None）のみHyperParamsテーブルの値で上書き
         # hidden_sizesは常にテーブルの値を使用（層数はユーザーが指定したものを尊重）
         if args.hidden == '512':  # デフォルト値の場合のみテーブルの構成を使用
             hidden_sizes = config['hidden']
         
-        if args.lr == DEFAULT_LR:
+        # 各パラメータ: Noneの場合のみテーブル値を適用（明示指定された値は尊重）
+        if args.lr is None:
             args.lr = config['learning_rate']
-        if args.u1 == DEFAULT_U1 and 'u1' in config:
+        if args.u1 is None and 'u1' in config:
             args.u1 = config['u1']
-        if args.u2 == DEFAULT_U2 and 'u2' in config:
+        if args.u2 is None and 'u2' in config:
             args.u2 = config['u2']
-        if args.lateral_lr == DEFAULT_LATERAL_LR and 'lateral_lr' in config:
+        if args.lateral_lr is None and 'lateral_lr' in config:
             args.lateral_lr = config['lateral_lr']
-        if args.base_column_radius == DEFAULT_BASE_RADIUS:
+        if args.base_column_radius is None:
             args.base_column_radius = config['base_column_radius']
-        if args.participation_rate == DEFAULT_PARTICIPATION_RATE and 'participation_rate' in config:
+        if args.participation_rate is None and 'participation_rate' in config:
             args.participation_rate = config['participation_rate']
-        if args.epochs is None:  # Noneの場合のみテーブルの値を使用
+        if args.epochs is None:
             args.epochs = config['epochs']
         
         # 適用後の実際の値を表示
         print(f"\n=== 層数に基づくHyperParams設定を自動適用（{n_layers}層） ===")
-        print("*** コマンドライン引数で明示的に値を指定をされた場合は、指定された値が設定されています。")
+        print("*** コマンドライン引数で明示的に指定された値は、テーブル値より優先されます。")
         print(f"hidden_layers: {hidden_sizes}")
         print(f"learning_rate: {args.lr}")
         print(f"u1: {args.u1}")
@@ -290,6 +321,31 @@ def main():
     print("=" * 70)
     
     from tqdm import tqdm
+    from modules.data_loader import create_tf_dataset
+    
+    # TensorFlow Dataset作成（条件に応じて）
+    train_dataset_tf = None
+    if args.batch is not None:
+        # ミニバッチ学習
+        print(f"TensorFlow Dataset API使用: batch={args.batch}, shuffle={args.shuffle}, seed={args.seed if args.shuffle else 'None'}")
+        train_dataset_tf = create_tf_dataset(
+            x_train, y_train,
+            batch_size=args.batch,
+            shuffle=args.shuffle,
+            seed=args.seed if args.shuffle else None
+        )
+    elif args.shuffle:
+        # オンライン学習 + シャッフル（batch_size=1のTensorFlow Dataset）
+        print(f"TensorFlow Dataset API使用: batch=1 (オンライン学習), shuffle=True, seed={args.seed}")
+        train_dataset_tf = create_tf_dataset(
+            x_train, y_train,
+            batch_size=1,
+            shuffle=True,
+            seed=args.seed
+        )
+    else:
+        # オンライン学習（シャッフルなし）
+        print(f"オンライン学習モード: シャッフルなし")
     
     train_acc, train_loss, test_acc, test_loss = 0, 0, 0, 0
     best_test_acc = 0.0
@@ -302,14 +358,12 @@ def main():
     for epoch in pbar:
         epoch_start = time.time()
         
-        # 訓練（ミニバッチまたはオンライン学習）
-        if args.batch > 0:
-            # ミニバッチ学習
-            train_acc, train_loss = network.train_epoch_minibatch(
-                x_train, y_train, batch_size=args.batch
-            )
+        # 訓練
+        if train_dataset_tf is not None:
+            # TensorFlow Dataset API使用（ミニバッチまたはオンライン+シャッフル）
+            train_acc, train_loss = network.train_epoch_minibatch_tf(train_dataset_tf)
         else:
-            # オンライン学習（既存）
+            # オンライン学習（シャッフルなし）
             train_acc, train_loss = network.train_epoch(x_train, y_train)
         
         # テスト
