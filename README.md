@@ -77,7 +77,8 @@
 
 ### コラム構造の空間配置
 
-本実装では、2種類のコラム構造（ハニカム構造と円環構造）を提供しています。それぞれ異なる空間トポロジーを持ち、ニューロンとクラスの配置方法が異なります。
+- 本実装では、2種類のコラム構造（ハニカム構造と円環構造）を提供しています。それぞれ異なる空間トポロジーを持ち、ニューロンとクラスの配置方法が異なります。
+- 512ニューロンで構成される層での事例を以下で説明します。
 
 #### ハニカム構造（2次元六角格子配置）
 
@@ -460,7 +461,16 @@ pip install -r requirements.txt
 python columnar_ed_ann.py
 
 # 単層構造を最適パラメータで実行（Fashion-MNIST）
-python columnar_ed_ann.py --fashion
+python columnar_ed_ann.py --dataset fashion
+
+# CIFAR-10での実行
+python columnar_ed_ann.py --dataset cifar10
+
+# カスタムデータセットでの実行（名前指定）
+python columnar_ed_ann.py --dataset my_custom_data
+
+# カスタムデータセットでの実行（パス指定）
+python columnar_ed_ann.py --dataset /path/to/my_data
 
 # 可視化表示付きで実行
 python columnar_ed_ann.py --viz --heatmap
@@ -477,6 +487,99 @@ python columnar_ed_ann.py --viz --heatmap --save_viz viz_result
 # ファイル名(拡張子有り)のみを指定した場合: カレントディレクトリ(プログラム実行ディレクトリ)に保存
 # 引数無しで--save_vizのみを指定した場合: viz_resultsディレクトリ(存在しなければ作成)下にデフォルトのファイル名(タイムスタンプ付き)で保存
 ```
+
+## データセット対応
+
+本実装は、標準データセットとカスタムデータセットの両方に対応しています。
+
+### 標準データセット
+
+以下のデータセットを標準でサポートしています：
+
+- MNIST（28x28グレースケール、10クラス、デフォルト）
+- Fashion-MNIST（28x28グレースケール、10クラス）
+- CIFAR-10（32x32カラー、10クラス）
+- CIFAR-100（32x32カラー、100クラス）
+
+```bash
+# MNIST（デフォルト）
+python columnar_ed_ann.py
+
+# Fashion-MNIST
+python columnar_ed_ann.py --dataset fashion
+
+# CIFAR-10
+python columnar_ed_ann.py --dataset cifar10
+```
+
+### カスタムデータセット
+
+v027.3以降、カスタムデータセットに対応しました。任意の画像データセットを使用できます。
+
+#### カスタムデータセットの準備
+
+以下のディレクトリ構造でデータセットを準備してください：
+
+```
+my_custom_data/
+├── metadata.json       # メタデータ（必須）
+├── x_train.npy        # 訓練データ（必須）
+├── y_train.npy        # 訓練ラベル（必須）
+├── x_test.npy         # テストデータ（必須）
+└── y_test.npy         # テストラベル（必須）
+```
+
+#### metadata.json形式
+
+```json
+{
+    "name": "my_custom_data",
+    "n_classes": 10,
+    "input_shape": [28, 28],
+    "normalize": true,
+    "description": "データセットの説明（オプション）"
+}
+```
+
+#### カスタムデータセットの配置場所
+
+以下のいずれかに配置できます：
+
+1. 標準ディレクトリ（推奨）: `~/.keras/datasets/my_custom_data/`
+2. 任意のパス: `/path/to/my_custom_data/`
+3. カレントディレクトリ: `./my_custom_data/`
+
+#### カスタムデータセットの使用例
+
+```bash
+# 名前指定（標準ディレクトリから自動検索）
+python columnar_ed_ann.py --dataset my_custom_data
+
+# パス指定
+python columnar_ed_ann.py --dataset /path/to/my_custom_data
+```
+
+#### データセット自動検出機能
+
+v027.3では以下の機能が自動的に動作します：
+
+- 入力次元の自動検出（784, 3072, など）
+- クラス数の自動検出（10, 100, など）
+- ネットワーク構造の自動調整
+
+#### カスタムデータセットの検証機能
+
+v027.3以降、カスタムデータセット読み込み時に以下の検証が自動的に実行されます：
+
+1. データ型チェック（NumPy配列であることを確認）
+2. 欠損値チェック（NaNやInfが含まれていないか確認）
+3. ラベル範囲チェック（0からn_classes-1の範囲内か確認）
+4. 整合性チェック（訓練データとテストデータの次元が一致するか確認）
+5. クラス分布の表示（各クラスのサンプル数を表示）
+
+検証はカスタムデータセットのみで実行され、標準データセット（MNIST等）ではスキップされます。
+
+詳細は[CUSTOM_DATASET_GUIDE.md](CUSTOM_DATASET_GUIDE.md)を参照してください。
 
 ## ディレクトリ構造
 
@@ -536,7 +639,8 @@ python columnar_ed_ann.py --viz --heatmap --save_viz viz_result
 | `--test` | 1000 | テストサンプル数 |
 | `--epochs` | 40-50 | エポック数（層数により自動設定: 1層=40, 2層=45, 3-5層=50） |
 | `--seed` | 42 | 乱数シード（再現性確保用） |
-| `--fashion` | - | Fashion-MNISTを使用（フラグ） |
+| `--dataset` | mnist | データセット名（mnist, fashion, cifar10, cifar100）またはカスタムデータセットのパス |
+| `--fashion` | - | Fashion-MNISTを使用（後方互換性のため残存、--dataset fashionを推奨） |
 
 ### ED法関連のパラメータ
 

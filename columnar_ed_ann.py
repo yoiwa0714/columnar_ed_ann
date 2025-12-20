@@ -1,7 +1,86 @@
 #!/usr/bin/env python3
 """
-Columnar ED-ANN v1.027.2
-多層多クラス分類対応 (モジュール化版) - TensorFlowデータローダー統合版【NumPy削除・完全一本化】
+Columnar ED-ANN
+バージョン: 1.027.3
+リリース日: 2025-12-20
+
+多層多クラス分類対応 (モジュール化版) - TensorFlowデータローダー統合版【自動データセット対応】
+
+【本バージョン (1.027.3) の機能】
+
+Phase 3実装（2025-12-20）: エラーハンドリング強化・パフォーマンス最適化 ✅
+  ■ エラーハンドリングの強化
+    - metadata.json: 詳細なJSON解析エラー（行番号、列番号）、必須フィールド検証、型チェック
+    - データセットパス: 類似データセット候補の自動提案、使用方法のガイド表示
+    - データ検証: NaN/Inf位置特定、範囲外ラベル詳細、具体的な修正方法の提示
+    - データファイル: 欠損ファイルの一括表示、トラブルシューティング情報
+  
+  ■ パフォーマンス最適化
+    - メモリマップモード: 100MB以上のデータセットで自動適用（np.load mmap_mode='r'）
+    - メモリ効率: サンプル数制限の早期適用、不要なコピーの削減
+    - 進捗表示: 大規模データセット読み込み時の状態メッセージ
+  
+  ■ クラス名表示機能の拡張
+    - metadata.jsonにclass_namesフィールド追加（オプション）
+    - 標準データセット（MNIST, Fashion-MNIST, CIFAR-10）のクラス名組み込み
+    - 学習結果表示時にクラス名を使用
+  
+  ■ データセット検証機能
+    - カスタムデータセットのみで自動実行（標準データセットはスキップ）
+    - 5つの検証項目: データ型、欠損値、ラベル範囲、整合性、クラス分布
+    - 詳細な検証結果とクラスごとのサンプル数表示
+
+Phase 2実装（2025-12-20）: カスタムデータセット対応 ✅
+  ■ カスタムデータローダー
+    - metadata.json対応の柔軟なデータセット管理
+    - .npy形式ファイルの読み込み
+    - 自動正規化・フラット化機能
+  
+  ■ データセットパス解決機能
+    - 標準データセット名（mnist, fashion, cifar10, cifar100）の自動認識
+    - カスタムデータセットの柔軟なパス指定
+    - 検索優先順位: 指定パス → ~/.keras/datasets/ → カレントディレクトリ
+  
+  ■ 使用例
+    # 標準データセット
+    python columnar_ed_ann_v027_3.py --dataset mnist
+    python columnar_ed_ann_v027_3.py --dataset cifar10
+    
+    # カスタムデータセット（名前指定）
+    python columnar_ed_ann_v027_3.py --dataset my_custom_data
+    # → ~/.keras/datasets/my_custom_data/ を検索
+    
+    # カスタムデータセット（パス指定）
+    python columnar_ed_ann_v027_3.py --dataset /path/to/my_data
+    
+  ■ カスタムデータセットの準備
+    データセットディレクトリ構造:
+      my_custom_data/
+      ├── metadata.json       # メタデータ（必須）
+      ├── x_train.npy        # 訓練データ（必須）
+      ├── y_train.npy        # 訓練ラベル（必須）
+      ├── x_test.npy         # テストデータ（必須）
+      └── y_test.npy         # テストラベル（必須）
+    
+    metadata.json形式:
+      {
+          "name": "my_custom_data",
+          "n_classes": 10,
+          "input_shape": [28, 28],  // または [32, 32, 3]
+          "normalize": true,         // 0-255 → 0-1正規化が必要か
+          "class_names": ["class0", "class1", ...],  // オプション
+          "description": "データセットの説明（オプション）"
+      }
+
+Phase 1実装（2025-12-20）: 基本自動検出機能 ✅
+  ■ 入力次元とクラス数の自動検出
+    - データから自動的に入力次元を検出（784, 3072, etc.）
+    - クラス数も自動検出（10, 100, etc.）
+    - CIFAR-10などの大規模データセットに自動対応
+  
+  ■ --dataset引数の統一
+    - 新形式: --dataset mnist, --dataset fashion, --dataset cifar10
+    - 後方互換性: --fashion も引き続き使用可能
 
 【v027.2の主要変更点】
 本バージョンでは、TensorFlow Dataset API一本化により、コードの簡潔性と国際的信頼性を実現しました。
@@ -15,6 +94,7 @@ Columnar ED-ANN v1.027.2
   - 業界標準手法の採用による国際的信頼性の確立
   - 学習安定性35.6%向上（標準偏差: NumPy 8.24% → TensorFlow 5.31%）
   - 精度同等性を70エポック実験で検証（最終精度完全一致: 75.60%）
+  - seed引数は常にTensorFlow Dataset APIに渡される（完全な再現性保証）
   - 詳細: TENSORFLOW_DATALOADER_GUIDE.md 参照
 
 ■ インターフェース設計の改善
@@ -32,7 +112,7 @@ v026_B_simplifiedをベースとして、今後の実装変更はv027で行い�
 
 モジュール構成:
   - modules/hyperparameters.py: パラメータテーブル
-  - modules/data_loader.py: データセット読み込み（TensorFlow Data API統合）
+  - modules/data_loader.py: データセット読み込み（TensorFlow Data API統合、カスタムデータ対応）
   - modules/activation_functions.py: 活性化関数
   - modules/neuron_structure.py: E/Iペア構造
   - modules/amine_diffusion.py: アミン拡散
@@ -103,7 +183,12 @@ def parse_args():
     exec_group.add_argument('--seed', type=int, default=42,
                            help='乱数シード（デフォルト値: 42、再現性確保用）')
     exec_group.add_argument('--fashion', action='store_true',
-                           help='Fashion-MNISTを使用')
+                           help='Fashion-MNISTを使用（後方互換性のため残存、--dataset fashionを推奨）')
+    exec_group.add_argument('--dataset', type=str, default=None,
+                           help='データセット名（mnist, fashion, cifar10, cifar100）または '
+                                'カスタムデータセットのパス。'
+                                'カスタムデータは~/.keras/datasets/配下に配置するか、絶対パスで指定。'
+                                '詳細はCUSTOM_DATASET_GUIDE.mdを参照。')
     
     # ========================================
     # ED法関連のパラメータ
@@ -252,13 +337,42 @@ def main():
     # ========================================
     # 3. データ読み込み
     # ========================================
-    dataset = 'fashion' if args.fashion else 'mnist'
-    print(f"データ読み込み中... (訓練:{args.train}, テスト:{args.test}, データセット:{dataset})")
-    (x_train, y_train), (x_test, y_test) = load_dataset(
-        dataset=dataset, train_samples=args.train, test_samples=args.test
-    )
+    # データセット名の解決（優先順位: --dataset > --fashion > デフォルト）
+    if args.dataset is not None:
+        dataset = args.dataset
+    elif args.fashion:
+        dataset = 'fashion'
+    else:
+        dataset = 'mnist'
     
-    n_classes = 10
+    # データセットパスの解決（標準データセット or カスタムデータ）
+    from modules.data_loader import resolve_dataset_path, load_custom_dataset
+    dataset_path, is_custom = resolve_dataset_path(dataset)
+    
+    print(f"データ読み込み中... (訓練:{args.train}, テスト:{args.test}, データセット:{dataset})")
+    
+    # カスタムデータセットか標準データセットかで読み込み方法を切り替え
+    custom_class_names = None
+    if is_custom:
+        (x_train, y_train), (x_test, y_test), custom_class_names = load_custom_dataset(
+            dataset_path=dataset_path, train_samples=args.train, test_samples=args.test
+        )
+    else:
+        (x_train, y_train), (x_test, y_test) = load_dataset(
+            dataset=dataset_path, train_samples=args.train, test_samples=args.test
+        )
+    
+    # 入力次元とクラス数を自動検出
+    n_input = x_train.shape[1]  # 自動検出: 784 (MNIST/Fashion), 3072 (CIFAR-10), etc.
+    n_classes = len(np.unique(y_train))  # 自動検出: 10, 100, etc.
+    
+    print(f"データセット情報: 入力次元={n_input}, クラス数={n_classes}")
+    
+    # クラス名の取得（標準データセット or カスタムデータセット）
+    from modules.data_loader import get_class_names
+    class_names = get_class_names(dataset, custom_class_names=custom_class_names)
+    if class_names:
+        print(f"クラス名: {class_names}")
     
     # ========================================
     # 4. ネットワークの構築
@@ -266,7 +380,7 @@ def main():
     print("\nネットワーク初期化中...")
     
     network = RefinedDistributionEDNetwork(
-        n_input=784,
+        n_input=n_input,
         n_hidden=hidden_sizes,
         n_output=n_classes,
         learning_rate=args.lr,
@@ -327,12 +441,12 @@ def main():
     train_dataset_tf = None
     if args.batch is not None:
         # ミニバッチ学習
-        print(f"TensorFlow Dataset API使用: batch={args.batch}, shuffle={args.shuffle}, seed={args.seed if args.shuffle else 'None'}")
+        print(f"TensorFlow Dataset API使用: batch={args.batch}, shuffle={args.shuffle}, seed={args.seed}")
         train_dataset_tf = create_tf_dataset(
             x_train, y_train,
             batch_size=args.batch,
             shuffle=args.shuffle,
-            seed=args.seed if args.shuffle else None
+            seed=args.seed
         )
     elif args.shuffle:
         # オンライン学習 + シャッフル（batch_size=1のTensorFlow Dataset）
