@@ -219,7 +219,7 @@ class RefinedDistributionEDNetwork:
                 print(f"  - モード: 従来方式（コラムサイズ: {int(self.column_radius_per_layer[0] * 10)}）")
         
         for layer_idx, affinity in enumerate(self.column_affinity_all_layers):
-            non_zero_counts = [np.count_nonzero(affinity[c] > 1e-8) for c in range(n_output)]
+            non_zero_counts = [int(np.count_nonzero(affinity[c] > 1e-8)) for c in range(n_output)]
             print(f"  - 層{layer_idx+1}: 各クラスの帰属ニューロン数={non_zero_counts}")
         
         # 興奮性・抑制性フラグ（必須要素7）

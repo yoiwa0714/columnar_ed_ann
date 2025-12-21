@@ -1,145 +1,8 @@
 #!/usr/bin/env python3
 """
-Columnar ED-ANN
-バージョン: 1.027.3
-リリース日: 2025-12-20
+バージョン番号: 1.027.3
 
 多層多クラス分類対応 (モジュール化版) - TensorFlowデータローダー統合版【自動データセット対応】
-
-【本バージョン (1.027.3) の機能】
-
-Phase 3実装（2025-12-20）: エラーハンドリング強化・パフォーマンス最適化 ✅
-  ■ エラーハンドリングの強化
-    - metadata.json: 詳細なJSON解析エラー（行番号、列番号）、必須フィールド検証、型チェック
-    - データセットパス: 類似データセット候補の自動提案、使用方法のガイド表示
-    - データ検証: NaN/Inf位置特定、範囲外ラベル詳細、具体的な修正方法の提示
-    - データファイル: 欠損ファイルの一括表示、トラブルシューティング情報
-  
-  ■ パフォーマンス最適化
-    - メモリマップモード: 100MB以上のデータセットで自動適用（np.load mmap_mode='r'）
-    - メモリ効率: サンプル数制限の早期適用、不要なコピーの削減
-    - 進捗表示: 大規模データセット読み込み時の状態メッセージ
-  
-  ■ クラス名表示機能の拡張
-    - metadata.jsonにclass_namesフィールド追加（オプション）
-    - 標準データセット（MNIST, Fashion-MNIST, CIFAR-10）のクラス名組み込み
-    - 学習結果表示時にクラス名を使用
-  
-  ■ データセット検証機能
-    - カスタムデータセットのみで自動実行（標準データセットはスキップ）
-    - 5つの検証項目: データ型、欠損値、ラベル範囲、整合性、クラス分布
-    - 詳細な検証結果とクラスごとのサンプル数表示
-
-Phase 2実装（2025-12-20）: カスタムデータセット対応 ✅
-  ■ カスタムデータローダー
-    - metadata.json対応の柔軟なデータセット管理
-    - .npy形式ファイルの読み込み
-    - 自動正規化・フラット化機能
-  
-  ■ データセットパス解決機能
-    - 標準データセット名（mnist, fashion, cifar10, cifar100）の自動認識
-    - カスタムデータセットの柔軟なパス指定
-    - 検索優先順位: 指定パス → ~/.keras/datasets/ → カレントディレクトリ
-  
-  ■ 使用例
-    # 標準データセット
-    python columnar_ed_ann_v027_3.py --dataset mnist
-    python columnar_ed_ann_v027_3.py --dataset cifar10
-    
-    # カスタムデータセット（名前指定）
-    python columnar_ed_ann_v027_3.py --dataset my_custom_data
-    # → ~/.keras/datasets/my_custom_data/ を検索
-    
-    # カスタムデータセット（パス指定）
-    python columnar_ed_ann_v027_3.py --dataset /path/to/my_data
-    
-  ■ カスタムデータセットの準備
-    データセットディレクトリ構造:
-      my_custom_data/
-      ├── metadata.json       # メタデータ（必須）
-      ├── x_train.npy        # 訓練データ（必須）
-      ├── y_train.npy        # 訓練ラベル（必須）
-      ├── x_test.npy         # テストデータ（必須）
-      └── y_test.npy         # テストラベル（必須）
-    
-    metadata.json形式:
-      {
-          "name": "my_custom_data",
-          "n_classes": 10,
-          "input_shape": [28, 28],  // または [32, 32, 3]
-          "normalize": true,         // 0-255 → 0-1正規化が必要か
-          "class_names": ["class0", "class1", ...],  // オプション
-          "description": "データセットの説明（オプション）"
-      }
-
-Phase 1実装（2025-12-20）: 基本自動検出機能 ✅
-  ■ 入力次元とクラス数の自動検出
-    - データから自動的に入力次元を検出（784, 3072, etc.）
-    - クラス数も自動検出（10, 100, etc.）
-    - CIFAR-10などの大規模データセットに自動対応
-  
-  ■ --dataset引数の統一
-    - 新形式: --dataset mnist, --dataset fashion, --dataset cifar10
-    - 後方互換性: --fashion も引き続き使用可能
-
-【v027.2の主要変更点】
-本バージョンでは、TensorFlow Dataset API一本化により、コードの簡潔性と国際的信頼性を実現しました。
-
-■ NumPyシャッフル実装の完全削除
-  - modules/ed_network.py から train_epoch_minibatch() メソッド削除（60行削減）
-  - すべてのシャッフル機能を TensorFlow Dataset API に統一
-  - 保守負荷の軽減、コード複雑度の低下
-
-■ TensorFlow Dataset API一本化
-  - 業界標準手法の採用による国際的信頼性の確立
-  - 学習安定性35.6%向上（標準偏差: NumPy 8.24% → TensorFlow 5.31%）
-  - 精度同等性を70エポック実験で検証（最終精度完全一致: 75.60%）
-  - seed引数は常にTensorFlow Dataset APIに渡される（完全な再現性保証）
-  - 詳細: TENSORFLOW_DATALOADER_GUIDE.md 参照
-
-■ インターフェース設計の改善
-  - --batch 引数のデフォルト: 0 → None（オンライン学習がより直感的に）
-  - --shuffle 引数: オンライン学習とミニバッチ学習の両方に対応
-  - 4つの学習モード:
-    * 引数なし → オンライン学習（シャッフルなし）
-    * --shuffle → オンライン学習（シャッフルあり、batch_size=1）
-    * --batch N → ミニバッチ学習（シャッフルなし）
-    * --batch N --shuffle → ミニバッチ学習（シャッフルあり）
-
-【v027について】
-本ファイルは columnar_ed_ann_v026_multiclass_multilayer_modular_B_simplified.py からコピーして作成されました。
-v026_B_simplifiedをベースとして、今後の実装変更はv027で行います。
-
-モジュール構成:
-  - modules/hyperparameters.py: パラメータテーブル
-  - modules/data_loader.py: データセット読み込み（TensorFlow Data API統合、カスタムデータ対応）
-  - modules/activation_functions.py: 活性化関数
-  - modules/neuron_structure.py: E/Iペア構造
-  - modules/amine_diffusion.py: アミン拡散
-  - modules/column_structure.py: コラム構造
-  - modules/ed_network.py: メインネットワーク（TensorFlow一本化、NumPy削除）
-  - modules/visualization_manager.py: 可視化
-
-検証結果 (v026_B_simplified時点):
-    テスト精度 78.10% 達成 (2025-12-13)
-    コマンド:
-        python3 columnar_ed_ann_v026_multiclass_multilayer_modular_B_simplified.py \\
-            --train 3000 --test 3000 --epochs 30 --hidden 512 --lr 0.20 \\
-            --u1 0.5 --lateral_lr 0.08 --participation_rate 0.71 --seed 42
-
-TensorFlowデータローダー検証 (v027.2):
-    【NumPy vs TensorFlow 比較実験】(70エポック、2025-12-20)
-    - 学習A (NumPy): Best 82.90%, Final 75.60%, SD 8.24%
-    - 学習B (TensorFlow): Best 82.40%, Final 75.60%, SD 5.31%
-    - 結論: 精度同等、安定性35.6%向上 → NumPy削除・TensorFlow一本化を決定
-    
-    【4モード動作検証】(v027.2最終版、2025-12-20)
-    - オンライン（シャッフルなし）: ✓ PASS
-    - オンライン（シャッフルあり）: ✓ PASS  
-    - ミニバッチ（シャッフルなし）: ✓ PASS
-    - ミニバッチ（シャッフルあり）: ✓ PASS
-    
-    詳細: TENSORFLOW_DATALOADER_GUIDE.md 参照
 """
 
 import os
@@ -202,9 +65,9 @@ def parse_args():
     ed_group.add_argument('--lr', type=float, default=None,
                          help='学習率（層数により自動設定: 1層=0.20, 2層=0.25、明示指定で上書き）')
     ed_group.add_argument('--u1', type=float, default=None,
-                         help='アミン拡散係数u1（層数により自動設定: 1層=0.5, 2層=0.5、明示指定で上書き）')
+                         help='アミン拡散係数u1（出力層→最終隠れ層、層数により自動設定: 1層=0.5, 2層=0.5、明示指定で上書き）')
     ed_group.add_argument('--u2', type=float, default=None,
-                         help='アミン拡散係数u2（層数により自動設定: 1層=0.8, 2層=0.8、明示指定で上書き）')
+                         help='アミン拡散係数u2（隠れ層間、層数により自動設定: 1層=0.8, 2層=0.8、明示指定で上書き）')
     ed_group.add_argument('--lateral_lr', type=float, default=None,
                          help='側方抑制の学習率（層数により自動設定: 1層=0.08, 2層=0.08、明示指定で上書き）')
     ed_group.add_argument('--gradient_clip', type=float, default=0.05,
@@ -243,11 +106,14 @@ def parse_args():
                           help='学習曲線のリアルタイム可視化を有効化')
     viz_group.add_argument('--heatmap', action='store_true',
                           help='活性化ヒートマップの表示を有効化（--vizと併用）')
-    viz_group.add_argument('--save_viz', type=str, nargs='?', const='viz_results',
+    viz_group.add_argument('--save_viz', type=str, nargs='?', const='viz_results/',
                           default=None, metavar='PATH',
                           help='可視化結果を保存。'
-                               'パス指定: ディレクトリまたはベースファイル名（例: results/exp1, my_exp.png）。'
-                               '引数なし: viz_results/ディレクトリにタイムスタンプ付きで保存。'
+                               'パス指定: 末尾"/"でディレクトリ（タイムスタンプ付き）、末尾"/"なしでベースファイル名。'
+                               '例: results/ → results/viz_results_20251221_153045.png、'
+                               'results/exp1 → results/exp1.png。'
+                               '学習曲線とヒートマップを同時に保存する場合は、_viz.pngと_heatmap.pngが付加されます。'
+                               '引数なし: viz_results/にタイムスタンプ付きで保存。'
                                'オプション未指定: 保存しない。')
     
     return parser.parse_args()
@@ -267,10 +133,6 @@ def main():
     else:
         print("\n=== 乱数シード: ランダム ===")
         print("再現性モード: 無効（毎回異なる結果）\n")
-    
-    print("=" * 80)
-    print("Columnar ED-ANN v027.1 - Modular Version")
-    print("=" * 80)
     
     # HyperParams設定一覧の表示
     if args.list_hyperparams:
@@ -441,7 +303,8 @@ def main():
     train_dataset_tf = None
     if args.batch is not None:
         # ミニバッチ学習
-        print(f"TensorFlow Dataset API使用: batch={args.batch}, shuffle={args.shuffle}, seed={args.seed}")
+        shuffle_status = "シャッフルあり" if args.shuffle else "シャッフルなし"
+        print(f"ミニバッチ学習モード: batch={args.batch}, {shuffle_status}, seed={args.seed}")
         train_dataset_tf = create_tf_dataset(
             x_train, y_train,
             batch_size=args.batch,
@@ -450,7 +313,7 @@ def main():
         )
     elif args.shuffle:
         # オンライン学習 + シャッフル（batch_size=1のTensorFlow Dataset）
-        print(f"TensorFlow Dataset API使用: batch=1 (オンライン学習), shuffle=True, seed={args.seed}")
+        print(f"オンライン学習モード: シャッフルあり, seed={args.seed}")
         train_dataset_tf = create_tf_dataset(
             x_train, y_train,
             batch_size=1,
@@ -459,7 +322,7 @@ def main():
         )
     else:
         # オンライン学習（シャッフルなし）
-        print(f"オンライン学習モード: シャッフルなし")
+        print(f"オンライン学習モード: シャッフルなし, seed={args.seed}")
     
     train_acc, train_loss, test_acc, test_loss = 0, 0, 0, 0
     best_test_acc = 0.0
@@ -567,9 +430,13 @@ def main():
     
     # 可視化の最終処理
     if viz_manager is not None:
-        viz_manager.save_figures()
-        if args.save_viz:
-            print(f"\n可視化結果を保存しました: {args.save_viz}")
+        saved_viz, saved_heatmap = viz_manager.save_figures()
+        if saved_viz or saved_heatmap:
+            print("\n可視化結果を保存しました:")
+            if saved_viz:
+                print(f"  - 学習曲線: {saved_viz}")
+            if saved_heatmap:
+                print(f"  - ヒートマップ: {saved_heatmap}")
     
     print("\n" + "=" * 70)
 

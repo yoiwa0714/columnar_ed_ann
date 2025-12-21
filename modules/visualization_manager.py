@@ -148,8 +148,8 @@ class VisualizationManager:
         save_path : str or None
             保存パス（ディレクトリまたはベースファイル名）
             - None: 保存なし
-            - ディレクトリ: そのディレクトリに保存（タイムスタンプ付き）
-            - ファイル名: そのファイル名で保存（_viz.png, _heatmap.png を追加）
+            - 末尾が'/'のパス: ディレクトリとして扱い、タイムスタンプ付きファイル名で保存
+            - 末尾が'/'以外: ベースファイル名として扱い、_viz.png, _heatmap.png を追加
         total_epochs : int
             総エポック数（学習曲線の横軸設定用）
         """
@@ -161,22 +161,24 @@ class VisualizationManager:
         
         # save_pathの処理
         if save_path is not None:
-            save_path_obj = Path(save_path)
-            
-            # ディレクトリの場合（既存 or 拡張子なし）
-            if save_path_obj.is_dir() or not save_path_obj.suffix:
-                # ディレクトリを作成
+            # 末尾が'/'の場合、ディレクトリとして扱う
+            if save_path.endswith('/'):
+                save_path_obj = Path(save_path)
                 save_path_obj.mkdir(parents=True, exist_ok=True)
                 # タイムスタンプ付きベース名を作成
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                 self.save_path = str(save_path_obj / f'viz_results_{timestamp}')
             else:
-                # ファイル名の場合
+                # ファイル名として扱う（拡張子の有無に関わらず）
+                save_path_obj = Path(save_path)
                 # 親ディレクトリを作成
                 if save_path_obj.parent != Path('.'):
                     save_path_obj.parent.mkdir(parents=True, exist_ok=True)
-                # 拡張子を除去してベース名として保存
-                self.save_path = str(save_path_obj.with_suffix(''))
+                # 画像拡張子(.png, .jpg等)のみ除去、その他はそのまま使用
+                if save_path_obj.suffix.lower() in ['.png', '.jpg', '.jpeg', '.pdf', '.svg']:
+                    self.save_path = str(save_path_obj.with_suffix(''))
+                else:
+                    self.save_path = save_path
         else:
             self.save_path = None
         
@@ -419,16 +421,25 @@ class VisualizationManager:
         save_path_viz = None
         save_path_heatmap = None
         
+        # 両方有効な場合は区別のため接尾辞を追加、片方のみの場合は.pngのみ
         if self.enable_viz and self.fig_viz is not None:
-            # _viz.png を追加
-            save_path_viz = f"{self.save_path}_viz.png"
+            if self.enable_heatmap and self.fig_heatmap is not None:
+                # 両方有効な場合は区別のため _viz.png を追加
+                save_path_viz = f"{self.save_path}_viz.png"
+            else:
+                # 学習曲線のみの場合は .png のみ追加
+                save_path_viz = f"{self.save_path}.png"
             plt.figure(self.fig_viz.number)
             plt.savefig(save_path_viz, dpi=150, bbox_inches='tight')
             print(f"[学習曲線保存] {save_path_viz}")
         
         if self.enable_heatmap and self.fig_heatmap is not None:
-            # _heatmap.png を追加
-            save_path_heatmap = f"{self.save_path}_heatmap.png"
+            if self.enable_viz and self.fig_viz is not None:
+                # 両方有効な場合は区別のため _heatmap.png を追加
+                save_path_heatmap = f"{self.save_path}_heatmap.png"
+            else:
+                # ヒートマップのみの場合は .png のみ追加
+                save_path_heatmap = f"{self.save_path}.png"
             plt.figure(self.fig_heatmap.number)
             plt.savefig(save_path_heatmap, dpi=150, bbox_inches='tight')
             print(f"[ヒートマップ保存] {save_path_heatmap}")
