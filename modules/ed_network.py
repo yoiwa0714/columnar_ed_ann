@@ -413,11 +413,21 @@ class RefinedDistributionEDNetwork:
             else:
                 diffusion_coef = self.u2
             
-            # アミン拡散
+            # ★v028修正★ オリジナルCコード準拠のアミン拡散
+            # Cコード（teach_calc.c 26-27行目）:
+            #   del_ot[l][k][0] = inival1*u1;  // アミン濃度にu1を直接乗算（全ニューロン一律）
+            #   del_ot[l][k][1] = inival2*u1;
+            # 
+            # 修正前（v027）: amine × u1 × column_affinity（u1の効果が減衰）
+            # 修正後（v028）: (amine × u1) × column_affinity（オリジナルED法準拠）
             amine_mask = amine_concentration_output >= 1e-8
+            
+            # ステップ1: アミン濃度に拡散係数を適用（全ニューロン一律、オリジナルED法）
+            amine_diffused = amine_concentration_output * diffusion_coef  # [n_output, 2]
+            
+            # ステップ2: コラム構造で重み付け（コラムED法の拡張）
             amine_hidden_3d = (
-                amine_concentration_output[:, :, np.newaxis] * 
-                diffusion_coef * 
+                amine_diffused[:, :, np.newaxis] * 
                 self.column_affinity_all_layers[layer_idx][:, np.newaxis, :]
             )
             amine_hidden_3d = amine_hidden_3d * amine_mask[:, :, np.newaxis]
@@ -799,11 +809,15 @@ class RefinedDistributionEDNetwork:
             else:
                 diffusion_coef = self.u2
             
-            # アミン拡散
+            # ★v028修正★ オリジナルCコード準拠のアミン拡散（legacy版も同様に修正）
             amine_mask = amine_concentration_output >= 1e-8
+            
+            # ステップ1: アミン濃度に拡散係数を適用（全ニューロン一律）
+            amine_diffused = amine_concentration_output * diffusion_coef
+            
+            # ステップ2: コラム構造で重み付け
             amine_hidden_3d = (
-                amine_concentration_output[:, :, np.newaxis] * 
-                diffusion_coef * 
+                amine_diffused[:, :, np.newaxis] * 
                 self.column_affinity_all_layers[layer_idx][:, np.newaxis, :]
             )
             amine_hidden_3d = amine_hidden_3d * amine_mask[:, :, np.newaxis]
