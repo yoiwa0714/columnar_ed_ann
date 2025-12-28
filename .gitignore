@@ -8,3 +8,10 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+
+# Backup files
+*_backup*.py
+*_no_norm.py
+
+# Serena directory
+.serena/

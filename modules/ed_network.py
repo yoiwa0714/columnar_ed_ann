@@ -65,7 +65,8 @@ class RefinedDistributionEDNetwork:
                  learning_rate=0.20, lateral_lr=0.08, u1=0.5, u2=0.8,
                  column_radius=None, base_column_radius=1.0, column_neurons=None, participation_rate=1.0,
                  use_hexagonal=True, overlap=0.0, activation='tanh', leaky_alpha=0.01,
-                 use_layer_norm=False, gradient_clip=0.0, hyperparams=None):
+                 use_layer_norm=False, gradient_clip=0.0, hyperparams=None,
+                 weight_init_scales=None, weight_init_source=None):
         """
         初期化
         
@@ -84,6 +85,8 @@ class RefinedDistributionEDNetwork:
             use_hexagonal: Trueならハニカム構造、Falseなら旧円環構造
             overlap: コラム間の重複度（0.0-1.0、円環構造でのみ有効、デフォルト0.0）
             hyperparams: HyperParamsインスタンス（Noneなら個別パラメータ使用）
+            weight_init_scales: 重み初期化係数のリスト（[Layer0, Layer1, ..., 出力層]、Noneなら自動取得）
+            weight_init_source: 値の出処（'CLI', 'HyperParams', 'デフォルト値'）
         
         HyperParams統合の使用例:
             # パターン1: HyperParamsを使用
@@ -142,13 +145,14 @@ class RefinedDistributionEDNetwork:
         self.initial_amine = 1.0  # 基準アミン濃度
         
         # ★新機能★ 層依存のcolumn_radius（シンプルなsqrtスケーリング）
+        # column_radius自動計算（標準版）
         self.base_column_radius = base_column_radius
         if column_radius is None:
-            # 各層のニューロン数に応じて自動計算（基準: 256ニューロン = 1.2）
+            # 自動計算: sqrt(n/256)スケーリング
             self.column_radius_per_layer = [
                 base_column_radius * np.sqrt(n / 256.0) for n in self.n_hidden
             ]
-            print(f"\n[層依存column_radius自動計算]")
+            print(f"\n[column_radius自動計算（標準版）]")
             for i, (n, r) in enumerate(zip(self.n_hidden, self.column_radius_per_layer)):
                 print(f"  Layer {i}: {n}ニューロン → radius={r:.2f}")
         else:
@@ -244,6 +248,25 @@ class RefinedDistributionEDNetwork:
         # ★対策1★ 層ごとに異なる初期化スケールを使用
         # Layer 0: 入力次元が大きい(784*2=1568) → 小さいスケールで飽和を防ぐ
         # Layer 1+: 標準的なXavier初期化
+        
+        # 重み初期化係数の解決（優先順位: 引数 > HyperParams > デフォルト値）
+        resolved_scales = weight_init_scales
+        resolved_source = weight_init_source if weight_init_source else "デフォルト値"
+        
+        if resolved_scales is None and hyperparams is not None:
+            # 引数で指定されていない場合、HyperParamsから取得を試みる
+            try:
+                config = hyperparams.get_config(self.n_layers)
+                resolved_scales = config.get('weight_init_scales', None)
+                if resolved_scales is not None:
+                    resolved_source = "HyperParams"
+                    print(f"  [重み初期化] HyperParamsテーブルから係数を取得: {resolved_scales}")
+            except Exception as e:
+                print(f"  [重み初期化] HyperParams取得エラー: {e}、デフォルト値を使用")
+        elif resolved_scales is not None:
+            # 引数で指定されている場合
+            print(f"  [重み初期化] {resolved_source}から係数を取得: {resolved_scales}")
+        
         self.w_hidden = []
         for layer_idx in range(self.n_layers):
             if layer_idx == 0:
@@ -256,24 +279,40 @@ class RefinedDistributionEDNetwork:
                 n_out = self.n_hidden[layer_idx]
             
             # 層ごとの適応的スケール
-            if layer_idx == 0:
-                # Layer 0: より小さい初期値（元のXavierの0.3倍）で飽和を防ぐ
-                # 理由: 入力次元が大きい(1568) → Wx の絶対値が大きくなる → tanh飽和
-                # 0.1倍では小さすぎたため、0.3倍に調整
-                scale = np.sqrt(1.0 / n_in) * 0.3
-                print(f"  [重み初期化] Layer {layer_idx}: scale={scale:.4f} (飽和防止, 0.3x)")
+            if resolved_scales is not None:
+                # CLI/HyperParamsから取得
+                scale_coef = resolved_scales[layer_idx]
+                scale = np.sqrt(1.0 / n_in) * scale_coef
+                print(f"  [重み初期化] Layer {layer_idx}: scale={scale:.4f} (係数{scale_coef:.2f}, {resolved_source})")
             else:
-                # Layer 1+: 少し小さめのXavier初期化（0.5倍）
-                # Layer 0とのバランスを取るため
-                scale = np.sqrt(1.0 / n_in) * 0.5
-                print(f"  [重み初期化] Layer {layer_idx}: scale={scale:.4f} (調整, 0.5x)")
+                # デフォルト値（後方互換性）
+                if layer_idx == 0:
+                    # Layer 0: デフォルト 1.80
+                    scale_coef = 1.80
+                    scale = np.sqrt(1.0 / n_in) * scale_coef
+                    print(f"  [重み初期化] Layer {layer_idx}: scale={scale:.4f} (係数{scale_coef:.2f}, デフォルト)")
+                else:
+                    # Layer 1+: デフォルト 3.00
+                    scale_coef = 3.00
+                    scale = np.sqrt(1.0 / n_in) * scale_coef
+                    print(f"  [重み初期化] Layer {layer_idx}: scale={scale:.4f} (係数{scale_coef:.2f}, デフォルト)")
             
             w = np.random.randn(n_out, n_in) * scale
             self.w_hidden.append(w)
         
         # 出力層の重み
-        self.w_output = np.random.randn(n_output, self.n_hidden[-1]) * np.sqrt(1.0 / self.n_hidden[-1])
-        print(f"  [重み初期化] 出力層: scale={np.sqrt(1.0 / self.n_hidden[-1]):.4f}")
+        if resolved_scales is not None:
+            # CLI/HyperParamsから取得（最後の要素が出力層）
+            output_scale_coef = resolved_scales[-1]
+            output_scale = np.sqrt(1.0 / self.n_hidden[-1]) * output_scale_coef
+            print(f"  [重み初期化] 出力層: scale={output_scale:.4f} (係数{output_scale_coef:.2f}, {resolved_source})")
+        else:
+            # デフォルト値（後方互換性）
+            output_scale_coef = 12.00
+            output_scale = np.sqrt(1.0 / self.n_hidden[-1]) * output_scale_coef
+            print(f"  [重み初期化] 出力層: scale={output_scale:.4f} (係数{output_scale_coef:.2f}, デフォルト)")
+        
+        self.w_output = np.random.randn(n_output, self.n_hidden[-1]) * output_scale
         
         # Dale's Principleの初期化（必須要素1）- 第1層のみ
         sign_matrix = np.outer(self.ei_flags_hidden[0], self.ei_flags_input)
@@ -407,29 +446,53 @@ class RefinedDistributionEDNetwork:
             else:
                 z_input = z_hiddens[layer_idx - 1]
             
+            # ★v029修正★ パターンD案1: コラム/非コラム分離加算
+            # 
+            # コンセプト: コラム構造部分を中心に、非コラム構造部分を補助的に機能させる
+            # 
+            # オリジナルED法（teach_calc.c）:
+            #   del_ot[l][k][0] = inival1*u1;  // 全ニューロンに一律拡散（コラム構造なし）
+            # 
+            # コラムED法（v029）:
+            #   1. コラム構造部分: amine × column_affinity × u2（中心的機能）
+            #   2. 非コラム構造部分: amine × (1 - column_affinity) × u1（補助的機能）
+            #   3. 統合: コラム + 非コラム（加算）
+            # 
+            # u1/u2の役割:
+            #   • u2: コラム構造部分の倍率調整（通常1.0-1.2、最終層→最終隠れ層用）
+            #   • u1: 非コラム構造部分への拡散（通常0.4-0.8、隠れ層間用）
+            # 
             # 拡散係数の選択
             if layer_idx == self.n_layers - 1:
-                diffusion_coef = self.u1
+                # 最終層: u2をコラム構造用、u1を非コラム構造用
+                u2_coef = self.u1  # オリジナルED法のu1に相当
+                u1_coef = self.u1  # 同じ値を使用（最終層では区別しない）
             else:
-                diffusion_coef = self.u2
+                # 隠れ層間: u2をコラム構造用、u1を非コラム構造用（将来の拡張用）
+                u2_coef = self.u2
+                u1_coef = self.u1
             
-            # ★v028修正★ オリジナルCコード準拠のアミン拡散
-            # Cコード（teach_calc.c 26-27行目）:
-            #   del_ot[l][k][0] = inival1*u1;  // アミン濃度にu1を直接乗算（全ニューロン一律）
-            #   del_ot[l][k][1] = inival2*u1;
-            # 
-            # 修正前（v027）: amine × u1 × column_affinity（u1の効果が減衰）
-            # 修正後（v028）: (amine × u1) × column_affinity（オリジナルED法準拠）
             amine_mask = amine_concentration_output >= 1e-8
             
-            # ステップ1: アミン濃度に拡散係数を適用（全ニューロン一律、オリジナルED法）
-            amine_diffused = amine_concentration_output * diffusion_coef  # [n_output, 2]
-            
-            # ステップ2: コラム構造で重み付け（コラムED法の拡張）
-            amine_hidden_3d = (
-                amine_diffused[:, :, np.newaxis] * 
-                self.column_affinity_all_layers[layer_idx][:, np.newaxis, :]
+            # ステップ1: コラム構造部分（u2で倍率調整）
+            amine_columnar = (
+                amine_concentration_output[:, :, np.newaxis] * 
+                self.column_affinity_all_layers[layer_idx][:, np.newaxis, :] *
+                u2_coef
             )
+            
+            # ステップ2: 非コラム構造部分（u1で拡散）
+            # ★v030修正★ 代替案2: 固定係数0.2を使用
+            # 理由: (1 - column_affinity)や一律適用では非コラム部分が過大
+            #       固定係数でより明確にコラム構造を中心に機能させる
+            amine_non_columnar = (
+                amine_concentration_output[:, :, np.newaxis] * 
+                0.2 *  # 固定係数（調整可能）
+                u1_coef
+            )
+            
+            # ステップ3: 統合（コラム構造 + 非コラム構造）
+            amine_hidden_3d = amine_columnar + amine_non_columnar
             amine_hidden_3d = amine_hidden_3d * amine_mask[:, :, np.newaxis]
             
             # 活性ニューロンの特定

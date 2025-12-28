@@ -173,110 +173,139 @@ def create_hexagonal_column_affinity(n_hidden, n_classes=10, column_radius=3.0,
         r = y
         neuron_coords.append((q, r))
     
-    # 3. 六角距離に基づくガウス型帰属度を計算
+    # 3. 初期化
     affinity = np.zeros((n_classes, n_hidden))
     
-    for class_idx in range(n_classes):
-        if class_idx not in class_coords:
-            continue  # 10クラス超の場合はスキップ
-        
-        class_q, class_r = class_coords[class_idx]
-        
-        for neuron_idx in range(n_hidden):
-            neuron_q, neuron_r = neuron_coords[neuron_idx]
-            
-            # 六角距離
-            dist = hex_distance(class_q, class_r, neuron_q, neuron_r)
-            
-            # ガウス型帰属度（column_radiusが標準偏差σに相当）
-            # ★v024修正★ 仕様書準拠: sigma = column_neurons / 3.0
-            if column_neurons is not None:
-                sigma = column_neurons / 3.0  # 仕様書: 3σ点で帰属度がほぼゼロ
-            else:
-                sigma = column_radius  # 旧方式互換性維持
-            aff = np.exp(-0.5 * (dist / sigma) ** 2)
-            
-            affinity[class_idx, neuron_idx] = aff
-    
-    # 4. コラム参加ニューロンの決定（優先度: participation_rate > column_neurons > radius）
-    # ★v026修正★ participation_rateを最優先に変更（デフォルト1.0で意図しない重複回避）
+    # 4. コラム参加ニューロンの決定（優先順位: participation_rate > column_neurons > radius）
+    # ★v029修正★ 2ステップアプローチ: 先に選択、後で重み付け
     if participation_rate is not None:
-        # モード1（最優先）: 参加率指定
-        # 全体で(n_hidden * participation_rate)個のニューロンが参加するように調整
+        # ★新実装★ モード1（最優先）: 参加率指定
+        # ステップ1: participation_rateで選択数を決定（距離ベース）
         target_neurons = int(n_hidden * participation_rate)
         neurons_per_class = target_neurons // n_classes
         remainder = target_neurons % n_classes  # 余りのニューロン
         
-        assigned = np.zeros(n_hidden, dtype=bool)
-        # ★重要★ participation_rate=1.0（デフォルト）では重複なし（overlap_factor=0.0）
-        # participation_rate<1.0では重複許容（overlap_factor=0.3）
-        overlap_factor = 0.0 if participation_rate >= 0.99 else 0.3
+        # ★重要★ 重複を許容（各クラスが独立に選択）
+        # participation_rateは「各クラスがどれだけニューロンを使うか」を制御
         
         for class_idx in range(n_classes):
-            available_mask = ~assigned
-            available_affinity = affinity[class_idx].copy()
+            if class_idx not in class_coords:
+                continue  # 10クラス超の場合はスキップ
             
-            # overlap許容の場合のみ、割り当て済みニューロンも重み付けで考慮
-            if overlap_factor > 0:
-                available_affinity[~available_mask] *= overlap_factor
-            else:
-                # overlap_factor=0の場合、割り当て済みニューロンは完全に除外
-                available_affinity[~available_mask] = 0
+            class_q, class_r = class_coords[class_idx]
             
-            sorted_indices = np.argsort(available_affinity)[::-1]
+            # 幾何学的距離でソート（全ニューロンを対象）
+            distances = []
+            for neuron_idx in range(n_hidden):
+                neuron_q, neuron_r = neuron_coords[neuron_idx]
+                dist = hex_distance(class_q, class_r, neuron_q, neuron_r)
+                distances.append((neuron_idx, dist))
             
-            # 余りニューロンを最初のremainder個のクラスに+1個ずつ分配
+            # 距離の近い順にソート
+            distances.sort(key=lambda x: x[1])
+            
+            # 目標数分を選択（重複を許容）
             n_neurons_for_this_class = neurons_per_class + (1 if class_idx < remainder else 0)
+            selected_neurons = [idx for idx, _ in distances[:n_neurons_for_this_class]]
             
-            selected = sorted_indices[:n_neurons_for_this_class]
+            # ステップ2: base_column_radiusで親和性（重み付け）を計算
+            # ★v029_variant2★ 距離ベース重み再配分版
+            # 参加率に応じて重み付け関数を変える
+            sigma = column_radius
             
-            # ★v027修正★ v026の元のマスク方式に戻す
-            # 極小アフィニティ値は自然に閾値判定で除外される（意図的な部分参加）
-            mask = np.zeros(n_hidden)
-            mask[selected] = 1
-            affinity[class_idx] *= mask
+            # 最大距離を計算（正規化用）
+            max_dist = max(hex_distance(class_q, class_r, neuron_coords[idx][0], neuron_coords[idx][1]) 
+                          for idx in selected_neurons)
+            if max_dist < 1e-10:
+                max_dist = 1.0  # ゼロ除算回避
             
-            assigned[selected] = True
+            for neuron_idx in selected_neurons:
+                neuron_q, neuron_r = neuron_coords[neuron_idx]
+                dist = hex_distance(class_q, class_r, neuron_q, neuron_r)
+                
+                # 参加率に応じた重み付け関数
+                if participation_rate is not None and participation_rate < 0.7:
+                    # 低参加率: 指数的減衰（集中型）
+                    # 近くのニューロンに高い重み
+                    weight = np.exp(-dist * 2.0)
+                else:
+                    # 高参加率: 線形減衰（分散型）
+                    # 広い範囲に重みを分散
+                    weight = max(0.0, 1.0 - dist / max_dist)
+                
+                affinity[class_idx, neuron_idx] = weight
     
     elif column_neurons is not None:
-        # モード2（中優先）: 明示的なニューロン数指定
-        # 各クラスに正確にcolumn_neurons個を割り当て（重複許容）
+        # ★新実装★ モード2（中優先）: 明示的なニューロン数指定
+        # ステップ1: 距離ベースで選択
         assigned = np.zeros(n_hidden, dtype=bool)
         overlap_factor = 0.3  # 情報共有と専門化のバランス
         
         for class_idx in range(n_classes):
-            available_mask = ~assigned
-            available_affinity = affinity[class_idx].copy()
+            if class_idx not in class_coords:
+                continue
             
-            # overlap許容: 割り当て済みニューロンも重み付けで考慮
-            available_affinity[~available_mask] *= overlap_factor
+            class_q, class_r = class_coords[class_idx]
             
-            sorted_indices = np.argsort(available_affinity)[::-1]
-            selected = sorted_indices[:column_neurons]
+            # 距離でソート
+            distances = []
+            for neuron_idx in range(n_hidden):
+                neuron_q, neuron_r = neuron_coords[neuron_idx]
+                dist = hex_distance(class_q, class_r, neuron_q, neuron_r)
+                
+                # overlap処理
+                if assigned[neuron_idx]:
+                    dist = dist / overlap_factor
+                
+                distances.append((neuron_idx, dist))
             
-            mask = np.zeros(n_hidden)
-            mask[selected] = 1
-            affinity[class_idx] *= mask
+            distances.sort(key=lambda x: x[1])
+            selected_neurons = [idx for idx, _ in distances[:column_neurons]]
             
-            assigned[selected] = True
+            # ステップ2: 親和性を計算
+            sigma = column_neurons / 3.0  # 仕様書準拠
+            for neuron_idx in selected_neurons:
+                neuron_q, neuron_r = neuron_coords[neuron_idx]
+                dist = hex_distance(class_q, class_r, neuron_q, neuron_r)
+                affinity[class_idx, neuron_idx] = np.exp(-0.5 * (dist / sigma) ** 2)
+            
+            for idx in selected_neurons:
+                assigned[idx] = True
                     
     else:
-        # モード3: 従来のradius方式（閾値処理のみ）
-        threshold = np.exp(-0.5 * 9)  # 3σ点
+        # モード3: 従来のradius方式（閾値処理）
+        # ★注意★ このモードは旧互換性のため残しているが、非推奨
+        # 先に親和性を計算してから閾値処理
         for class_idx in range(n_classes):
+            if class_idx not in class_coords:
+                continue
+            
+            class_q, class_r = class_coords[class_idx]
+            
             for neuron_idx in range(n_hidden):
-                if affinity[class_idx, neuron_idx] < threshold:
-                    affinity[class_idx, neuron_idx] = 0
+                neuron_q, neuron_r = neuron_coords[neuron_idx]
+                dist = hex_distance(class_q, class_r, neuron_q, neuron_r)
+                
+                # ガウス型帰属度
+                sigma = column_radius
+                aff = np.exp(-0.5 * (dist / sigma) ** 2)
+                
+                # 閾値処理（3σ点）
+                threshold = np.exp(-0.5 * 9)
+                if aff >= threshold:
+                    affinity[class_idx, neuron_idx] = aff
     
     # 5. 正規化（各クラスの帰属度合計を一定に）
+    # ★v029★ 正規化処理を復活（参加率に応じた正規化）
     for class_idx in range(n_classes):
         total = np.sum(affinity[class_idx])
         if total > 1e-8:
             if column_neurons is not None:
-                # 明示的ニューロン数の場合: 合計をcolumn_neuronsに正規化
                 affinity[class_idx] *= (column_neurons / total)
+            elif participation_rate is not None:
+                target_sum = column_radius * 10 * participation_rate
+                affinity[class_idx] *= (target_sum / total)
             else:
-                # radius方式: 合計をradius依存のスケールに正規化
                 target_sum = column_radius * 10
                 affinity[class_idx] *= (target_sum / total)
     

@@ -1,0 +1,78 @@
+# ハイパーパラメータ設定（初期状態・リファレンス用）
+# このファイルは初期状態の参照用です
+# 編集する場合は hyperparameters.yaml を使用してください
+
+layer_params:
+  1:  # 1層構成
+    hidden: [512]
+    learning_rate: 0.10
+    u1: 1.0
+    u2: 1.5
+    lateral_lr: 0.08
+    base_column_radius: 0.4
+    column_radius_per_layer: [0.57]
+    participation_rate: 0.71
+    weight_init_scales: [1.25, 2.0]
+    epochs: 80
+    description: '1層構成、2層最適パラメータから推定（2025-12-28）'
+    
+  2:  # 2層構成
+    hidden: [512, 256]
+    learning_rate: 0.1
+    u1: 1.0
+    u2: 1.5
+    lateral_lr: 0.08
+    base_column_radius: 0.4
+    column_radius_per_layer: [0.57, 0.40]
+    participation_rate: 0.71
+    weight_init_scales: [1.25, 1.75, 2.0]
+    epochs: 80
+    description: '2層最適構成、512,256構成、85.10%達成（2025-12-28、訓練3000で再現性確認）'
+    
+  3:  # 3層構成（最適化予定）
+    hidden: [256, 128, 64]
+    learning_rate: 0.35
+    u1: 0.5
+    u2: 0.5
+    lateral_lr: 0.08
+    base_column_radius: 1.0
+    column_radius_per_layer: [1.0, 0.71, 0.50]
+    participation_rate: 1.0
+    weight_init_scales: null
+    epochs: 50
+    description: '3層標準構成（最適化予定、現在25.8%）'
+    
+  4:  # 4層構成（最適化予定）
+    hidden: [256, 128, 96, 64]
+    learning_rate: 0.35
+    u1: 0.5
+    u2: 0.5
+    lateral_lr: 0.08
+    base_column_radius: 1.0
+    column_radius_per_layer: [1.0, 0.71, 0.61, 0.50]
+    participation_rate: 1.0
+    weight_init_scales: null
+    epochs: 50
+    description: '4層標準構成（最適化予定）'
+    
+  5:  # 5層構成（最適化予定）
+    hidden: [256, 128, 96, 80, 64]
+    learning_rate: 0.35
+    u1: 0.5
+    u2: 0.5
+    lateral_lr: 0.08
+    base_column_radius: 1.0
+    column_radius_per_layer: [1.0, 0.71, 0.61, 0.56, 0.50]
+    participation_rate: 1.0
+    weight_init_scales: null
+    epochs: 50
+    description: '5層標準構成（最適化予定）'
+
+common_params:
+  w1: 1.0
+  column_overlap: 0.1
+  column_ratio: 0.2
+  time_loops: 2
+  dataset: 'mnist'
+  train_samples: 10000
+  test_samples: 2000

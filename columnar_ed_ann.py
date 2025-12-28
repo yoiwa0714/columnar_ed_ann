@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-バージョン番号: 1.028.1
+コラムED法
+columnar_ed_ann.py version: 1.29.1
 """
 
 import os
@@ -16,6 +17,49 @@ from modules.hyperparameters import HyperParams
 from modules.data_loader import load_dataset, create_tf_dataset, get_class_names
 from modules.ed_network import RefinedDistributionEDNetwork
 from modules.visualization_manager import VisualizationManager
+
+
+def parse_weight_init_scales(wis_str):
+    """
+    重み初期化係数の文字列をパース
+    
+    記法:
+        "2.25, 2.75, 12.00"           -> [2.25, 2.75, 12.00]
+        "2.25, 3.0[9], 12.00"         -> [2.25, 3.0, 3.0, ..., 3.0, 12.00] (3.0が9個)
+        "2.0, 3.0[5], 3.5[3], 12.00"  -> [2.0, 3.0×5, 3.5×3, 12.00]
+    
+    Args:
+        wis_str: 重み初期化係数の文字列
+    
+    Returns:
+        list[float]: パース済みの係数リスト
+    
+    Raises:
+        ValueError: 不正な形式の場合
+    """
+    import re
+    
+    scales = []
+    items = [item.strip() for item in wis_str.split(',')]
+    
+    for item in items:
+        # 繰り返し記法のチェック: "3.0[10]"
+        match = re.match(r'^([\d.]+)\[(\d+)\]$', item)
+        if match:
+            value = float(match.group(1))
+            count = int(match.group(2))
+            if count <= 0:
+                raise ValueError(f"繰り返し回数は1以上である必要があります: {item}")
+            scales.extend([value] * count)
+        else:
+            # 通常の値
+            try:
+                scales.append(float(item))
+            except ValueError:
+                raise ValueError(f"不正な値の形式です: '{item}'\n"
+                               f"正しい形式: '2.25' または '3.0[10]' (値[繰り返し回数])")
+    
+    return scales
 
 
 def parse_args():
@@ -95,6 +139,14 @@ def parse_args():
                              help='コラム間の重複度（デフォルト値: 0.0、0.0-1.0、円環構造でのみ有効、0.0=重複なし）')
     column_group.add_argument('--diagnose_column', action='store_true',
                              help='コラム構造の詳細診断を実行')
+    column_group.add_argument('--wis', '--weight_init_scales', type=str, default=None,
+                             dest='weight_init_scales',
+                             help='重み初期化係数。隠れ層と出力層分を合わせて指定する。\n'
+                                  'カンマ区切り、繰り返しは値[回数]で指定。\n'
+                                  '例: 2.25,2.75,12.00 (隠れ層2層と出力層)\n'
+                                  '    2.25,3.0[9],12.00 (隠れ層10層と出力層。Layer1-9を3.0に設定)\n'
+                                  '    2.0,3.0[99],12.00 (隠れ層100層と出力層)\n'
+                                  'デフォルト: HyperParamsテーブルから自動取得')
     
     # ========================================
     # 可視化関連のパラメータ
@@ -195,6 +247,57 @@ def main():
         print("個別パラメータで継続します。\n")
     
     # ========================================
+    # 2.5 重み初期化係数の解決
+    # ========================================
+    weight_init_scales = None
+    weight_init_source = None
+    
+    if args.weight_init_scales:
+        # コマンドライン引数で指定された場合
+        try:
+            weight_init_scales = parse_weight_init_scales(args.weight_init_scales)
+            
+            # 層数との整合性チェック
+            expected_count = n_layers + 1  # 隠れ層 + 出力層
+            actual_count = len(weight_init_scales)
+            if actual_count != expected_count:
+                print("\n" + "="*70)
+                print("エラー: --hiddenと--wisの層数が一致しません")
+                print("="*70)
+                print(f"--hidden指定: {args.hidden}")
+                print(f"  → 隠れ層数: {n_layers}層 + 出力層 = 合計{expected_count}個の係数が必要")
+                print(f"\n--wis指定: {args.weight_init_scales}")
+                print(f"  → パース結果: {weight_init_scales}")
+                print(f"  → 係数の個数: {actual_count}個")
+                print(f"\n不足/過剰: {actual_count - expected_count:+d}個")
+                print("="*70 + "\n")
+                raise ValueError(
+                    f"層数不一致: {expected_count}個の係数が必要ですが、{actual_count}個指定されました"
+                )
+            
+            weight_init_source = "CLI"
+            print(f"[重み初期化係数] コマンドライン引数から取得: {weight_init_scales}")
+        except ValueError as e:
+            print(f"エラー: --wis引数のパースに失敗しました: {e}")
+            print("HyperParamsテーブルの値を使用します。\n")
+            args.weight_init_scales = None  # エラー時はHyperParams使用
+    
+    if weight_init_scales is None:
+        # HyperParamsテーブルから取得
+        try:
+            config = hp.get_config(n_layers)
+            weight_init_scales = config.get('weight_init_scales', None)
+            if weight_init_scales:
+                weight_init_source = "HyperParams"
+                print(f"[重み初期化係数] HyperParamsテーブルから取得: {weight_init_scales}")
+            else:
+                weight_init_source = "デフォルト値"
+                print(f"[重み初期化係数] HyperParamsに未設定のため、デフォルト値を使用")
+        except:
+            weight_init_source = "デフォルト値"
+            print(f"[重み初期化係数] HyperParams取得失敗、デフォルト値を使用")
+    
+    # ========================================
     # 3. データ読み込み
     # ========================================
     # データセット名の解決（優先順位: --dataset > --fashion > デフォルト）
@@ -255,7 +358,9 @@ def main():
         overlap=args.overlap,
         gradient_clip=args.gradient_clip,
         activation=args.activation,  # activationパラメータを追加
-        hyperparams=None  # HyperParamsの処理は既に完了しているのでNoneを渡す
+        hyperparams=hp,  # HyperParamsインスタンスを渡す（重み初期化係数の取得に必要）
+        weight_init_scales=weight_init_scales,  # CLI/HyperParamsから取得した値
+        weight_init_source=weight_init_source  # 値の出処を記録
     )
     
     # コラム構造の診断（オプション）

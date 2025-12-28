@@ -6,6 +6,10 @@
   - 1-5層の最適化済みパラメータテーブル管理
   - 層数に基づく自動パラメータ選択
   - 6層以上のフォールバック処理
+  - 外部YAMLファイルからの設定読み込み
+
+関数:
+  - load_hyperparameters: YAMLファイルからパラメータを読み込む
 
 クラス:
   - HyperParams: パラメータテーブル管理クラス
@@ -18,12 +22,70 @@
     # → 2層構成の最適化済みパラメータを取得
 """
 
+import yaml
+import os
+from pathlib import Path
+
+
+def load_hyperparameters(config_path=None):
+    """
+    YAMLファイルからハイパーパラメータを読み込む
+    
+    Args:
+        config_path: YAMLファイルのパス（Noneの場合はデフォルトパスを使用）
+    
+    Returns:
+        dict: YAMLファイルから読み込んだパラメータ辞書
+    
+    Raises:
+        FileNotFoundError: YAMLファイルが見つからない場合
+        yaml.YAMLError: YAMLの解析エラー
+    
+    Notes:
+        - デフォルトパス: config/hyperparameters.yaml
+        - エラー時はconfig/hyperparameters_initial.yamlを参照してください
+    """
+    if config_path is None:
+        # デフォルトパス: プロジェクトルート/config/hyperparameters.yaml
+        project_root = Path(__file__).parent.parent
+        config_path = project_root / 'config' / 'hyperparameters.yaml'
+    
+    config_path = Path(config_path)
+    
+    if not config_path.exists():
+        raise FileNotFoundError(
+            f"設定ファイルが見つかりません: {config_path}\n"
+            f"config/hyperparameters_initial.yaml を参照して作成してください。"
+        )
+    
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = yaml.safe_load(f)
+        
+        if config is None:
+            raise ValueError(f"設定ファイルが空です: {config_path}")
+        
+        if 'layer_params' not in config:
+            raise ValueError(
+                f"設定ファイルに 'layer_params' セクションがありません: {config_path}"
+            )
+        
+        return config
+        
+    except yaml.YAMLError as e:
+        raise yaml.YAMLError(
+            f"YAMLの解析に失敗しました: {config_path}\n"
+            f"エラー: {e}\n"
+            f"config/hyperparameters_initial.yaml を参照して修正してください。"
+        )
+
 
 class HyperParams:
     """
     層数依存パラメータをテーブル管理するクラス
     
     設計方針:
+      - 外部YAMLファイルから設定を読み込み
       - 層数ごとに最適化されたパラメータセットを提供
       - column_radius等の層数依存パラメータを一元管理
       - 初学者にも分かりやすいテーブル形式
@@ -40,95 +102,23 @@ class HyperParams:
       )
     """
     
-    def __init__(self):
-        """層数別最適設定テーブルの初期化"""
+    def __init__(self, config_path=None):
+        """
+        YAMLファイルから設定を読み込んで初期化
+        
+        Args:
+            config_path: YAMLファイルのパス（Noneの場合はデフォルトパスを使用）
+        """
+        # YAMLファイルから設定を読み込み
+        config = load_hyperparameters(config_path)
         
         # 層数別設定テーブル
-        # - base=1.0が最適（2025-12-04実験結果）
-        # - スケーリング則: radius = base × sqrt(neurons/256)
-        # - 各構成は個別に最適化済み
-        self.layer_configs = {
-            # 1層構成（最適パラメータ確定）
-            1: {
-                'hidden': [512],
-                'learning_rate': 0.20,
-                'u1': 0.5,
-                'u2': 0.8,
-                'lateral_lr': 0.08,
-                'base_column_radius': 0.4,
-                'column_radius_per_layer': [0.57],  # [sqrt(512/256) * 0.4]
-                'participation_rate': 0.1,  # 最適値確定（2025-12-15）
-                'epochs': 30,
-                'description': '1層最適構成、84.50%テスト精度達成（2025-12-14、pr=0.1確定）'
-            },
-            
-            # 2層構成（最適化中 - 2025-12-19更新）
-            2: {
-                'hidden': [1024, 512],
-                'learning_rate': 0.25,  # 0.7から削減→安定性向上
-                'u1': 0.5,
-                'u2': 0.8,  # 1層の最適値を適用
-                'lateral_lr': 0.08,  # 1層の最適値を適用（0.6は不安定）
-                'base_column_radius': 0.4,  # 1層と同じスケール
-                'column_radius_per_layer': [0.80, 0.57],  # [sqrt(1024/256) * 0.4, sqrt(512/256) * 0.4]
-                'participation_rate': 0.1,  # 1層と共通
-                'epochs': 100,  # 十分なエポック数
-                'description': '2層最適化中、1024,512構成、1層の安定パラメータを適用（2025-12-19）'
-            },
-            
-            # 3層構成（最適化予定）
-            3: {
-                'hidden': [256, 128, 64],
-                'learning_rate': 0.35,  # 2層の最適値を初期値として使用
-                'u1': 0.5,
-                'u2': 0.5,
-                'lateral_lr': 0.08,
-                'base_column_radius': 1.0,
-                'column_radius_per_layer': [1.0, 0.71, 0.50],  # [sqrt(256/256), sqrt(128/256), sqrt(64/256)]
-                'participation_rate': 1.0,
-                'epochs': 50,
-                'description': '3層標準構成（最適化予定、現在25.8%）'
-            },
-            
-            # 4層構成（最適化予定）
-            4: {
-                'hidden': [256, 128, 96, 64],
-                'learning_rate': 0.35,  # 2層の最適値を初期値として使用
-                'u1': 0.5,
-                'u2': 0.5,
-                'lateral_lr': 0.08,
-                'base_column_radius': 1.0,
-                'column_radius_per_layer': [1.0, 0.71, 0.61, 0.50],
-                'participation_rate': 1.0,
-                'epochs': 50,
-                'description': '4層標準構成（最適化予定）'
-            },
-            
-            # 5層構成（最適化予定）
-            5: {
-                'hidden': [256, 128, 96, 80, 64],
-                'learning_rate': 0.35,  # 2層の最適値を初期値として使用
-                'u1': 0.5,
-                'u2': 0.5,
-                'lateral_lr': 0.08,
-                'base_column_radius': 1.0,
-                'column_radius_per_layer': [1.0, 0.71, 0.61, 0.56, 0.50],
-                'participation_rate': 1.0,
-                'epochs': 50,
-                'description': '5層標準構成（最適化予定）'
-            },
-        }
+        self.layer_configs = {}
+        for layer_num, params in config['layer_params'].items():
+            self.layer_configs[int(layer_num)] = params
         
         # 共通パラメータ（層数非依存）
-        self.common_params = {
-            'w1': 1.0,  # 重み初期化範囲
-            'column_overlap': 0.1,
-            'column_ratio': 0.2,
-            'time_loops': 2,
-            'dataset': 'mnist',
-            'train_samples': 10000,
-            'test_samples': 2000,
-        }
+        self.common_params = config.get('common_params', {})
     
     def get_config(self, n_layers):
         """
@@ -175,5 +165,19 @@ class HyperParams:
             print(f"  base_column_radius: {config['base_column_radius']}")
             print(f"  column_radius_per_layer: {config['column_radius_per_layer']}")
             print(f"  participation_rate: {config.get('participation_rate', 'N/A')}")
+            print(f"  weight_init_scales: {config.get('weight_init_scales', 'N/A')}")
             print(f"  epochs: {config['epochs']}")
         print("\n注: 6層以上の構成は5層のパラメータをフォールバックとして使用します")
+
+
+# モジュール読み込み時に早期エラーチェック
+# YAMLファイルの存在と構文の妥当性を確認
+try:
+    _test_config = load_hyperparameters()
+    del _test_config  # テスト用の変数を削除
+except Exception as e:
+    import sys
+    print(f"\n⚠️  警告: ハイパーパラメータ設定の読み込みに失敗しました", file=sys.stderr)
+    print(f"エラー: {e}", file=sys.stderr)
+    print(f"config/hyperparameters_initial.yaml を参照して修正してください。\n", file=sys.stderr)
+    # エラーを出力するが、モジュールの読み込みは継続（他の機能は使える）
