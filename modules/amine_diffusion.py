@@ -158,7 +158,8 @@ def distribute_amine_by_output_weights(w_output, error_output, z_hidden, use_act
     # 活性度による重み付け（オプション）
     if use_activation_weight:
         # 活性度が高いニューロンを優先（ただし、過度にならないよう平方根を使用）
-        activation_weight = np.sqrt(z_hidden + 1e-8)
+        # 注: Leaky ReLUなど負の値を許容する活性化関数のため絶対値を使用
+        activation_weight = np.sqrt(np.abs(z_hidden) + 1e-8)
         excitatory_contribution *= activation_weight
         inhibitory_contribution *= activation_weight
     

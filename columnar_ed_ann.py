@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 コラムED法
-columnar_ed_ann.py version: 1.29.1
+columnar_ed_ann.py version: 1.30.1
 """
 
 import os
@@ -62,6 +62,135 @@ def parse_weight_init_scales(wis_str):
     return scales
 
 
+def analyze_affinity_distribution(network):
+    """
+    Affinity分布を解析する
+    
+    Args:
+        network: ネットワークインスタンス
+    
+    Returns:
+        dict: Affinity分布情報
+    """
+    print("\n" + "=" * 70)
+    print("Affinity分布解析")
+    print("=" * 70)
+    
+    for layer_idx, affinity in enumerate(network.column_affinity_all_layers):
+        print(f"\n[Layer {layer_idx + 1}] 形状: {affinity.shape}")
+        
+        # 全体統計
+        print(f"  全体統計:")
+        print(f"    最小値: {np.min(affinity):.6e}")
+        print(f"    最大値: {np.max(affinity):.6e}")
+        print(f"    平均値: {np.mean(affinity):.6e}")
+        print(f"    中央値: {np.median(affinity):.6e}")
+        print(f"    標準偏差: {np.std(affinity):.6e}")
+        
+        # 非ゼロ要素の統計
+        non_zero_affinity = affinity[affinity > 0]
+        if len(non_zero_affinity) > 0:
+            print(f"  非ゼロ要素 ({len(non_zero_affinity)}個):")
+            print(f"    最小値: {np.min(non_zero_affinity):.6e}")
+            print(f"    最大値: {np.max(non_zero_affinity):.6e}")
+            print(f"    平均値: {np.mean(non_zero_affinity):.6e}")
+        
+        # 閾値別のニューロン数カウント
+        thresholds = [0.0, 1e-10, 1e-8, 1e-6, 1e-4, 1e-2, 0.1, 0.5]
+        print(f"  閾値別のニューロン数（各クラスの平均）:")
+        for i in range(len(thresholds) - 1):
+            low, high = thresholds[i], thresholds[i+1]
+            count_per_class = []
+            for class_idx in range(affinity.shape[0]):
+                count = np.sum((affinity[class_idx] > low) & (affinity[class_idx] <= high))
+                count_per_class.append(count)
+            avg_count = np.mean(count_per_class)
+            print(f"    {low:.0e} < affinity ≤ {high:.0e}: {avg_count:.1f}個/クラス")
+        
+        # 高affinity (> 1e-8) のニューロン数
+        high_affinity_count = np.sum(np.max(affinity, axis=0) > 1e-8)
+        total_neurons = affinity.shape[1]
+        print(f"  高affinity（>1e-8）を持つニューロン: {high_affinity_count}/{total_neurons} ({high_affinity_count/total_neurons*100:.1f}%)")
+        
+        # クラス別の非ゼロニューロン数
+        print(f"  クラス別の非ゼロaffinity持ちニューロン数:")
+        for class_idx in range(min(affinity.shape[0], 10)):  # 最大10クラス表示
+            count = np.sum(affinity[class_idx] > 0)
+            print(f"    クラス{class_idx}: {count}個")
+    
+    print("=" * 70)
+
+
+def analyze_dead_neurons(network, x_data, y_data, epoch_label=""):
+    """
+    デッドニューロンを解析する
+    
+    Args:
+        network: ネットワークインスタンス
+        x_data: 入力データ
+        y_data: ラベルデータ
+        epoch_label: エポックラベル（表示用）
+    
+    Returns:
+        dict: デッドニューロン情報
+            - 'dead_counts': 各層のデッドニューロン数のリスト
+            - 'total_counts': 各層の総ニューロン数のリスト
+            - 'dead_ratios': 各層のデッドニューロン率のリスト
+            - 'summary': サマリー文字列
+    """
+    from collections import defaultdict
+    
+    # 各層のニューロン活性化カウント
+    activation_counts = [defaultdict(int) for _ in range(len(network.n_hidden))]
+    
+    # 全データでforward実行
+    for x, y in zip(x_data, y_data):
+        z_hiddens, z_output, _ = network.forward(x)
+        
+        # 各層の勝者ニューロンを記録
+        for layer_idx, z_hidden in enumerate(z_hiddens):
+            # k-winner selection（上位k個を選択）
+            if hasattr(network, 'k_winners') and network.k_winners > 0:
+                k = min(network.k_winners, len(z_hidden))
+                top_k_indices = np.argsort(z_hidden)[-k:]
+                for idx in top_k_indices:
+                    activation_counts[layer_idx][idx] += 1
+            else:
+                # k-winner未指定の場合は、正の活性化を持つ全ニューロン
+                for idx, activation in enumerate(z_hidden):
+                    if activation > 0:
+                        activation_counts[layer_idx][idx] += 1
+    
+    # デッドニューロンのカウント
+    dead_counts = []
+    total_counts = []
+    dead_ratios = []
+    
+    for layer_idx, n_neurons in enumerate(network.n_hidden):
+        active_neurons = len(activation_counts[layer_idx])
+        dead_neurons = n_neurons - active_neurons
+        dead_ratio = dead_neurons / n_neurons if n_neurons > 0 else 0.0
+        
+        dead_counts.append(dead_neurons)
+        total_counts.append(n_neurons)
+        dead_ratios.append(dead_ratio)
+    
+    # サマリー文字列の生成
+    summary_parts = []
+    for layer_idx, (dead, total, ratio) in enumerate(zip(dead_counts, total_counts, dead_ratios)):
+        summary_parts.append(f"L{layer_idx+1}:{dead}/{total}")
+    
+    summary = f"Dead={', '.join(summary_parts)}"
+    
+    return {
+        'dead_counts': dead_counts,
+        'total_counts': total_counts,
+        'dead_ratios': dead_ratios,
+        'summary': summary,
+        'epoch_label': epoch_label
+    }
+
+
 def parse_args():
     """コマンドライン引数の解析"""
     parser = argparse.ArgumentParser(
@@ -102,8 +231,10 @@ def parse_args():
     ed_group.add_argument('--hidden', type=str, default='512',
                          help='隠れ層ニューロン数（例: 512=1層, 256,128=2層）（デフォルト値: 512）')
     ed_group.add_argument('--activation', type=str, default='tanh',
-                         choices=['tanh', 'sigmoid', 'leaky_relu'],
+                         choices=['tanh', 'sigmoid', 'leaky_relu', 'clipped_leaky_relu', 'shifted_sigmoid', 'clipped_identity'],
                          help='活性化関数（デフォルト: tanh）※グリッドサーチ用、将来的に削除予定')
+    ed_group.add_argument('--leaky-alpha', type=float, default=0.1,
+                         help='Leaky ReLUの負勾配係数（デフォルト: 0.1、推奨値: 0.01-0.2）')
     ed_group.add_argument('--lr', type=float, default=None,
                          help='学習率（層数により自動設定: 1層=0.20, 2層=0.25、明示指定で上書き）')
     ed_group.add_argument('--u1', type=float, default=None,
@@ -125,10 +256,8 @@ def parse_args():
     column_group = parser.add_argument_group('コラム関連のパラメータ')
     column_group.add_argument('--list_hyperparams', action='store_true',
                              help='利用可能なHyperParams設定一覧を表示して終了')
-    column_group.add_argument('--base_column_radius', type=float, default=None,
-                             help='基準コラム半径（層数により自動設定、明示指定で上書き）')
     column_group.add_argument('--column_radius', type=float, default=None,
-                             help='コラム影響半径（デフォルト値: None、Noneなら層ごとに自動計算）')
+                             help='コラム半径（層数により自動設定、明示指定で上書き）')
     column_group.add_argument('--participation_rate', type=float, default=None,
                              help='コラム参加率（層数により自動設定、明示指定で上書き）')
     column_group.add_argument('--column_neurons', type=int, default=None,
@@ -222,8 +351,8 @@ def main():
             args.u2 = config['u2']
         if args.lateral_lr is None and 'lateral_lr' in config:
             args.lateral_lr = config['lateral_lr']
-        if args.base_column_radius is None:
-            args.base_column_radius = config['base_column_radius']
+        if args.column_radius is None:
+            args.column_radius = config['column_radius']
         if args.participation_rate is None and 'participation_rate' in config:
             args.participation_rate = config['participation_rate']
         if args.epochs is None:
@@ -237,7 +366,7 @@ def main():
         print(f"u1: {args.u1}")
         print(f"u2: {args.u2}")
         print(f"lateral_lr: {args.lateral_lr}")
-        print(f"base_column_radius: {args.base_column_radius}")
+        print(f"column_radius: {args.column_radius}")
         print(f"participation_rate: {args.participation_rate}")
         print(f"epochs: {args.epochs}")
         
@@ -351,13 +480,13 @@ def main():
         u1=args.u1,
         u2=args.u2,
         column_radius=args.column_radius,
-        base_column_radius=args.base_column_radius,
         column_neurons=args.column_neurons,
         participation_rate=args.participation_rate,
         use_hexagonal=not args.use_circular,
         overlap=args.overlap,
         gradient_clip=args.gradient_clip,
         activation=args.activation,  # activationパラメータを追加
+        leaky_alpha=args.leaky_alpha,  # Leaky ReLUの負勾配係数
         hyperparams=hp,  # HyperParamsインスタンスを渡す（重み初期化係数の取得に必要）
         weight_init_scales=weight_init_scales,  # CLI/HyperParamsから取得した値
         weight_init_source=weight_init_source  # 値の出処を記録
@@ -433,6 +562,30 @@ def main():
     train_acc_history = []
     test_acc_history = []
     
+    # ========================================
+    # Affinity分布解析（初期化直後）
+    # ========================================
+    analyze_affinity_distribution(network)
+    
+    # ========================================
+    # 初期化直後のデッドニューロン調査
+    # ========================================
+    print("\n" + "=" * 70)
+    print("初期化直後のデッドニューロン調査")
+    print("=" * 70)
+    initial_dead_info = analyze_dead_neurons(network, x_test[:1000], y_test[:1000], epoch_label="初期化直後")
+    print(f"{initial_dead_info['summary']}")
+    for layer_idx, (dead, total, ratio) in enumerate(zip(
+        initial_dead_info['dead_counts'], 
+        initial_dead_info['total_counts'], 
+        initial_dead_info['dead_ratios']
+    )):
+        print(f"  Layer {layer_idx+1}: {dead}/{total} ({ratio*100:.1f}% dead)")
+    print("=" * 70)
+    
+    # デッドニューロン履歴（エポック毎に記録）
+    dead_neuron_history = [initial_dead_info]
+    
     # tqdmを使ったエポックループ
     pbar = tqdm(range(1, args.epochs + 1), desc="Training", ncols=120)
     for epoch in pbar:
@@ -448,6 +601,10 @@ def main():
         
         # テスト
         test_acc, test_loss = network.evaluate(x_test, y_test)
+        
+        # デッドニューロン調査（エポック毎）
+        epoch_dead_info = analyze_dead_neurons(network, x_test[:1000], y_test[:1000], epoch_label=f"Epoch {epoch}")
+        dead_neuron_history.append(epoch_dead_info)
         
         # 履歴記録
         train_acc_history.append(train_acc)
@@ -472,6 +629,7 @@ def main():
         print(f"Epoch {epoch:3d}/{args.epochs}: "
               f"Train={train_acc:.4f} (loss={train_loss:.4f}), "
               f"Test={test_acc:.4f} (loss={test_loss:.4f}), "
+              f"{epoch_dead_info['summary']}, "
               f"Time={epoch_time:.2f}s")
         
         # 可視化更新
@@ -530,6 +688,43 @@ def main():
     print("=" * 70)
     print(f"最終精度: Train={train_acc:.4f}, Test={test_acc:.4f}")
     print(f"ベスト精度: Test={best_test_acc:.4f} (Epoch {best_epoch})")
+    
+    # デッドニューロン解析サマリー
+    print("\n" + "=" * 70)
+    print("デッドニューロン解析")
+    print("=" * 70)
+    
+    # 初期化直後と最終エポックのデッドニューロン数を表示
+    if len(dead_neuron_history) > 0:
+        initial_info = dead_neuron_history[0]
+        final_info = dead_neuron_history[-1]
+        
+        print(f"\n初期化直後: {initial_info['summary']}")
+        for layer_idx, (dead, total, ratio) in enumerate(zip(
+            initial_info['dead_counts'], 
+            initial_info['total_counts'], 
+            initial_info['dead_ratios']
+        )):
+            print(f"  Layer {layer_idx+1}: {dead}/{total} ({ratio*100:.1f}% dead)")
+        
+        print(f"\n最終エポック: {final_info['summary']}")
+        for layer_idx, (dead, total, ratio) in enumerate(zip(
+            final_info['dead_counts'], 
+            final_info['total_counts'], 
+            final_info['dead_ratios']
+        )):
+            print(f"  Layer {layer_idx+1}: {dead}/{total} ({ratio*100:.1f}% dead)")
+        
+        # 改善度を計算
+        print("\nデッドニューロンの変化:")
+        for layer_idx in range(len(initial_info['dead_counts'])):
+            initial_dead = initial_info['dead_counts'][layer_idx]
+            final_dead = final_info['dead_counts'][layer_idx]
+            diff = final_dead - initial_dead
+            diff_sign = "+" if diff > 0 else ""
+            print(f"  Layer {layer_idx+1}: {initial_dead} → {final_dead} ({diff_sign}{diff})")
+    
+    print("=" * 70)
     
     # 可視化の最終処理
     if viz_manager is not None:

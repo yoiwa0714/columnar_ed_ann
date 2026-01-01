@@ -25,7 +25,7 @@ ED法ネットワークモジュール（統合クラス）
         n_hidden=config['hidden'],
         n_output=10,
         learning_rate=config['learning_rate'],
-        column_radius=config['column_radius']
+        base_column_radius=config['base_column_radius']
     )
     
     # 学習
@@ -63,13 +63,9 @@ class RefinedDistributionEDNetwork:
     
     def __init__(self, n_input=784, n_hidden=[250], n_output=10, 
                  learning_rate=0.20, lateral_lr=0.08, u1=0.5, u2=0.8,
-                 column_radius=0.4, column_neurons=None, participation_rate=1.0,
-                 use_hexagonal=True, overlap=0.0, activation='tanh', leaky_alpha=0.1,
-                 use_layer_norm=False, gradient_clip=0.0, hyperparams=None,
-                 weight_init_scales=None, weight_init_source=None,
-                 winner_suppression_factor=1.0, weight_decay=0.0, bias_diversity=0.0,
-                 weight_scale_diversity=None, sign_pattern_diversity=False, weight_sparsity=0.0,
-                 cluster_init_groups=0):
+                 column_radius=None, base_column_radius=1.0, column_neurons=None, participation_rate=1.0,
+                 use_hexagonal=True, overlap=0.0, activation='tanh', leaky_alpha=0.01,
+                 use_layer_norm=False, gradient_clip=0.0, hyperparams=None):
         """
         初期化
         
@@ -81,14 +77,13 @@ class RefinedDistributionEDNetwork:
             lateral_lr: 側方抑制の学習率（Phase 1 Extended Overall Best: 0.08）
             u1: アミン拡散係数（Phase 1 Extended Overall Best: 0.5）
             u2: アミン拡散係数（隠れ層間、デフォルト0.8）
-            column_radius: コラム半径（256ニューロン層での基準値、デフォルト0.4、層ごとに自動スケーリング）
+            column_radius: コラム影響半径（Noneなら層ごとに自動計算、デフォルト: None）
+            base_column_radius: 基準コラム半径（256ニューロン層での値、デフォルト1.0、推奨値）
             column_neurons: 各クラスのコラムに割り当てるニューロン数（明示指定、優先度：中）
             participation_rate: コラム参加率（0.0-1.0、デフォルト1.0=全ニューロン参加、優先度：最高）
             use_hexagonal: Trueならハニカム構造、Falseなら旧円環構造
             overlap: コラム間の重複度（0.0-1.0、円環構造でのみ有効、デフォルト0.0）
             hyperparams: HyperParamsインスタンス（Noneなら個別パラメータ使用）
-            weight_init_scales: 重み初期化係数のリスト（[Layer0, Layer1, ..., 出力層]、Noneなら自動取得）
-            weight_init_source: 値の出処（'CLI', 'HyperParams', 'デフォルト値'）
         
         HyperParams統合の使用例:
             # パターン1: HyperParamsを使用
@@ -98,7 +93,7 @@ class RefinedDistributionEDNetwork:
                 n_input=784,
                 n_hidden=config['hidden'],
                 learning_rate=config['learning_rate'],
-                column_radius=config['column_radius'],
+                base_column_radius=config['base_column_radius'],
                 hyperparams=hp  # HyperParamsインスタンスを渡す
             )
             
@@ -107,7 +102,7 @@ class RefinedDistributionEDNetwork:
                 n_input=784,
                 n_hidden=[256, 128],
                 learning_rate=0.05,
-                column_radius=0.4
+                base_column_radius=1.0
             )
         """
         # HyperParamsから設定を取得（指定があれば）
@@ -118,8 +113,8 @@ class RefinedDistributionEDNetwork:
                 # 明示的に指定されていないパラメータをHyperParamsから取得
                 if learning_rate == 0.20:  # デフォルト値の場合
                     learning_rate = config.get('learning_rate', learning_rate)
-                if column_radius == 0.4:  # デフォルト値の場合
-                    column_radius = config.get('column_radius', column_radius)
+                if base_column_radius == 1.0:  # デフォルト値の場合
+                    base_column_radius = config.get('base_column_radius', base_column_radius)
             except ValueError as e:
                 print(f"Warning: {e}")
                 print("個別パラメータを使用します。")
@@ -142,27 +137,25 @@ class RefinedDistributionEDNetwork:
         self.layer_specific_lr = [learning_rate] * self.n_layers
         
         self.lateral_lr = lateral_lr  # 側方抑制の学習率
-        self.winner_suppression_factor = winner_suppression_factor  # 勝者からの抑制削減率（デッドニューロン対策）
-        self.weight_decay = weight_decay  # 重み減衰率（L2正則化）
-        self.bias_diversity = bias_diversity  # バイアス多様化範囲
-        self.weight_scale_diversity = weight_scale_diversity  # マルチスケール初期化のスケールリスト
-        self.sign_pattern_diversity = sign_pattern_diversity  # 符号パターン多様化
-        self.weight_sparsity = weight_sparsity  # スパース初期化の稀疎度
-        self.cluster_init_groups = cluster_init_groups  # クラスタベース初期化のグループ数
         self.u1 = u1  # アミン拡散係数（出力層→最終隠れ層）
         self.u2 = u2  # アミン拡散係数（隠れ層間）
         self.initial_amine = 1.0  # 基準アミン濃度
         
         # ★新機能★ 層依存のcolumn_radius（シンプルなsqrtスケーリング）
         # column_radius自動計算（標準版）
-        self.column_radius = column_radius
-        # 自動計算: sqrt(n/256)スケーリング
-        self.column_radius_per_layer = [
-            column_radius * np.sqrt(n / 256.0) for n in self.n_hidden
-        ]
-        print(f"\n[column_radius自動スケーリング: 基準値={column_radius}]")
-        for i, (n, r) in enumerate(zip(self.n_hidden, self.column_radius_per_layer)):
-            print(f"  Layer {i}: {n}ニューロン → radius={r:.2f}")
+        self.base_column_radius = base_column_radius
+        if column_radius is None:
+            # 自動計算: sqrt(n/256)スケーリング
+            self.column_radius_per_layer = [
+                base_column_radius * np.sqrt(n / 256.0) for n in self.n_hidden
+            ]
+            print(f"\n[column_radius自動計算（標準版）]")
+            for i, (n, r) in enumerate(zip(self.n_hidden, self.column_radius_per_layer)):
+                print(f"  Layer {i}: {n}ニューロン → radius={r:.2f}")
+        else:
+            # ユーザー指定値を全層で使用
+            self.column_radius_per_layer = [column_radius] * self.n_layers
+            print(f"\n[column_radius固定値使用: {column_radius}]")
         
         self.column_neurons = column_neurons
         self.participation_rate = participation_rate
@@ -252,25 +245,6 @@ class RefinedDistributionEDNetwork:
         # ★対策1★ 層ごとに異なる初期化スケールを使用
         # Layer 0: 入力次元が大きい(784*2=1568) → 小さいスケールで飽和を防ぐ
         # Layer 1+: 標準的なXavier初期化
-        
-        # 重み初期化係数の解決（優先順位: 引数 > HyperParams > デフォルト値）
-        resolved_scales = weight_init_scales
-        resolved_source = weight_init_source if weight_init_source else "デフォルト値"
-        
-        if resolved_scales is None and hyperparams is not None:
-            # 引数で指定されていない場合、HyperParamsから取得を試みる
-            try:
-                config = hyperparams.get_config(self.n_layers)
-                resolved_scales = config.get('weight_init_scales', None)
-                if resolved_scales is not None:
-                    resolved_source = "HyperParams"
-                    print(f"  [重み初期化] HyperParamsテーブルから係数を取得: {resolved_scales}")
-            except Exception as e:
-                print(f"  [重み初期化] HyperParams取得エラー: {e}、デフォルト値を使用")
-        elif resolved_scales is not None:
-            # 引数で指定されている場合
-            print(f"  [重み初期化] {resolved_source}から係数を取得: {resolved_scales}")
-        
         self.w_hidden = []
         for layer_idx in range(self.n_layers):
             if layer_idx == 0:
@@ -283,130 +257,24 @@ class RefinedDistributionEDNetwork:
                 n_out = self.n_hidden[layer_idx]
             
             # 層ごとの適応的スケール
-            if resolved_scales is not None:
-                # CLI/HyperParamsから取得
-                scale_coef = resolved_scales[layer_idx]
-                scale = np.sqrt(1.0 / n_in) * scale_coef
-                print(f"  [重み初期化] Layer {layer_idx}: scale={scale:.4f} (係数{scale_coef:.2f}, {resolved_source})")
+            if layer_idx == 0:
+                # Layer 0: より小さい初期値（元のXavierの0.3倍）で飽和を防ぐ
+                # 理由: 入力次元が大きい(1568) → Wx の絶対値が大きくなる → tanh飽和
+                # 0.1倍では小さすぎたため、0.3倍に調整
+                scale = np.sqrt(1.0 / n_in) * 0.3
+                print(f"  [重み初期化] Layer {layer_idx}: scale={scale:.4f} (飽和防止, 0.3x)")
             else:
-                # デフォルト値（後方互換性）
-                if layer_idx == 0:
-                    # Layer 0: デフォルト 1.80
-                    scale_coef = 1.80
-                    scale = np.sqrt(1.0 / n_in) * scale_coef
-                    print(f"  [重み初期化] Layer {layer_idx}: scale={scale:.4f} (係数{scale_coef:.2f}, デフォルト)")
-                else:
-                    # Layer 1+: デフォルト 3.00
-                    scale_coef = 3.00
-                    scale = np.sqrt(1.0 / n_in) * scale_coef
-                    print(f"  [重み初期化] Layer {layer_idx}: scale={scale:.4f} (係数{scale_coef:.2f}, デフォルト)")
+                # Layer 1+: 少し小さめのXavier初期化（0.5倍）
+                # Layer 0とのバランスを取るため
+                scale = np.sqrt(1.0 / n_in) * 0.5
+                print(f"  [重み初期化] Layer {layer_idx}: scale={scale:.4f} (調整, 0.5x)")
             
             w = np.random.randn(n_out, n_in) * scale
             self.w_hidden.append(w)
         
         # 出力層の重み
-        if resolved_scales is not None:
-            # CLI/HyperParamsから取得（最後の要素が出力層）
-            output_scale_coef = resolved_scales[-1]
-            output_scale = np.sqrt(1.0 / self.n_hidden[-1]) * output_scale_coef
-            print(f"  [重み初期化] 出力層: scale={output_scale:.4f} (係数{output_scale_coef:.2f}, {resolved_source})")
-        else:
-            # デフォルト値（後方互換性）
-            output_scale_coef = 12.00
-            output_scale = np.sqrt(1.0 / self.n_hidden[-1]) * output_scale_coef
-            print(f"  [重み初期化] 出力層: scale={output_scale:.4f} (係数{output_scale_coef:.2f}, デフォルト)")
-        
-        self.w_output = np.random.randn(n_output, self.n_hidden[-1]) * output_scale
-        
-        # マルチスケール初期化（隠れ層の重みに適用）
-        if self.weight_scale_diversity is not None and len(self.weight_scale_diversity) > 0:
-            print(f"\n[マルチスケール初期化]")
-            for layer_idx in range(self.n_layers):
-                n_neurons = self.n_hidden[layer_idx]
-                scales = self.weight_scale_diversity
-                n_groups = len(scales)
-                neurons_per_group = n_neurons // n_groups
-                
-                for group_idx, scale in enumerate(scales):
-                    start_idx = group_idx * neurons_per_group
-                    if group_idx == n_groups - 1:
-                        # 最後のグループは残り全部
-                        end_idx = n_neurons
-                    else:
-                        end_idx = start_idx + neurons_per_group
-                    
-                    # グループのニューロンに対してスケール適用
-                    self.w_hidden[layer_idx][start_idx:end_idx, :] *= scale
-                
-                print(f"  Layer {layer_idx}: {n_groups}グループ、スケール={scales}, 各グループ約{neurons_per_group}ニューロン")
-        
-        # 符号パターン多様化（隠れ層の重みに適用）
-        if self.sign_pattern_diversity:
-            print(f"\n[符号パターン多様化]")
-            for layer_idx in range(self.n_layers):
-                n_neurons = self.n_hidden[layer_idx]
-                # 奇数番号のニューロン（インデックス 1, 3, 5, ...）の重みを反転
-                for neuron_idx in range(1, n_neurons, 2):
-                    self.w_hidden[layer_idx][neuron_idx, :] *= -1
-                
-                n_inverted = (n_neurons + 1) // 2  # 奇数番号の個数
-                print(f"  Layer {layer_idx}: {n_neurons}ニューロン中 {n_inverted}個を反転 (奇数番号)")
-        
-        # スパース初期化(隠れ層の重みに適用)
-        if self.weight_sparsity > 0:
-            print(f"\n[スパース初期化]")
-            for layer_idx in range(self.n_layers):
-                n_neurons = self.n_hidden[layer_idx]
-                n_inputs = self.w_hidden[layer_idx].shape[1]
-                total_weights = n_neurons * n_inputs
-                n_zero = int(total_weights * self.weight_sparsity)
-                
-                # ランダムに weight_sparsity の割合をゼロに
-                mask = np.ones(total_weights, dtype=bool)
-                zero_indices = np.random.choice(total_weights, n_zero, replace=False)
-                mask[zero_indices] = False
-                mask = mask.reshape(n_neurons, n_inputs)
-                self.w_hidden[layer_idx] *= mask
-                
-                print(f"  Layer {layer_idx}: {total_weights}重み中 {n_zero}個をゼロ化 ({self.weight_sparsity*100:.0f}%)")
-        
-        # クラスタベース初期化(隠れ層の重みに適用)
-        if self.cluster_init_groups > 0:
-            print(f"\n[クラスタベース初期化]")
-            for layer_idx in range(self.n_layers):
-                n_neurons = self.n_hidden[layer_idx]
-                neurons_per_group = n_neurons // self.cluster_init_groups
-                
-                for group_idx in range(self.cluster_init_groups):
-                    start_idx = group_idx * neurons_per_group
-                    if group_idx == self.cluster_init_groups - 1:
-                        # 最後のグループは残り全て
-                        end_idx = n_neurons
-                    else:
-                        end_idx = start_idx + neurons_per_group
-                    
-                    # 各グループに異なる乱数シードを適用して初期化
-                    seed = 42 + group_idx  # ベースシード42から始める
-                    np.random.seed(seed)
-                    n_inputs = self.w_hidden[layer_idx].shape[1]
-                    self.w_hidden[layer_idx][start_idx:end_idx, :] = np.random.randn(end_idx - start_idx, n_inputs) * np.sqrt(2.0 / n_inputs)
-                
-                print(f"  Layer {layer_idx}: {n_neurons}ニューロンを{self.cluster_init_groups}グループに分割（各{neurons_per_group}ニューロン）")
-            
-            # 乱数シードをリセット
-            np.random.seed()
-        
-        # バイアスの初期化（隠れ層のみ）
-        self.b_hidden = []
-        for layer_idx, layer_size in enumerate(self.n_hidden):
-            if self.bias_diversity > 0:
-                # バイアス多様化: [-bias_diversity, +bias_diversity]の一様分布
-                bias = np.random.uniform(-self.bias_diversity, self.bias_diversity, layer_size)
-                print(f"  [バイアス初期化] Layer {layer_idx}: 範囲=[{-self.bias_diversity:.1f}, {self.bias_diversity:.1f}], 平均={np.mean(bias):.3f}, 標準偏差={np.std(bias):.3f}")
-            else:
-                # バイアスなし（従来通り）
-                bias = np.zeros(layer_size)
-            self.b_hidden.append(bias)
+        self.w_output = np.random.randn(n_output, self.n_hidden[-1]) * np.sqrt(1.0 / self.n_hidden[-1])
+        print(f"  [重み初期化] 出力層: scale={np.sqrt(1.0 / self.n_hidden[-1]):.4f}")
         
         # Dale's Principleの初期化（必須要素1）- 第1層のみ
         sign_matrix = np.outer(self.ei_flags_hidden[0], self.ei_flags_input)
@@ -417,15 +285,6 @@ class RefinedDistributionEDNetwork:
         for layer_size in self.n_hidden:
             amine = np.zeros((n_output, layer_size, 2))
             self.amine_concentrations.append(amine)
-        
-        # ★ED法アミン拡散★ 活性度ベース関係性マップの初期化
-        self.activity_association_maps = initialize_activity_association(
-            n_classes=n_output,
-            hidden_sizes=self.n_hidden
-        )
-        print(f"\n[アミン拡散機構初期化]")
-        print(f"  - 活性度ベース関係性マップ作成完了")
-        print(f"  - 層数: {len(self.activity_association_maps)}")
     
     def forward(self, x):
         """
@@ -451,24 +310,12 @@ class RefinedDistributionEDNetwork:
         z_current = x_paired
         
         for layer_idx in range(self.n_layers):
-            a_hidden = np.dot(self.w_hidden[layer_idx], z_current) + self.b_hidden[layer_idx]
+            a_hidden = np.dot(self.w_hidden[layer_idx], z_current)
             
             # 活性化関数の適用
             if self.activation == 'leaky_relu':
                 # Leaky ReLU: max(0, u) + alpha * min(0, u)
                 z_hidden = np.where(a_hidden > 0, a_hidden, self.leaky_alpha * a_hidden)
-            elif self.activation == 'clipped_leaky_relu':
-                # Clipped Leaky ReLU: Leaky ReLUを[-1, 1]にクリップ
-                z_leaky = np.where(a_hidden > 0, a_hidden, self.leaky_alpha * a_hidden)
-                z_hidden = np.clip(z_leaky, -1.0, 1.0)
-            elif self.activation == 'clipped_identity':
-                # Clipped Identity: 恒等関数を[-1, 1]にクリップ
-                z_hidden = np.clip(a_hidden, -1.0, 1.0)
-            elif self.activation == 'sigmoid':
-                z_hidden = sigmoid(a_hidden)
-            elif self.activation == 'shifted_sigmoid':
-                # Shifted Sigmoid: sigmoid(x)を[0,1]から[-1,1]に変換
-                z_hidden = 2.0 * sigmoid(a_hidden) - 1.0
             else:  # tanh（デフォルト）
                 z_hidden = tanh_activation(a_hidden)
             
@@ -489,18 +336,9 @@ class RefinedDistributionEDNetwork:
         
         return z_hiddens, z_output, x_paired
     
-    def _compute_gradients_v029_improved(self, x_paired, z_hiddens, z_output, y_true):
+    def _compute_gradients(self, x_paired, z_hiddens, z_output, y_true):
         """
-        勾配の計算（v029改良版: カラム/非カラム分離加算方式、現在は使用していない）
-        
-        ★注意★ このメソッドは保守用に残されています。
-        現在は下記の _compute_gradients (v028ベース・シンプル版) が使用されています。
-        
-        経緯:
-        - v029改良版（このメソッド）: カラム/非カラム分離加算方式
-        - v028ベース（下記）: シンプルなアミン拡散
-        - 2024/12/30 初回: v029改良版を優先するため、v028をリネーム
-        - 2024/12/30 再変更: v029で学習できなくなったため、v028ベースに戻しました
+        勾配の計算（ED法準拠、微分の連鎖律不使用）
         
         Args:
             x_paired: 入力ペア
@@ -518,7 +356,6 @@ class RefinedDistributionEDNetwork:
         gradients = {
             'w_output': None,
             'w_hidden': [None] * self.n_layers,
-            'b_hidden': [None] * self.n_layers,
             'lateral_weights': np.zeros_like(self.lateral_weights)
         }
         
@@ -536,38 +373,30 @@ class RefinedDistributionEDNetwork:
         )
         
         # ============================================
-        # 2. 出力層のアミン濃度計算（★修正★全クラスに配分）
+        # 2. 出力層のアミン濃度計算
         # ============================================
+        winner_class = np.argmax(z_output)
         amine_concentration_output = np.zeros((self.n_output, 2))
         
-        # 全クラスに対してアミン配分
-        for c in range(self.n_output):
-            if c == y_true:
-                # 正解クラス: 興奮性アミン（活性不足を補う）
-                error_correct = 1.0 - z_output[c]
-                if error_correct > 0:
-                    # 側方抑制の影響を考慮
-                    winner_class = np.argmax(z_output)
-                    if winner_class != y_true:
-                        lateral_effect = self.lateral_weights[winner_class, y_true]
-                        if lateral_effect < 0:
-                            enhanced_amine = self.initial_amine * (1.0 - lateral_effect)
-                        else:
-                            enhanced_amine = self.initial_amine
-                        amine_concentration_output[c, 0] = error_correct * enhanced_amine
-                    else:
-                        amine_concentration_output[c, 0] = error_correct * self.initial_amine
-            else:
-                # 不正解クラス: 抑制性アミン（過剰活性を抑える）
-                error_incorrect = 0.0 - z_output[c]
-                if error_incorrect < 0:  # z_output[c] > 0 の場合
-                    amine_concentration_output[c, 1] = -error_incorrect * self.initial_amine
-        
-        # 側方抑制の更新（winner_class != y_true の場合のみ）
-        winner_class = np.argmax(z_output)
-        if winner_class != y_true:
-            # ★winner_suppression_factor適用★ 勝者からの抑制を削減してデッドニューロンを減らす
-            gradients['lateral_weights'][winner_class, y_true] = -self.lateral_lr * (1.0 + self.lateral_weights[winner_class, y_true]) * self.winner_suppression_factor
+        if winner_class == y_true:
+            error_correct = 1.0 - z_output[y_true]
+            if error_correct > 0:
+                amine_concentration_output[y_true, 0] = error_correct * self.initial_amine
+        else:
+            error_winner = 0.0 - z_output[winner_class]
+            if error_winner < 0:
+                amine_concentration_output[winner_class, 1] = -error_winner * self.initial_amine
+            
+            error_correct = 1.0 - z_output[y_true]
+            if error_correct > 0:
+                lateral_effect = self.lateral_weights[winner_class, y_true]
+                if lateral_effect < 0:
+                    enhanced_amine = self.initial_amine * (1.0 - lateral_effect)
+                else:
+                    enhanced_amine = self.initial_amine
+                amine_concentration_output[y_true, 0] = error_correct * enhanced_amine
+            
+            gradients['lateral_weights'][winner_class, y_true] = -self.lateral_lr * (1.0 + self.lateral_weights[winner_class, y_true])
         
         # ============================================
         # 3. 多層アミン拡散と勾配計算（逆順、微分の連鎖律不使用）
@@ -615,12 +444,10 @@ class RefinedDistributionEDNetwork:
             )
             
             # ステップ2: 非コラム構造部分（u1で拡散）
-            # ★v030修正★ 代替案2: 固定係数0.2を使用
-            # 理由: (1 - column_affinity)や一律適用では非コラム部分が過大
-            #       固定係数でより明確にコラム構造を中心に機能させる
+            # (1 - column_affinity)で、コラム外への拡散を表現
             amine_non_columnar = (
                 amine_concentration_output[:, :, np.newaxis] * 
-                0.2 *  # 固定係数（調整可能）
+                (1.0 - self.column_affinity_all_layers[layer_idx][:, np.newaxis, :]) *
                 u1_coef
             )
             
@@ -640,20 +467,7 @@ class RefinedDistributionEDNetwork:
             z_active = z_hiddens[layer_idx][active_neurons]
             if self.activation == 'leaky_relu':
                 saturation_term_raw = np.where(z_active > 0, 1.0, self.leaky_alpha)
-            elif self.activation == 'clipped_leaky_relu':
-                # クリップされた領域では勾配=0、それ以外はLeaky ReLUの勾配
-                saturation_term_raw = np.where(np.abs(z_active) >= 1.0, 0.0,
-                                              np.where(z_active > 0, 1.0, self.leaky_alpha))
-            elif self.activation == 'clipped_identity':
-                # クリップされた領域では勾配=0、それ以外は1
-                saturation_term_raw = np.where(np.abs(z_active) >= 1.0, 0.0, 1.0)
-            elif self.activation == 'sigmoid':
-                saturation_term_raw = z_active * (1.0 - z_active)
-            elif self.activation == 'shifted_sigmoid':
-                # shifted_sigmoid: z = 2*s - 1, s = (z+1)/2
-                # d(2s-1)/dx = 2*s*(1-s) = (z+1)*(1-z)/2
-                saturation_term_raw = (z_active + 1.0) * (1.0 - z_active) / 2.0
-            else:  # tanh
+            else:
                 saturation_term_raw = np.abs(z_active) * (1.0 - np.abs(z_active))
             saturation_term = np.maximum(saturation_term_raw, 1e-3)
             
@@ -718,7 +532,6 @@ class RefinedDistributionEDNetwork:
         
         for layer_idx in range(self.n_layers):
             self.w_hidden[layer_idx] += gradients['w_hidden'][layer_idx]
-            self.b_hidden[layer_idx] += gradients['b_hidden'][layer_idx]
             
             # 第1層のDale's Principle強制
             if layer_idx == 0:
@@ -728,10 +541,6 @@ class RefinedDistributionEDNetwork:
         # 出力重みの正則化
         weight_penalty = 0.00001 * self.w_output
         self.w_output -= weight_penalty
-        
-        # ★ED法アミン拡散★ アミン濃度の更新
-        # 注: 2層以上の場合は形状の問題があるため一時的にコメントアウト
-        # self._update_amine_concentrations(z_hiddens, z_output, y_true)
     
     def update_weights_batch(self, x_paired_batch, z_hiddens_batch, z_output_batch, y_batch):
         """
@@ -759,45 +568,6 @@ class RefinedDistributionEDNetwork:
                 y_batch[i]
             )
     
-    def _update_amine_concentrations(self, z_hiddens, z_output, y_true):
-        """
-        アミン濃度の更新（ED法準拠）
-        
-        Args:
-            z_hiddens: 各隠れ層の出力のリスト
-            z_output: 出力層の確率分布
-            y_true: 正解クラス
-        """
-        # 出力誤差の計算
-        error_output = np.zeros(self.n_output)
-        error_output[y_true] = 1.0 - z_output[y_true]  # 正解クラスの誤差
-        for c in range(self.n_output):
-            if c != y_true:
-                error_output[c] = -z_output[c]  # 不正解クラスの誤差
-        
-        # 各層のアミン濃度を更新
-        for layer_idx in range(self.n_layers):
-            # 活性度ベース関係性の更新
-            self.activity_association_maps[layer_idx] = update_activity_association(
-                association_map=self.activity_association_maps[layer_idx],
-                class_idx=y_true,
-                hidden_activations=z_hiddens[layer_idx]
-            )
-            
-            # 出力重みベースのアミン配分
-            exc_amine, inh_amine = distribute_amine_by_output_weights(
-                w_output=self.w_output,
-                error_output=error_output,
-                z_hidden=z_hiddens[layer_idx]
-            )
-            
-            # アミン濃度を保存（各クラス×各ニューロン×[興奮性, 抑制性]）
-            for c in range(self.n_output):
-                # 関係性マップで重み付け
-                association_weight = self.activity_association_maps[layer_idx][c]
-                self.amine_concentrations[layer_idx][c, :, 0] = exc_amine * association_weight
-                self.amine_concentrations[layer_idx][c, :, 1] = inh_amine * association_weight
-    
     def train_one_sample(self, x, y_true):
         """
         1サンプルの学習（オンライン学習）
@@ -820,7 +590,7 @@ class RefinedDistributionEDNetwork:
         # ◆変更◆ Cross-Entropy損失計算
         loss = cross_entropy_loss(z_output, y_true)
         
-        # 重みの更新（アミン濃度更新を含む）
+        # 重みの更新
         self.update_weights(x_paired, z_hiddens, z_output, y_true)
         
         return loss, correct
@@ -910,19 +680,6 @@ class RefinedDistributionEDNetwork:
                 z_hidden_batch = np.where(a_hidden_batch > 0, 
                                           a_hidden_batch, 
                                           self.leaky_alpha * a_hidden_batch)
-            elif self.activation == 'clipped_leaky_relu':
-                z_leaky_batch = np.where(a_hidden_batch > 0,
-                                        a_hidden_batch,
-                                        self.leaky_alpha * a_hidden_batch)
-                z_hidden_batch = np.clip(z_leaky_batch, -1.0, 1.0)
-            elif self.activation == 'clipped_identity':
-                # Clipped Identity: 恒等関数を[-1, 1]にクリップ
-                z_hidden_batch = np.clip(a_hidden_batch, -1.0, 1.0)
-            elif self.activation == 'sigmoid':
-                z_hidden_batch = sigmoid(a_hidden_batch)
-            elif self.activation == 'shifted_sigmoid':
-                # Shifted Sigmoid: sigmoid(x)を[0,1]から[-1,1]に変換
-                z_hidden_batch = 2.0 * sigmoid(a_hidden_batch) - 1.0
             else:  # tanh
                 z_hidden_batch = tanh_activation(a_hidden_batch)
             
@@ -943,44 +700,13 @@ class RefinedDistributionEDNetwork:
     
     def train_epoch_minibatch_tf(self, train_dataset):
         """
-        ミニバッチ学習版エポック（TensorFlow Dataset API使用、勾配平均化方式）
+        ミニバッチ学習版エポック（TensorFlow Dataset API使用）
         
         この関数はTensorFlow Data API (tf.data.Dataset) を使用します。
         これは業界標準の手法であり、以下の利点があります：
           1. データ処理パイプラインの信頼性が国際的に認知されている
           2. シャッフル機能が最適化され、再現性が保証される
           3. バッチ処理が効率的に実行される
-        
-        **v030修正（2025-12-28）**:
-          標準的なミニバッチ学習の実装（勾配平均化方式 - PyTorch方式）
-          
-          実装方針:
-          - バッチ内の全サンプルの勾配を蓄積
-          - 勾配を平均化（÷ batch_size）
-          - 平均化された勾配で一度だけ重み更新
-          - **学習率スケーリングなし**（batch_sizeに依存しない実効lr）
-          
-          理論的背景:
-          - PyTorch方式（勾配平均化）: 
-            grad_avg = Σ(∂L/∂W) / batch_size
-            W += lr × grad_avg
-            → 実効学習率 = lr （batch_sizeに依存しない）
-          
-          - TensorFlow方式（勾配合計）:
-            grad_sum = Σ(∂L/∂W)
-            W += lr × grad_sum
-            → 実効学習率 = lr × batch_size（batch_size依存）
-          
-          - 本実装の選択理由:
-            1. batch_sizeを変更しても学習率を調整する必要がない
-            2. PyTorchでも広く使われている標準的な方式
-            3. 既存の学習率パラメータがそのまま使える
-            4. 安定した学習が可能
-          
-          - v031の問題点（修正済み）:
-            平均化後にbatch_size倍していたため、実効lr = lr × batch_size
-            → batch_size=64で実効lr=6.4となり学習不可能だった
-            → v030に戻すことで解決
         
         Args:
             train_dataset: tf.data.Dataset（バッチ化・シャッフル済み）
@@ -991,11 +717,11 @@ class RefinedDistributionEDNetwork:
         
         Notes:
             - TensorFlow Dataset APIで前処理（シャッフル・バッチ化）済み
-            - ED法準拠: 勾配計算に_compute_gradients()使用（微分の連鎖律不使用）
-            - ミニバッチ学習: 勾配を平均化（PyTorch方式）
-            - batch_sizeに依存しない安定した学習
-            
-            使用例:
+            - ED法準拠: サンプルごとに即座に重み更新
+            - Tensorをループ処理でNumPyに変換
+            - 既存のED法ロジック（update_weights）をそのまま使用
+        
+        使用例:
             >>> from modules.data_loader import create_tf_dataset
             >>> train_dataset = create_tf_dataset(
             ...     x_train, y_train, batch_size=128, shuffle=True, seed=42
@@ -1012,12 +738,8 @@ class RefinedDistributionEDNetwork:
             x_batch = x_batch_tf.numpy()
             y_batch = y_batch_tf.numpy()
             
-            batch_size = len(x_batch)
-            
-            # ステップ1: バッチ内の全サンプルの勾配を蓄積
-            accumulated_gradients = None
-            
-            for i in range(batch_size):
+            # バッチ内の各サンプルを個別処理（ED法準拠）
+            for i in range(len(x_batch)):
                 x_sample = x_batch[i]
                 y_sample = y_batch[i]
                 
@@ -1029,49 +751,10 @@ class RefinedDistributionEDNetwork:
                 n_correct += (y_pred == y_sample)
                 total_loss += cross_entropy_loss(z_output, y_sample)
                 
-                # 勾配計算（重みは更新しない）
-                gradients = self._compute_gradients(x_paired, z_hiddens, z_output, y_sample)
-                
-                # 勾配の蓄積
-                if accumulated_gradients is None:
-                    # 初回: 構造をコピー
-                    accumulated_gradients = {
-                        'w_output': gradients['w_output'].copy(),
-                        'lateral_weights': gradients['lateral_weights'].copy(),
-                        'w_hidden': [g.copy() for g in gradients['w_hidden']]
-                    }
-                else:
-                    # 2回目以降: 加算
-                    accumulated_gradients['w_output'] += gradients['w_output']
-                    accumulated_gradients['lateral_weights'] += gradients['lateral_weights']
-                    for layer_idx in range(self.n_layers):
-                        accumulated_gradients['w_hidden'][layer_idx] += gradients['w_hidden'][layer_idx]
+                # 重み更新（即座に実行、ED法準拠）
+                self.update_weights(x_paired, z_hiddens, z_output, y_sample)
                 
                 n_samples += 1
-            
-            # ステップ2: 勾配を平均化
-            accumulated_gradients['w_output'] /= batch_size
-            accumulated_gradients['lateral_weights'] /= batch_size
-            for layer_idx in range(self.n_layers):
-                accumulated_gradients['w_hidden'][layer_idx] /= batch_size
-            
-            # ステップ3: 平均化された勾配で一度だけ重みを更新（PyTorch方式）
-            # 学習率スケーリングなし → 実効lr = lr （batch_sizeに依存しない）
-            # これにより batch_size=8 でも 64 でも同じ学習率で安定した学習が可能
-            self.w_output += accumulated_gradients['w_output']
-            self.lateral_weights += accumulated_gradients['lateral_weights']
-            
-            for layer_idx in range(self.n_layers):
-                self.w_hidden[layer_idx] += accumulated_gradients['w_hidden'][layer_idx]
-                
-                # 第1層のDale's Principle強制
-                if layer_idx == 0:
-                    sign_matrix = np.outer(self.ei_flags_hidden[0], self.ei_flags_input)
-                    self.w_hidden[0] = np.abs(self.w_hidden[0]) * sign_matrix
-            
-            # 出力重みの正則化
-            weight_penalty = 0.00001 * self.w_output
-            self.w_output -= weight_penalty
         
         accuracy = n_correct / n_samples if n_samples > 0 else 0.0
         avg_loss = total_loss / n_samples if n_samples > 0 else 0.0
@@ -1080,18 +763,7 @@ class RefinedDistributionEDNetwork:
     
     def _compute_gradients(self, x_paired, z_hiddens, z_output, y_true):
         """
-        勾配を計算（v028ベース・シンプル版）
-        
-        経緯:
-        - v028ベース（このメソッド）: シンプルなアミン拡散
-        - v029改良版（上記、現在無効）: カラム/非カラム分離加算方式
-        - 2024/12/30 初回: v029改良版を優先するため、このメソッドをリネーム
-        - 2024/12/30 再変更: v029で学習できなくなったため、このメソッドに戻しました
-        
-        このメソッドの特徴:
-        - シンプルな拡散係数適用（amine_diffused = amine * diffusion_coef）
-        - コラム構造での重み付けのみ
-        - より安定的な実装
+        勾配を計算（更新はしない）
         
         Args:
             x_paired: 入力ベクトル（興奮性・抑制性ペア）
@@ -1116,26 +788,21 @@ class RefinedDistributionEDNetwork:
         )
         
         # ============================================
-        # 2. 出力層のアミン濃度計算と側方抑制（★修正★全クラスに配分）
+        # 2. 出力層のアミン濃度計算と側方抑制
         # ============================================
         winner_class = np.argmax(z_output)
         delta_lateral = np.zeros_like(self.lateral_weights)
         amine_concentration_output = np.zeros((self.n_output, 2))
         
-        # ★オリジナル実装★ winner_class と y_true の2クラスのみにアミン配分
         if winner_class == y_true:
-            # 正解時：正解クラスのみに興奮性アミン
             error_correct = 1.0 - z_output[y_true]
             if error_correct > 0:
                 amine_concentration_output[y_true, 0] = error_correct * self.initial_amine
         else:
-            # 不正解時：
-            # 1) 勝者クラスに抑制性アミン
             error_winner = 0.0 - z_output[winner_class]
             if error_winner < 0:
                 amine_concentration_output[winner_class, 1] = -error_winner * self.initial_amine
             
-            # 2) 正解クラスに側方抑制考慮の興奮性アミン
             error_correct = 1.0 - z_output[y_true]
             if error_correct > 0:
                 lateral_effect = self.lateral_weights[winner_class, y_true]
@@ -1145,22 +812,7 @@ class RefinedDistributionEDNetwork:
                     enhanced_amine = self.initial_amine
                 amine_concentration_output[y_true, 0] = error_correct * enhanced_amine
             
-            # 3) 側方抑制の更新
             delta_lateral[winner_class, y_true] = -self.lateral_lr * (1.0 + self.lateral_weights[winner_class, y_true])
-        
-        # ★デバッグ出力★ アミン配分状況を確認（最初の3サンプルのみ）
-        if not hasattr(self, '_debug_sample_count'):
-            self._debug_sample_count = 0
-        if self._debug_sample_count < 3:
-            import sys
-            exc_classes = np.where(amine_concentration_output[:, 0] > 0)[0]
-            inh_classes = np.where(amine_concentration_output[:, 1] > 0)[0]
-            nonzero_classes = np.where(np.any(amine_concentration_output > 0, axis=1))[0]
-            print(f"\n[Sample {self._debug_sample_count}] y_true={y_true}, winner={winner_class}", file=sys.stderr)
-            print(f"  興奮性アミン: {len(exc_classes)}クラス非ゼロ, 最大={np.max(amine_concentration_output[:, 0]):.4f}, 平均={np.mean(amine_concentration_output[exc_classes, 0]) if len(exc_classes) > 0 else 0:.4f}", file=sys.stderr)
-            print(f"  抑制性アミン: {len(inh_classes)}クラス非ゼロ, 最大={np.max(amine_concentration_output[:, 1]):.4f}, 平均={np.mean(amine_concentration_output[inh_classes, 1]) if len(inh_classes) > 0 else 0:.4f}", file=sys.stderr)
-            print(f"  非ゼロクラス: {nonzero_classes.tolist()}", file=sys.stderr)
-            self._debug_sample_count += 1
         
         # ============================================
         # 3. 隠れ層の勾配計算（多層アミン拡散）
@@ -1205,20 +857,7 @@ class RefinedDistributionEDNetwork:
             z_active = z_hiddens[layer_idx][active_neurons]
             if self.activation == 'leaky_relu':
                 saturation_term_raw = np.where(z_active > 0, 1.0, self.leaky_alpha)
-            elif self.activation == 'clipped_leaky_relu':
-                # クリップされた領域では勾配=0、それ以外はLeaky ReLUの勾配
-                saturation_term_raw = np.where(np.abs(z_active) >= 1.0, 0.0,
-                                              np.where(z_active > 0, 1.0, self.leaky_alpha))
-            elif self.activation == 'clipped_identity':
-                # クリップされた領域では勾配=0、それ以外は1
-                saturation_term_raw = np.where(np.abs(z_active) >= 1.0, 0.0, 1.0)
-            elif self.activation == 'sigmoid':
-                saturation_term_raw = z_active * (1.0 - z_active)
-            elif self.activation == 'shifted_sigmoid':
-                # shifted_sigmoid: z = 2*s - 1, s = (z+1)/2
-                # d(2s-1)/dx = 2*s*(1-s) = (z+1)*(1-z)/2
-                saturation_term_raw = (z_active + 1.0) * (1.0 - z_active) / 2.0
-            else:  # tanh
+            else:
                 saturation_term_raw = np.abs(z_active) * (1.0 - np.abs(z_active))
             saturation_term = np.maximum(saturation_term_raw, 1e-3)
             
@@ -1247,18 +886,10 @@ class RefinedDistributionEDNetwork:
             dw[active_neurons, :] = delta_w_active
             delta_w_hidden.insert(0, dw)
         
-        # バイアスの勾配計算（隠れ層のみ）
-        delta_b_hidden = []
-        for layer_idx in range(self.n_layers):
-            # バイアスの勾配は重みの勾配の行和
-            delta_b = np.sum(delta_w_hidden[layer_idx], axis=1)
-            delta_b_hidden.append(delta_b)
-        
         return {
             'w_output': delta_w_output,
             'lateral_weights': delta_lateral,
-            'w_hidden': delta_w_hidden,
-            'b_hidden': delta_b_hidden
+            'w_hidden': delta_w_hidden
         }
     
     def get_debug_info(self, monitor_classes=[0, 1]):
@@ -1384,162 +1015,3 @@ class RefinedDistributionEDNetwork:
                 print(f"  Class {i} ⇔ Class {j}: {count}個共有")
         
         print("\n" + "="*80)
-
-    def extract_detailed_metrics(self, epoch, x_samples=None, y_samples=None):
-        """
-        詳細デバッグ用メトリクス抽出（1-5エポック目用）
-        
-        Args:
-            epoch: 現在のエポック番号
-            x_samples: サンプルデータ（活性化統計用、オプション）
-            y_samples: サンプルラベル（オプション）
-        
-        Returns:
-            metrics: 詳細メトリクスの辞書
-        """
-        metrics = {
-            'epoch': epoch,
-            'timestamp': str(np.datetime64('now')),
-        }
-        
-        # 1. 重み統計（隠れ層 + 出力層）
-        weight_stats = {}
-        # 隠れ層の重み
-        for i, w in enumerate(self.w_hidden):
-            weight_stats[f'layer_{i}'] = {
-                'mean': float(np.mean(w)),
-                'std': float(np.std(w)),
-                'min': float(np.min(w)),
-                'max': float(np.max(w)),
-                'l2_norm': float(np.linalg.norm(w)),
-                'zeros': int(np.sum(np.abs(w) < 1e-8)),
-                'total': int(w.size),
-                'zero_ratio': float(np.sum(np.abs(w) < 1e-8) / w.size),
-            }
-        # 出力層の重み
-        weight_stats['output_layer'] = {
-            'mean': float(np.mean(self.w_output)),
-            'std': float(np.std(self.w_output)),
-            'min': float(np.min(self.w_output)),
-            'max': float(np.max(self.w_output)),
-            'l2_norm': float(np.linalg.norm(self.w_output)),
-            'zeros': int(np.sum(np.abs(self.w_output) < 1e-8)),
-            'total': int(self.w_output.size),
-            'zero_ratio': float(np.sum(np.abs(self.w_output) < 1e-8) / self.w_output.size),
-        }
-        metrics['weight_stats'] = weight_stats
-        
-        # 2. アミン濃度統計
-        amine_stats = {}
-        for i, amine in enumerate(self.amine_concentrations):
-            # アミン濃度の合計（クラスごと）
-            amine_sum_per_class = np.sum(amine, axis=(1, 2))  # shape: (n_classes,)
-            
-            amine_stats[f'layer_{i}'] = {
-                'mean': float(np.mean(amine_sum_per_class)),
-                'std': float(np.std(amine_sum_per_class)),
-                'min': float(np.min(amine_sum_per_class)),
-                'max': float(np.max(amine_sum_per_class)),
-                'range': float(np.max(amine_sum_per_class) - np.min(amine_sum_per_class)),
-                'class_balance': {
-                    int(c): float(amine_sum_per_class[c]) for c in range(len(amine_sum_per_class))
-                },
-                'entropy': float(-np.sum((amine_sum_per_class / (np.sum(amine_sum_per_class) + 1e-10)) * 
-                                         np.log(amine_sum_per_class / (np.sum(amine_sum_per_class) + 1e-10) + 1e-10))),
-            }
-        metrics['amine_stats'] = amine_stats
-        
-        # 3. 側方抑制重み統計
-        lateral_stats = {
-            'output_layer': {
-                'mean': float(np.mean(self.lateral_weights)),
-                'std': float(np.std(self.lateral_weights)),
-                'min': float(np.min(self.lateral_weights)),
-                'max': float(np.max(self.lateral_weights)),
-                'l2_norm': float(np.linalg.norm(self.lateral_weights)),
-            }
-        }
-        metrics['lateral_stats'] = lateral_stats
-        
-        # 4. サンプルデータがあれば活性化統計を計算
-        if x_samples is not None and len(x_samples) > 0:
-            # ランダムに100サンプル選択（または全サンプル）
-            n_samples = min(100, len(x_samples))
-            indices = np.random.choice(len(x_samples), n_samples, replace=False)
-            sample_x = x_samples[indices]
-            
-            activation_stats = {}
-            for i in range(len(self.n_hidden)):
-                layer_activations = []
-                for x in sample_x:
-                    # Forward pass to this layer
-                    z_hiddens, _, _ = self.forward(x)
-                    layer_activations.append(z_hiddens[i])
-                
-                layer_activations = np.array(layer_activations)
-                activation_stats[f'layer_{i}'] = {
-                    'mean': float(np.mean(layer_activations)),
-                    'std': float(np.std(layer_activations)),
-                    'min': float(np.min(layer_activations)),
-                    'max': float(np.max(layer_activations)),
-                    'dead_neurons': int(np.sum(np.max(layer_activations, axis=0) < 1e-4)),
-                    'active_neurons': int(np.sum(np.max(layer_activations, axis=0) >= 1e-4)),
-                    'total_neurons': int(self.n_hidden[i]),
-                    'sparsity': float(np.mean(layer_activations < 1e-4)),
-                }
-            metrics['activation_stats'] = activation_stats
-        
-        # 5. コラム帰属統計
-        column_usage_stats = {}
-        for i, affinity in enumerate(self.column_affinity_all_layers):
-            n_classes = affinity.shape[0]
-            n_neurons = affinity.shape[1]
-            
-            # 各クラスに帰属するニューロン数
-            class_neuron_counts = {}
-            for c in range(n_classes):
-                count = np.sum(affinity[c] > 1e-8)
-                class_neuron_counts[int(c)] = int(count)
-            
-            # 複数クラスに帰属するニューロン数
-            participation_per_neuron = np.sum(affinity > 1e-8, axis=0)
-            multi_class_neurons = np.sum(participation_per_neuron > 1)
-            
-            column_usage_stats[f'layer_{i}'] = {
-                'class_neuron_counts': class_neuron_counts,
-                'multi_class_neurons': int(multi_class_neurons),
-                'single_class_neurons': int(np.sum(participation_per_neuron == 1)),
-                'zero_class_neurons': int(np.sum(participation_per_neuron == 0)),
-                'avg_affinity': float(np.mean(affinity[affinity > 1e-8])) if np.any(affinity > 1e-8) else 0.0,
-                'max_affinity': float(np.max(affinity)),
-            }
-        metrics['column_usage_stats'] = column_usage_stats
-        
-        return metrics
-    
-    def save_detailed_metrics(self, metrics, filepath):
-        """詳細メトリクスをJSON形式で保存"""
-        import json
-        from datetime import datetime
-        
-        # numpy型をPython標準型に変換
-        def convert_to_serializable(obj):
-            if isinstance(obj, np.integer):
-                return int(obj)
-            elif isinstance(obj, np.floating):
-                return float(obj)
-            elif isinstance(obj, np.ndarray):
-                return obj.tolist()
-            elif isinstance(obj, np.datetime64):
-                return str(obj)
-            elif isinstance(obj, dict):
-                return {k: convert_to_serializable(v) for k, v in obj.items()}
-            elif isinstance(obj, list):
-                return [convert_to_serializable(item) for item in obj]
-            return obj
-        
-        serializable_metrics = convert_to_serializable(metrics)
-        
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(serializable_metrics, f, indent=2, ensure_ascii=False)
-

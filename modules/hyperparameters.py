@@ -97,7 +97,7 @@ class HyperParams:
       network = RefinedDistributionEDNetwork(
           input_dim=784,
           hidden_layers=config['hidden'],
-          base_column_radius=config['base_column_radius'],
+          column_radius=config['column_radius'],
           ...
       )
     """
@@ -162,7 +162,9 @@ class HyperParams:
             print(f"  u1: {config.get('u1', 'N/A')}")
             print(f"  u2: {config.get('u2', 'N/A')}")
             print(f"  lateral_lr: {config.get('lateral_lr', 'N/A')}")
-            print(f"  base_column_radius: {config['base_column_radius']}")
+            print(f"  winner_suppression_factor: {config.get('winner_suppression_factor', 'N/A')}")
+            print(f"  weight_decay: {config.get('weight_decay', 'N/A')}")
+            print(f"  column_radius: {config['column_radius']}")
             print(f"  column_radius_per_layer: {config['column_radius_per_layer']}")
             print(f"  participation_rate: {config.get('participation_rate', 'N/A')}")
             print(f"  weight_init_scales: {config.get('weight_init_scales', 'N/A')}")

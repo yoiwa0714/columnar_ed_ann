@@ -8,7 +8,7 @@ layer_params:
     u1: 1.0
     u2: 1.5
     lateral_lr: 0.08
-    base_column_radius: 0.4
+    column_radius: 0.4
     column_radius_per_layer: [0.57]  # [sqrt(512/256) * 0.4]
     participation_rate: 0.71
     weight_init_scales: [1.25, 2.0]  # [Layer 0, 出力層]
@@ -23,15 +23,26 @@ layer_params:
     learning_rate: 0.1
     u1: 1.0
     u2: 1.5
-    lateral_lr: 0.08
-    base_column_radius: 0.4
+    lateral_lr: 0.0  # 側抑制を完全停止（0.08→0.0）
+    winner_suppression_factor: 1.0  # 無効化（効果なし）
+    weight_decay: 0.0  # 無効化（効果なし）
+    bias_diversity: 0.0  # 無効化
+    weight_scale_diversity: null  # 無効化 (Candidate 2でテスト済み)
+    sign_pattern_diversity: false  # 無効化 (Candidate 3でテスト済み)
+    weight_sparsity: 0.4  # スパース初期化: 40%の重みをゼロに (最適値)
+    cluster_init_groups: 0  # 無効化 (Candidate 5でテスト済み)
+    column_radius: 0.4
     column_radius_per_layer: [0.57, 0.40]  # [sqrt(512/256) * 0.4, sqrt(256/256) * 0.4]
-    participation_rate: 0.71
-    weight_init_scales: [1.25, 1.75, 2.0]  # [Layer 0, Layer 1, 出力層]
+    participation_rate: 0.1
+    weight_init_scales: [1.1, 1.2, 0.6]  # [Layer 0, Layer 1, 出力層]
     epochs: 80
-    # 実験結果: 85.10% (Epoch 32, 2025-12-28)
-    # 訓練データ: 3000で再現性確認
-    description: '2層最適構成、512,256構成、85.10%達成（2025-12-28、訓練3000で再現性確認）'
+    # 実験結果: 84.53% (Best Epoch, 2025-12-30)
+    # グリッドサーチ最適化結果:
+    #   - participation_rate: 0.71 → 0.1 (+1.47%)
+    #   - weight_init_scales: [1.25, 1.75, 2.0] → [1.1, 1.2, 0.6] (+0.06%)
+    #   - 総改善: 83.40% → 84.53% (+1.13%)
+    # 訓練データ: 60000, テストデータ: 10000
+    description: '2層最適構成、512,256、84.53%達成（2025-12-30、PR/WIS最適化完了）'
     
   3:  # 3層構成（最適化予定）
     hidden: [256, 128, 64]
@@ -39,7 +50,7 @@ layer_params:
     u1: 0.5
     u2: 0.5
     lateral_lr: 0.08
-    base_column_radius: 1.0
+    column_radius: 1.0
     column_radius_per_layer: [1.0, 0.71, 0.50]
     participation_rate: 1.0
     weight_init_scales: null  # 未最適化（デフォルト値使用）
@@ -52,7 +63,7 @@ layer_params:
     u1: 0.5
     u2: 0.5
     lateral_lr: 0.08
-    base_column_radius: 1.0
+    column_radius: 1.0
     column_radius_per_layer: [1.0, 0.71, 0.61, 0.50]
     participation_rate: 1.0
     weight_init_scales: null  # 未最適化（デフォルト値使用）
@@ -65,7 +76,7 @@ layer_params:
     u1: 0.5
     u2: 0.5
     lateral_lr: 0.08
-    base_column_radius: 1.0
+    column_radius: 1.0
     column_radius_per_layer: [1.0, 0.71, 0.61, 0.56, 0.50]
     participation_rate: 1.0
     weight_init_scales: null  # 未最適化（デフォルト値使用）

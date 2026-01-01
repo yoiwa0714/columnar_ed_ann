@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 """
-コラム構造モジュール（大脳皮質カラム風の組織化）
+コラム構造モジュール（正規化削除版）
+
+★このファイルは正規化処理を無効化したバージョンです★
+- 正規化復活版: column_structure.py
+- 正規化削除版: column_structure_no_norm.py（このファイル）
 
 ★機能特化の実現メカニズム★
 役割:
   - 六角格子ベースのコラム帰属度計算
   - 円環構造（旧方式）のサポート
   - 側方抑制重み行列管理
+  - ★正規化処理は無効化されています★
 
 関数:
   - hex_distance: 六角座標距離計算
@@ -295,72 +300,19 @@ def create_hexagonal_column_affinity(n_hidden, n_classes=10, column_radius=3.0,
                 if aff >= threshold:
                     affinity[class_idx, neuron_idx] = aff
     
-    # 5. ★方法C統合★ Top-K選択 + 残差affinity（正規化と統合）
-    # 設計思想:
-    # - 距離ベースでフィルタリングされた候補ニューロンの中から:
-    #   * 上位K個: 強いaffinity（コラム内）
-    #   * 残り: 弱いaffinity（非コラム、でも学習参加）
-    # - 距離的に遠いニューロン: affinity=0のまま（他クラスに帰属）
-    
-    for class_idx in range(n_classes):
-        # 現在のaffinity（距離ベースでフィルタリング済み）
-        current_affinity = affinity[class_idx].copy()
-        
-        # 非ゼロaffinity持ちニューロンを取得（距離的に近いニューロン）
-        nonzero_mask = current_affinity > 1e-10
-        nonzero_indices = np.where(nonzero_mask)[0]
-        num_candidates = len(nonzero_indices)
-        
-        if num_candidates == 0:
-            continue
-        
-        # Top-K個を選択
-        if participation_rate is not None:
-            k = int(n_hidden * participation_rate / n_classes)
-        elif column_neurons is not None:
-            k = column_neurons
-        else:
-            k = max(1, int(n_hidden * 0.1 / n_classes))
-        
-        k = min(k, num_candidates)  # 候補数を超えないように
-        k = max(1, k)  # 最低1個
-        
-        # 候補ニューロンの中でaffinityが高い順にTop-Kを選択
-        candidate_affinities = current_affinity[nonzero_indices]
-        sorted_candidate_indices = np.argsort(candidate_affinities)[::-1]
-        top_k_candidate_indices = sorted_candidate_indices[:k]
-        remaining_candidate_indices = sorted_candidate_indices[k:]
-        
-        # 実際のニューロンインデックスに変換
-        top_k_indices = nonzero_indices[top_k_candidate_indices]
-        remaining_indices = nonzero_indices[remaining_candidate_indices]
-        
-        # 新しいaffinityマップ作成
-        new_affinity = np.zeros(n_hidden)
-        
-        # Top-K: 元のaffinity値を保持
-        new_affinity[top_k_indices] = current_affinity[top_k_indices]
-        
-        # 残りの候補: 弱affinity（Top-Kの2%程度）
-        if len(top_k_indices) > 0 and len(remaining_indices) > 0:
-            top_k_mean = np.mean(current_affinity[top_k_indices])
-            weak_affinity_ratio = 0.02
-            weak_affinity = top_k_mean * weak_affinity_ratio
-            new_affinity[remaining_indices] = weak_affinity
-        
-        # 正規化
-        total = np.sum(new_affinity)
-        if total > 1e-8:
-            if column_neurons is not None:
-                target_sum = column_neurons
-            elif participation_rate is not None:
-                target_sum = column_radius * 10 * participation_rate
-            else:
-                target_sum = column_radius * 10
-            
-            new_affinity *= (target_sum / total)
-        
-        affinity[class_idx] = new_affinity
+    # 5. 正規化（各クラスの帰属度合計を一定に）
+    # ★正規化削除版★ 正規化処理を無効化
+    # for class_idx in range(n_classes):
+    #     total = np.sum(affinity[class_idx])
+    #     if total > 1e-8:
+    #         if column_neurons is not None:
+    #             affinity[class_idx] *= (column_neurons / total)
+    #         elif participation_rate is not None:
+    #             target_sum = column_radius * 10 * participation_rate
+    #             affinity[class_idx] *= (target_sum / total)
+    #         else:
+    #             target_sum = column_radius * 10
+    #             affinity[class_idx] *= (target_sum / total)
     
     return affinity
 
