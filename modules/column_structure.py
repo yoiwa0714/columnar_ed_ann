@@ -41,6 +41,85 @@
 import numpy as np
 
 
+def create_column_membership(n_hidden, n_classes, participation_rate=1.0, 
+                             use_hexagonal=True, column_radius=0.4, column_neurons=None):
+    """
+    コラムメンバーシップフラグを作成（Affinity代替、学習可能化対応）
+    
+    目的:
+        - Affinityの静的な勝者固定化問題を解決
+        - コラム所属情報をブールフラグで保持（値は重みで学習）
+        - コラム構造を維持しつつ学習可能性を回復
+    
+    Args:
+        n_hidden: 隠れ層のニューロン総数
+        n_classes: 出力クラス数
+        participation_rate: 各クラスに割り当てるニューロンの割合（0.0-1.0）
+        use_hexagonal: Trueならハニカム配置、Falseなら順次割り当て
+        column_radius: コラム半径（ハニカム配置時の参考値）
+        column_neurons: 各クラスに割り当てるニューロン数（明示指定、優先度最高）
+    
+    Returns:
+        membership: shape [n_classes, n_hidden] のブール配列
+                   membership[c, i] = Trueなら、ニューロンiはクラスcのコラムメンバー
+    
+    設計思想:
+        - フラグは固定（所属は変わらない）
+        - 候補内での実力（勝率）は重みで決まる（学習可能）
+        - 上位K個学習と組み合わせて使用
+    """
+    membership = np.zeros((n_classes, n_hidden), dtype=bool)
+    
+    # 各クラスに割り当てるニューロン数（優先順位: column_neurons > participation_rate）
+    if column_neurons is not None:
+        neurons_per_class = column_neurons
+    else:
+        neurons_per_class = int(n_hidden * participation_rate / n_classes)
+    
+    if neurons_per_class == 0:
+        neurons_per_class = 1  # 最低1個は割り当て
+    
+    if use_hexagonal:
+        # ハニカム配置（現在のcreate_hexagonal_column_affinityと同じ配置方法）
+        # 2-3-3-2パターンで10クラスを配置
+        row_patterns = [2, 3, 3, 2]
+        positions = []
+        for row_idx, cols in enumerate(row_patterns):
+            for col_idx in range(cols):
+                positions.append((row_idx, col_idx))
+        
+        # 2D グリッド配置
+        grid_size = int(np.ceil(np.sqrt(n_hidden)))
+        neuron_positions = np.array([
+            [i // grid_size, i % grid_size] for i in range(n_hidden)
+        ])
+        
+        for class_idx in range(min(n_classes, len(positions))):
+            row, col = positions[class_idx]
+            
+            # コラム中心位置
+            center_row = row * (grid_size / len(row_patterns))
+            center_col = col * (grid_size / max(row_patterns))
+            
+            # 各ニューロンとの距離を計算
+            distances = np.sqrt(
+                (neuron_positions[:, 0] - center_row) ** 2 +
+                (neuron_positions[:, 1] - center_col) ** 2
+            )
+            
+            # 距離が近い上位neurons_per_class個をメンバーに
+            closest_indices = np.argsort(distances)[:neurons_per_class]
+            membership[class_idx, closest_indices] = True
+    else:
+        # 順次割り当て（シンプル）
+        for class_idx in range(n_classes):
+            start_idx = class_idx * neurons_per_class
+            end_idx = min(start_idx + neurons_per_class, n_hidden)
+            membership[class_idx, start_idx:end_idx] = True
+    
+    return membership
+
+
 def _create_direct_column_assignment(n_hidden, n_classes, participation_rate=1.0):
     """
     直接的な順次割り当てによるコラム帰属度マップの作成（Strategy B-simplified）

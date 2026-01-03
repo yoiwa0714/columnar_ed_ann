@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 コラムED法
-columnar_ed_ann.py version: 1.30.1
+columnar_ed_ann.py version: 1.032
 """
 
 import os
@@ -11,12 +11,17 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import argparse
 import numpy as np
 import time
+from collections import defaultdict
 
 # モジュールインポート
 from modules.hyperparameters import HyperParams
-from modules.data_loader import load_dataset, create_tf_dataset, get_class_names
+from modules.data_loader import (
+    load_dataset, load_custom_dataset, resolve_dataset_path,
+    create_tf_dataset, get_class_names
+)
 from modules.ed_network import RefinedDistributionEDNetwork
 from modules.visualization_manager import VisualizationManager
+from epoch_monitor import DetailedEpochMonitor
 
 
 def parse_weight_init_scales(wis_str):
@@ -249,6 +254,12 @@ def parse_args():
                          help='ミニバッチサイズ（未指定=オンライン学習、32/128推奨）')
     ed_group.add_argument('--shuffle', action='store_true',
                          help='データをシャッフル（TensorFlow Dataset API使用、オンライン/ミニバッチ両対応）')
+    ed_group.add_argument('--use_ridge', action='store_true',
+                         help='★最適化★ Ridge回帰を使用（ELM/RC標準手法、学習高速化）')
+    ed_group.add_argument('--ridge_lambda', type=float, default=1e-3,
+                         help='Ridge回帰の正則化パラメータ（デフォルト: 1e-3）')
+    ed_group.add_argument('--weight_sparsity', type=float, default=0.0,
+                         help='★最適化★ スパースリザーバ（0.0〜1.0、0.1=90%%スパース、RC/ELM標準手法）')
     
     # ========================================
     # コラム関連のパラメータ
@@ -487,6 +498,11 @@ def main():
         gradient_clip=args.gradient_clip,
         activation=args.activation,  # activationパラメータを追加
         leaky_alpha=args.leaky_alpha,  # Leaky ReLUの負勾配係数
+        top_k_winners=3,  # ★新機能★ Top-3協調学習
+        column_weight_diversity=0.0,  # 0.0が最適（79.8%）、重み多様化不要
+        use_ridge_regression=args.use_ridge,  # ★最適化★ Ridge回帰使用
+        ridge_lambda=args.ridge_lambda,  # ★最適化★ Ridge回帰正則化パラメータ
+        weight_sparsity=args.weight_sparsity,  # ★最適化★ スパースリザーバ（RC/ELM標準手法）
         hyperparams=hp,  # HyperParamsインスタンスを渡す（重み初期化係数の取得に必要）
         weight_init_scales=weight_init_scales,  # CLI/HyperParamsから取得した値
         weight_init_source=weight_init_source  # 値の出処を記録
@@ -563,11 +579,6 @@ def main():
     test_acc_history = []
     
     # ========================================
-    # Affinity分布解析（初期化直後）
-    # ========================================
-    analyze_affinity_distribution(network)
-    
-    # ========================================
     # 初期化直後のデッドニューロン調査
     # ========================================
     print("\n" + "=" * 70)
@@ -586,21 +597,127 @@ def main():
     # デッドニューロン履歴（エポック毎に記録）
     dead_neuron_history = [initial_dead_info]
     
+    # ========================================
+    # 詳細エポックモニタ初期化（Epoch 1-5を監視）
+    # ========================================
+    epoch_monitor = DetailedEpochMonitor(
+        n_classes=n_classes,
+        monitor_epochs=[1, 2, 3, 4, 5]
+    )
+    print("\n" + "=" * 70)
+    print("エポック詳細モニタ: 有効（Epoch 1-5を監視）")
+    print("=" * 70)
+    
+    # ========================================
+    # ニューロンレベルトラッキング有効化（Epoch 1-5で監視）
+    # ========================================
+    network.set_neuron_tracking(True)
+    print("\n" + "=" * 70)
+    print("コラムニューロントラッキング: 有効（Epoch 1-5を監視）")
+    print("=" * 70)
+    
     # tqdmを使ったエポックループ
     pbar = tqdm(range(1, args.epochs + 1), desc="Training", ncols=120)
     for epoch in pbar:
         epoch_start = time.time()
         
+        # ニューロン統計をリセット（エポック開始時）
+        if epoch in [1, 2, 3, 4, 5]:
+            network.reset_neuron_stats()
+        
         # 訓練
-        if train_dataset_tf is not None:
+        if network.use_ridge_regression and epoch == 1:
+            # ★Ridge回帰: 1回だけ解析的に最適化（エポック不要）
+            train_loss, train_acc = network.train_readout_ridge(x_train, y_train)
+            print(f"\n★Ridge回帰完了: Train Loss={train_loss:.6f}, Train Acc={train_acc:.4f}")
+        elif network.use_ridge_regression and epoch > 1:
+            # Ridge回帰後は学習不要、評価のみ
+            train_loss = 0.0
+            train_acc = 0.0
+            for i, (x, y_true) in enumerate(zip(x_train, y_train)):
+                z_hiddens, z_output, _ = network.forward(x)
+                y_pred = np.argmax(z_output)
+                train_acc += (y_pred == y_true)
+                train_loss += -np.log(z_output[y_true] + 1e-10)
+            train_acc /= len(x_train)
+            train_loss /= len(x_train)
+        elif train_dataset_tf is not None:
             # TensorFlow Dataset API使用（ミニバッチまたはオンライン+シャッフル）
-            train_acc, train_loss = network.train_epoch_minibatch_tf(train_dataset_tf)
+            train_acc, train_loss = network.train_epoch_minibatch_tf(
+                train_dataset_tf, x_train, y_train
+            )
         else:
             # オンライン学習（シャッフルなし）
             train_acc, train_loss = network.train_epoch(x_train, y_train)
         
+        # エポックモニタリング - 訓練データの詳細記録
+        if epoch_monitor.should_monitor(epoch):
+            for i, (x, y_true) in enumerate(zip(x_train, y_train)):
+                z_hiddens, z_output, _ = network.forward(x)
+                y_pred = np.argmax(z_output)
+                
+                # 予測結果を記録
+                epoch_monitor.record_sample_prediction(
+                    epoch=epoch,
+                    sample_idx=i,
+                    y_true=int(y_true),
+                    y_pred=int(y_pred),
+                    probs=z_output,
+                    is_train=True
+                )
+                
+                # 活性化パターンを記録（サンプリング: 最初の100サンプルのみ）
+                if i < 100:
+                    epoch_monitor.record_sample_activation(
+                        epoch=epoch,
+                        sample_idx=i,
+                        activations=z_hiddens,
+                        is_train=True,
+                        top_k=10
+                    )
+        
         # テスト
         test_acc, test_loss = network.evaluate(x_test, y_test)
+        
+        # エポックモニタリング - テストデータの詳細記録
+        if epoch_monitor.should_monitor(epoch):
+            for i, (x, y_true) in enumerate(zip(x_test, y_test)):
+                z_hiddens, z_output, _ = network.forward(x)
+                y_pred = np.argmax(z_output)
+                
+                # 予測結果を記録
+                epoch_monitor.record_sample_prediction(
+                    epoch=epoch,
+                    sample_idx=i,
+                    y_true=int(y_true),
+                    y_pred=int(y_pred),
+                    probs=z_output,
+                    is_train=False
+                )
+                
+                # 活性化パターンを記録（サンプリング: 最初の100サンプルのみ）
+                if i < 100:
+                    epoch_monitor.record_sample_activation(
+                        epoch=epoch,
+                        sample_idx=i,
+                        activations=z_hiddens,
+                        is_train=False,
+                        top_k=10
+                    )
+            
+            # クラス別精度を計算
+            epoch_monitor.compute_class_accuracies(epoch)
+        
+        # ニューロントラッキングレポート出力（Epoch 1-5）
+        if epoch in [1, 2, 3, 4, 5]:
+            neuron_stats = network.get_neuron_stats()
+            report_path = f"column_neuron_behavior_epoch{epoch}.txt"
+            epoch_monitor.export_column_neuron_report(
+                neuron_stats=neuron_stats,
+                column_affinity_all_layers=network.column_membership_all_layers,  # ★修正★ Membershipを使用
+                n_samples=len(x_train),
+                filepath=report_path
+            )
         
         # デッドニューロン調査（エポック毎）
         epoch_dead_info = analyze_dead_neurons(network, x_test[:1000], y_test[:1000], epoch_label=f"Epoch {epoch}")
@@ -723,6 +840,57 @@ def main():
             diff = final_dead - initial_dead
             diff_sign = "+" if diff > 0 else ""
             print(f"  Layer {layer_idx+1}: {initial_dead} → {final_dead} ({diff_sign}{diff})")
+    
+    print("=" * 70)
+    
+    # ========================================
+    # エポック詳細モニタの分析とレポート出力
+    # ========================================
+    print("\n" + "=" * 70)
+    print("エポック詳細分析")
+    print("=" * 70)
+    
+    # サンプル難易度の分類
+    epoch_monitor.classify_sample_difficulty()
+    
+    # レポート出力
+    report_path = "epoch_monitor_report.txt"
+    epoch_monitor.export_summary_report(report_path)
+    print(f"サマリーレポート出力: {report_path}")
+    
+    # CSV出力（訓練データとテストデータ）
+    csv_train_path = "epoch_monitor_train_details.csv"
+    csv_test_path = "epoch_monitor_test_details.csv"
+    epoch_monitor.export_detailed_csv(csv_train_path, data_type='train')
+    epoch_monitor.export_detailed_csv(csv_test_path, data_type='test')
+    print(f"詳細データ出力: {csv_train_path}, {csv_test_path}")
+    
+    # Test誤り分析レポート出力
+    error_report_path = "test_error_analysis.txt"
+    epoch_monitor.export_test_error_report(error_report_path)
+    print(f"Test誤り分析レポート: {error_report_path}")
+    
+    # Test誤り遷移分析レポート出力
+    transition_report_path = "test_error_transitions.txt"
+    epoch_monitor.export_error_transition_report(transition_report_path)
+    print(f"Test誤り遷移分析レポート: {transition_report_path}")
+    
+    # 簡易サマリーを表示
+    print("\n【エポック1→2の遷移分析 (Train)】")
+    transition_train_12 = epoch_monitor.analyze_epoch_transitions(1, 2, 'train')
+    if transition_train_12:
+        print(f"  正解→正解: {transition_train_12['correct_to_correct']['count']}")
+        print(f"  正解→不正解: {transition_train_12['correct_to_wrong']['count']}")
+        print(f"  不正解→正解: {transition_train_12['wrong_to_correct']['count']} ← 改善")
+        print(f"  不正解→不正解: {transition_train_12['wrong_to_wrong']['count']}")
+    
+    print("\n【エポック1→2の遷移分析 (Test)】")
+    transition_test_12 = epoch_monitor.analyze_epoch_transitions(1, 2, 'test')
+    if transition_test_12:
+        print(f"  正解→正解: {transition_test_12['correct_to_correct']['count']}")
+        print(f"  正解→不正解: {transition_test_12['correct_to_wrong']['count']}")
+        print(f"  不正解→正解: {transition_test_12['wrong_to_correct']['count']} ← 改善")
+        print(f"  不正解→不正解: {transition_test_12['wrong_to_wrong']['count']}")
     
     print("=" * 70)
     
