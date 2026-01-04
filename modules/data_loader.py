@@ -373,10 +373,12 @@ def load_custom_dataset(dataset_path, train_samples=None, test_samples=None):
     Args:
         dataset_path: データセットディレクトリの絶対パス
         train_samples: 訓練サンプル数（Noneなら全データ）
-        test_samples: テストサンプル数（Noneなら全データ）
+        test_samples: テストサンプル数（Noneなら全データ)
     
     Returns:
         (x_train, y_train), (x_test, y_test): 正規化・フラット化済みNumPy配列
+        class_names: クラス名のリスト（指定されていなければNone）
+        input_shape: 入力画像の形状 [height, width] or [height, width, channels]
     
     ディレクトリ構造:
         dataset_path/
@@ -396,7 +398,7 @@ def load_custom_dataset(dataset_path, train_samples=None, test_samples=None):
         }
     
     使用例:
-        >>> (x_train, y_train), (x_test, y_test) = load_custom_dataset(
+        >>> (x_train, y_train), (x_test, y_test), class_names, input_shape = load_custom_dataset(
         ...     '/home/user/.keras/datasets/my_data',
         ...     train_samples=3000,
         ...     test_samples=1000
@@ -656,10 +658,11 @@ def load_custom_dataset(dataset_path, train_samples=None, test_samples=None):
     print(f"  入力形状: {metadata.get('input_shape', 'unknown')}")
     print(f"  クラス数: {metadata.get('n_classes', 'unknown')}")
     
-    # クラス名を返す（metadataから取得）
+    # クラス名とinput_shapeを返す（metadataから取得）
     class_names = metadata.get('class_names', None)
+    input_shape = metadata.get('input_shape', None)
     
-    return (x_train, y_train), (x_test, y_test), class_names
+    return (x_train, y_train), (x_test, y_test), class_names, input_shape
 
 
 def load_dataset(dataset='mnist', train_samples=None, test_samples=None):

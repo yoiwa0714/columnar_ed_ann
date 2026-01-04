@@ -137,7 +137,7 @@ class VisualizationManager:
     - 図の保存
     """
     
-    def __init__(self, enable_viz=False, enable_heatmap=False, save_path=None, total_epochs=100):
+    def __init__(self, enable_viz=False, enable_heatmap=False, save_path=None, total_epochs=100, input_shape=None):
         """
         Parameters:
         -----------
@@ -152,9 +152,13 @@ class VisualizationManager:
             - 末尾が'/'以外: ベースファイル名として扱い、_viz.png, _heatmap.png を追加
         total_epochs : int
             総エポック数（学習曲線の横軸設定用）
+        input_shape : list or None
+            入力画像の形状 [height, width] or [height, width, channels]
+            カスタムデータセットの矩形画像表示に使用
         """
         self.enable_viz = enable_viz
         self.enable_heatmap = enable_heatmap
+        self.input_shape = input_shape  # 入力画像形状を保存
         
         # 日本語フォント設定（matplotlib用）
         setup_japanese_font()
@@ -381,12 +385,60 @@ class VisualizationManager:
             col = plot_idx % 4
             ax = self.fig_heatmap.add_subplot(gs[row+1, col])  # 1行目はタイトル用に空ける
             
-            # 活性化を2D配列に整形（正方形に近い形状、row-wise配置）
+            # 活性化を2D配列に整形
             n_neurons = len(z_data)
-            side = int(np.ceil(np.sqrt(n_neurons)))
-            z_reshaped = np.zeros((side, side))
-            z_reshaped.flat[:n_neurons] = z_data
-            im = ax.imshow(z_reshaped, cmap='rainbow', aspect='equal', vmin=0, vmax=1)
+            
+            # 入力層の特別処理：画像として表示
+            if layer_idx == -2:
+                # カスタムデータセット: input_shapeを優先使用
+                if self.input_shape is not None:
+                    if len(self.input_shape) == 2:
+                        # グレースケール画像 [height, width]
+                        h, w = self.input_shape
+                        if h * w == n_neurons:
+                            z_reshaped = z_data.reshape(h, w)
+                            im = ax.imshow(z_reshaped, cmap='gray', aspect='equal', vmin=0, vmax=1)
+                        else:
+                            # サイズ不一致の場合は警告して正方形表示
+                            print(f"警告: input_shape {self.input_shape} と実際のニューロン数 {n_neurons} が一致しません")
+                            side = int(np.ceil(np.sqrt(n_neurons)))
+                            z_reshaped = np.zeros((side, side))
+                            z_reshaped.flat[:n_neurons] = z_data
+                            im = ax.imshow(z_reshaped, cmap='rainbow', aspect='equal', vmin=0, vmax=1)
+                    elif len(self.input_shape) == 3:
+                        # カラー画像 [height, width, channels]
+                        h, w, c = self.input_shape
+                        if h * w * c == n_neurons:
+                            z_reshaped = z_data.reshape(h, w, c)
+                            im = ax.imshow(z_reshaped, aspect='equal', vmin=0, vmax=1)
+                        else:
+                            # サイズ不一致の場合は警告して正方形表示
+                            print(f"警告: input_shape {self.input_shape} と実際のニューロン数 {n_neurons} が一致しません")
+                            side = int(np.ceil(np.sqrt(n_neurons)))
+                            z_reshaped = np.zeros((side, side))
+                            z_reshaped.flat[:n_neurons] = z_data
+                            im = ax.imshow(z_reshaped, cmap='rainbow', aspect='equal', vmin=0, vmax=1)
+                # 標準データセット: 次元数で判定
+                elif n_neurons == 3072:
+                    # CIFAR-10/100: 32×32×3
+                    z_reshaped = z_data.reshape(32, 32, 3)
+                    im = ax.imshow(z_reshaped, aspect='equal', vmin=0, vmax=1)
+                elif n_neurons == 784:
+                    # MNIST/Fashion-MNIST: 28×28
+                    z_reshaped = z_data.reshape(28, 28)
+                    im = ax.imshow(z_reshaped, cmap='gray', aspect='equal', vmin=0, vmax=1)
+                else:
+                    # その他のサイズ：正方形に近い形状で表示
+                    side = int(np.ceil(np.sqrt(n_neurons)))
+                    z_reshaped = np.zeros((side, side))
+                    z_reshaped.flat[:n_neurons] = z_data
+                    im = ax.imshow(z_reshaped, cmap='rainbow', aspect='equal', vmin=0, vmax=1)
+            else:
+                # 隠れ層・出力層：正方形に近い形状で表示
+                side = int(np.ceil(np.sqrt(n_neurons)))
+                z_reshaped = np.zeros((side, side))
+                z_reshaped.flat[:n_neurons] = z_data
+                im = ax.imshow(z_reshaped, cmap='rainbow', aspect='equal', vmin=0, vmax=1)
             
             ax.set_title(layer_name, fontsize=10)
             ax.set_xticks([])
