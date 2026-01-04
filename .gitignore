@@ -1,0 +1,17 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+tmp/
+
+# Serena configuration
+.serena/
+
+# Verification reports (internal documentation)
+CUSTOM_RECTANGLE_IMAGE_VERIFICATION_REPORT.md
