@@ -179,18 +179,15 @@
 ##### 1. クラス座標中心部への全クラスの配置
 
 **座標中心部へ配置する目的:**  
-全クラスコラムの中心がグリッド中心部に配置されることで、各クラスコラムが均等にニューロンへアクセスできる環境を実現
-(クラスコラムをグリッドの境界近くに配置すると、境界近くに配置されたクラスコラムのアクセス可能なニューロン数が、境界から離れた位置に配置されたクラスコラムよりも少なくなり、不均等な状態になってしまう)
+
+全クラスコラムが同数程度のニューロンにアクセス可能な状態を作り、学習の公平性を確保するため
+(クラスコラムをグリッドの端近くに配置すると、端近くに配置されたクラスコラムのアクセス可能なニューロン数が端から離れた位置に配置されたクラスコラムよりも少なくなってしまう)
 
 ###### クラス座標の中心化配置のイメージ図
 
 ![ハニカム構造の中心化配置](images/hexagonal_column_structure.png)
 
 ![円環構造の中心化配置](images/circular_column_structure.png)
-
-**この実装を行う目的:**  
-
-クラス座標中心部への配置により、全クラスが43-44個のニューロンに均等アクセス可能となり、学習の公平性を確保
 
 **コードサンプル:**
 
@@ -260,9 +257,8 @@ if column_neurons is not None:
 **コードサンプル:**
 
 ```python
-def create_column_membership(n_hidden, n_classes=10, 
-                              participation_rate=None, 
-                              column_neurons=None):
+def create_column_membership(n_hidden, n_classes, participation_rate=None, 
+                              use_hexagonal=True, column_neurons=None):
     """
     使用例:
         # モード1: column_neurons指定（推奨、デフォルト）
