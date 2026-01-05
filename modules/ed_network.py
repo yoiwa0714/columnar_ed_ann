@@ -46,7 +46,8 @@ from .amine_diffusion import (
 from .column_structure import (
     hex_distance,
     create_lateral_weights,
-    create_column_membership
+    create_column_membership,
+    create_column_membership_circular
 )
 
 
@@ -61,15 +62,15 @@ class RefinedDistributionEDNetwork:
     """
     
     def __init__(self, n_input=784, n_hidden=[250], n_output=10, 
-                 learning_rate=0.20, lateral_lr=0.08, u1=0.5, u2=0.8,
-                 column_radius=0.4, column_neurons=None, participation_rate=1.0,
-                 use_hexagonal=True, overlap=0.0, activation='tanh', leaky_alpha=0.1,
-                 use_layer_norm=False, gradient_clip=0.0, hyperparams=None,
+                 learning_rate=0.20, u1=0.5, u2=0.8,
+                 column_neurons=None, participation_rate=None,
+                 use_hexagonal=True, use_circular=False, overlap=0.0,
+                 use_layer_norm=False, hyperparams=None,
                  weight_init_scales=None, weight_init_source=None,
                  winner_suppression_factor=1.0, weight_decay=0.0, bias_diversity=0.0,
                  weight_scale_diversity=None, sign_pattern_diversity=False, weight_sparsity=0.0,
                  cluster_init_groups=0, top_k_winners=1, column_weight_diversity=0.0,
-                 use_ridge_regression=False, ridge_lambda=1e-3):
+                 use_ridge_regression=False):
         """
         初期化
         
@@ -78,12 +79,10 @@ class RefinedDistributionEDNetwork:
             n_hidden: 隠れ層ニューロン数のリスト（例: [256] or [256, 128]）
             n_output: 出力クラス数
             learning_rate: 学習率（Phase 1 Extended Overall Best: 0.20）
-            lateral_lr: 側方抑制の学習率（Phase 1 Extended Overall Best: 0.08）
             u1: アミン拡散係数（Phase 1 Extended Overall Best: 0.5）
             u2: アミン拡散係数（隠れ層間、デフォルト0.8）
-            column_radius: コラム半径（256ニューロン層での基準値、デフォルト0.4、層ごとに自動スケーリング）
-            column_neurons: 各クラスのコラムに割り当てるニューロン数（明示指定、優先度：中）
-            participation_rate: コラム参加率（0.0-1.0、デフォルト1.0=全ニューロン参加、優先度：最高）
+            column_neurons: 各クラスのコラムに割り当てるニューロン数（participation_rateと排他的、デフォルト：HyperParamsから1）
+            participation_rate: コラム参加率（0.0-1.0、column_neuronsと排他的、デフォルト：None）
             use_hexagonal: Trueならハニカム構造、Falseなら旧円環構造
             overlap: コラム間の重複度（0.0-1.0、円環構造でのみ有効、デフォルト0.0）
             top_k_winners: 各コラムで学習する上位ニューロン数（デフォルト1=Winner-Take-All、3推奨=協調学習）
@@ -99,7 +98,6 @@ class RefinedDistributionEDNetwork:
                 n_input=784,
                 n_hidden=config['hidden'],
                 learning_rate=config['learning_rate'],
-                column_radius=config['column_radius'],
                 hyperparams=hp  # HyperParamsインスタンスを渡す
             )
             
@@ -108,7 +106,7 @@ class RefinedDistributionEDNetwork:
                 n_input=784,
                 n_hidden=[256, 128],
                 learning_rate=0.05,
-                column_radius=0.4
+                column_neurons=1  # リザバーコンピューティング最適値
             )
         """
         # HyperParamsから設定を取得（指定があれば）
@@ -119,8 +117,6 @@ class RefinedDistributionEDNetwork:
                 # 明示的に指定されていないパラメータをHyperParamsから取得
                 if learning_rate == 0.20:  # デフォルト値の場合
                     learning_rate = config.get('learning_rate', learning_rate)
-                if column_radius == 0.4:  # デフォルト値の場合
-                    column_radius = config.get('column_radius', column_radius)
             except ValueError as e:
                 print(f"Warning: {e}")
                 print("個別パラメータを使用します。")
@@ -142,7 +138,6 @@ class RefinedDistributionEDNetwork:
         # → 層ごとの学習率は同じに戻す
         self.layer_specific_lr = [learning_rate] * self.n_layers
         
-        self.lateral_lr = lateral_lr  # 側方抑制の学習率
         self.winner_suppression_factor = winner_suppression_factor  # 勝者からの抑制削減率（デッドニューロン対策）
         self.weight_decay = weight_decay  # 重み減衰率（L2正則化）
         self.bias_diversity = bias_diversity  # バイアス多様化範囲
@@ -153,29 +148,16 @@ class RefinedDistributionEDNetwork:
         self.top_k_winners = top_k_winners  # ★新機能★ 上位K個学習（協調学習対応）
         self.column_weight_diversity = column_weight_diversity  # ★新機能★ コラムメンバーごとの重み多様性（0.0=無効、0.3推奨）
         self.use_ridge_regression = use_ridge_regression  # ★最適化★ Ridge回帰使用（ELM/RC標準）
-        self.ridge_lambda = ridge_lambda  # ★最適化★ Ridge回帰の正則化パラメータ
+        self.ridge_lambda = 1e-3  # Ridge回帰の正則化パラメータ（固定値）
         self.u1 = u1  # アミン拡散係数（出力層→最終隠れ層）
         self.u2 = u2  # アミン拡散係数（隠れ層間）
         self.initial_amine = 1.0  # 基準アミン濃度
         
-        # ★新機能★ 層依存のcolumn_radius（シンプルなsqrtスケーリング）
-        # column_radius自動計算（標準版）
-        self.column_radius = column_radius
-        # 自動計算: sqrt(n/256)スケーリング
-        self.column_radius_per_layer = [
-            column_radius * np.sqrt(n / 256.0) for n in self.n_hidden
-        ]
-        print(f"\n[column_radius自動スケーリング: 基準値={column_radius}]")
-        for i, (n, r) in enumerate(zip(self.n_hidden, self.column_radius_per_layer)):
-            print(f"  Layer {i}: {n}ニューロン → radius={r:.2f}")
-        
         self.column_neurons = column_neurons
         self.participation_rate = participation_rate
         self.use_hexagonal = use_hexagonal
-        self.activation = activation  # 'sigmoid' or 'leaky_relu'
-        self.leaky_alpha = leaky_alpha  # Leaky ReLUの負勾配
+        self.use_circular = use_circular
         self.use_layer_norm = use_layer_norm  # 層間正規化
-        self.gradient_clip = gradient_clip  # 勾配クリッピング値
         
         # 側方抑制（必須要素6）- ゼロ初期化、学習中に動的更新
         self.lateral_weights = create_lateral_weights(n_output)
@@ -185,48 +167,70 @@ class RefinedDistributionEDNetwork:
         self.column_membership_all_layers = []
         
         for layer_idx, layer_size in enumerate(self.n_hidden):
-            # 各層に対応するradiusを取得
-            layer_radius = self.column_radius_per_layer[layer_idx]
-            
-            # メンバーシップフラグ作成（新方式）
-            membership = create_column_membership(
-                n_hidden=layer_size,
-                n_classes=n_output,
-                participation_rate=participation_rate,
-                use_hexagonal=use_hexagonal,
-                column_radius=layer_radius,
-                column_neurons=column_neurons
-            )
+            # メンバーシップフラグ作成
+            if use_circular:
+                # 2次元円環配置
+                membership = create_column_membership_circular(
+                    n_hidden=layer_size,
+                    n_classes=n_output,
+                    participation_rate=participation_rate,
+                    column_neurons=column_neurons
+                )
+            else:
+                # ハニカム構造
+                membership = create_column_membership(
+                    n_hidden=layer_size,
+                    n_classes=n_output,
+                    participation_rate=participation_rate,
+                    use_hexagonal=use_hexagonal,
+                    column_neurons=column_neurons
+                )
             self.column_membership_all_layers.append(membership)
         
         print(f"\n[コラム構造初期化]")
         print(f"  - ★新方式★ メンバーシップフラグ使用（学習可能化対応）")
         print(f"  - コラム所属: ブールフラグ（固定）")
         print(f"  - 勝者決定: 重みベース（学習可能）")
-        if use_hexagonal:
+        if use_circular:
+            print(f"  - 方式: 2次元円環配置（円周上に等角度間隔配置）")
+            if column_neurons is not None:
+                total_column_neurons = column_neurons * n_output
+                participation_pct = total_column_neurons / self.n_hidden[0] * 100
+                print(f"  - モード: 完全コラム化（各クラス{column_neurons}ニューロン）")
+                print(f"  - コラム化ニューロン数: {total_column_neurons}個（全{self.n_hidden[0]}個中、{participation_pct:.1f}%）")
+            elif participation_rate is not None:
+                print(f"  - モード: 参加率指定（{participation_rate * 100:.0f}%）")
+                print(f"  - 各クラス約{int(self.n_hidden[0] * participation_rate / n_output)}ニューロン")
+        else:
             print(f"  - 方式: ハニカム構造(2-3-3-2配置)")
             if column_neurons is not None:
+                total_column_neurons = column_neurons * n_output
+                participation_pct = total_column_neurons / self.n_hidden[0] * 100
                 print(f"  - モード: 完全コラム化（各クラス{column_neurons}ニューロン）")
-                print(f"  - 参加率: {column_neurons * n_output / self.n_hidden[0] * 100:.1f}%")
+                print(f"  - コラム化ニューロン数: {total_column_neurons}個（全{self.n_hidden[0]}個中、{participation_pct:.1f}%）")
             elif participation_rate is not None:
                 print(f"  - モード: 参加率指定（{participation_rate * 100:.0f}%）")
                 print(f"  - 各クラス約{int(self.n_hidden[0] * participation_rate / n_output)}ニューロン")
             else:
                 print(f"  - モード: 半径ベース（radius={self.column_radius_per_layer[0]:.2f}）")
-        else:
-            print(f"  - 方式: 円環構造（v027更新: 中心化配置+participation_rate対応）")
-            if column_neurons is not None:
-                print(f"  - モード: 完全コラム化（各クラス{column_neurons}ニューロン）")
-                print(f"  - 参加率: {column_neurons * n_output / self.n_hidden[0] * 100:.1f}%")
-            elif participation_rate is not None:
-                print(f"  - モード: 参加率指定（{participation_rate * 100:.0f}%）")
-                print(f"  - 各クラス約{int(self.n_hidden[0] * participation_rate / n_output)}ニューロン")
-            else:
-                print(f"  - モード: 従来方式（コラムサイズ: {int(self.column_radius_per_layer[0] * 10)}）")
         
         for layer_idx, membership in enumerate(self.column_membership_all_layers):
             member_counts = [int(np.sum(membership[c])) for c in range(n_output)]
             print(f"  - 層{layer_idx+1}: 各クラスのメンバーニューロン数={member_counts}")
+            
+            # デバッグ: 円環でcolumn_neurons=1の場合、選択ニューロン位置を表示
+            if use_circular and column_neurons == 1:
+                selected_indices = []
+                for c in range(n_output):
+                    idx = np.where(membership[c])[0]
+                    if len(idx) > 0:
+                        selected_indices.append(int(idx[0]))
+                print(f"    → 選択ニューロン位置: {selected_indices}")
+                
+                # 2次元座標も表示
+                grid_size = int(np.ceil(np.sqrt(self.n_hidden[layer_idx])))
+                coords_2d = [(idx // grid_size, idx % grid_size) for idx in selected_indices]
+                print(f"    → 2D座標: {coords_2d}")
         
         # 興奮性・抑制性フラグ（必須要素7）
         # 入力ペア: 前半が興奮性(+1)、後半が抑制性(-1)
@@ -516,24 +520,8 @@ class RefinedDistributionEDNetwork:
         for layer_idx in range(self.n_layers):
             a_hidden = np.dot(self.w_hidden[layer_idx], z_current) + self.b_hidden[layer_idx]
             
-            # 活性化関数の適用
-            if self.activation == 'leaky_relu':
-                # Leaky ReLU: max(0, u) + alpha * min(0, u)
-                z_hidden = np.where(a_hidden > 0, a_hidden, self.leaky_alpha * a_hidden)
-            elif self.activation == 'clipped_leaky_relu':
-                # Clipped Leaky ReLU: Leaky ReLUを[-1, 1]にクリップ
-                z_leaky = np.where(a_hidden > 0, a_hidden, self.leaky_alpha * a_hidden)
-                z_hidden = np.clip(z_leaky, -1.0, 1.0)
-            elif self.activation == 'clipped_identity':
-                # Clipped Identity: 恒等関数を[-1, 1]にクリップ
-                z_hidden = np.clip(a_hidden, -1.0, 1.0)
-            elif self.activation == 'sigmoid':
-                z_hidden = sigmoid(a_hidden)
-            elif self.activation == 'shifted_sigmoid':
-                # Shifted Sigmoid: sigmoid(x)を[0,1]から[-1,1]に変換
-                z_hidden = 2.0 * sigmoid(a_hidden) - 1.0
-            else:  # tanh（デフォルト）
-                z_hidden = tanh_activation(a_hidden)
+            # 活性化関数: tanh（固定）
+            z_hidden = tanh_activation(a_hidden)
             
             z_hiddens.append(z_hidden)
             z_current = z_hidden
@@ -855,26 +843,8 @@ class RefinedDistributionEDNetwork:
             # 結果: [batch_size, n_hidden]
             a_hidden_batch = np.dot(z_current, self.w_hidden[layer_idx].T)
             
-            # 活性化関数（要素ごとの演算なのでそのまま適用可能）
-            if self.activation == 'leaky_relu':
-                z_hidden_batch = np.where(a_hidden_batch > 0, 
-                                          a_hidden_batch, 
-                                          self.leaky_alpha * a_hidden_batch)
-            elif self.activation == 'clipped_leaky_relu':
-                z_leaky_batch = np.where(a_hidden_batch > 0,
-                                        a_hidden_batch,
-                                        self.leaky_alpha * a_hidden_batch)
-                z_hidden_batch = np.clip(z_leaky_batch, -1.0, 1.0)
-            elif self.activation == 'clipped_identity':
-                # Clipped Identity: 恒等関数を[-1, 1]にクリップ
-                z_hidden_batch = np.clip(a_hidden_batch, -1.0, 1.0)
-            elif self.activation == 'sigmoid':
-                z_hidden_batch = sigmoid(a_hidden_batch)
-            elif self.activation == 'shifted_sigmoid':
-                # Shifted Sigmoid: sigmoid(x)を[0,1]から[-1,1]に変換
-                z_hidden_batch = 2.0 * sigmoid(a_hidden_batch) - 1.0
-            else:  # tanh
-                z_hidden_batch = tanh_activation(a_hidden_batch)
+            # 活性化関数: tanh（固定）
+            z_hidden_batch = tanh_activation(a_hidden_batch)
             
             z_hiddens_batch.append(z_hidden_batch)
             z_current = z_hidden_batch
@@ -1116,8 +1086,7 @@ class RefinedDistributionEDNetwork:
                     enhanced_amine = self.initial_amine
                 amine_concentration_output[y_true, 0] = error_correct * enhanced_amine
             
-            # 3) 側方抑制の更新
-            delta_lateral[winner_class, y_true] = -self.lateral_lr * (1.0 + self.lateral_weights[winner_class, y_true])
+            # 注: 側方抑制の学習は無効化（検証結果で効果なしと判明）
         
         # デバッグ出力は無効化（学習速度優先）
         
@@ -1223,25 +1192,9 @@ class RefinedDistributionEDNetwork:
                 delta_w_hidden.insert(0, np.zeros_like(self.w_hidden[layer_idx]))
                 continue
             
-            # 活性化関数の勾配
+            # 活性化関数の勾配: tanh（固定）
             z_active = z_hiddens[layer_idx][active_neurons]
-            if self.activation == 'leaky_relu':
-                saturation_term_raw = np.where(z_active > 0, 1.0, self.leaky_alpha)
-            elif self.activation == 'clipped_leaky_relu':
-                # クリップされた領域では勾配=0、それ以外はLeaky ReLUの勾配
-                saturation_term_raw = np.where(np.abs(z_active) >= 1.0, 0.0,
-                                              np.where(z_active > 0, 1.0, self.leaky_alpha))
-            elif self.activation == 'clipped_identity':
-                # クリップされた領域では勾配=0、それ以外は1
-                saturation_term_raw = np.where(np.abs(z_active) >= 1.0, 0.0, 1.0)
-            elif self.activation == 'sigmoid':
-                saturation_term_raw = z_active * (1.0 - z_active)
-            elif self.activation == 'shifted_sigmoid':
-                # shifted_sigmoid: z = 2*s - 1, s = (z+1)/2
-                # d(2s-1)/dx = 2*s*(1-s) = (z+1)*(1-z)/2
-                saturation_term_raw = (z_active + 1.0) * (1.0 - z_active) / 2.0
-            else:  # tanh
-                saturation_term_raw = np.abs(z_active) * (1.0 - np.abs(z_active))
+            saturation_term_raw = np.abs(z_active) * (1.0 - np.abs(z_active))
             saturation_term = np.maximum(saturation_term_raw, 1e-3)
             
             # 学習信号強度の計算
@@ -1536,3 +1489,79 @@ class RefinedDistributionEDNetwork:
             neuron_stats: 各層のニューロン統計のリスト
         """
         return self.neuron_stats
+    
+    def diagnose_column_structure(self):
+        """
+        コラム構造の詳細診断（v032: membership方式対応）
+        各層のコラム参加率、重複度、membership統計を分析
+        """
+        print("\n" + "="*80)
+        print("コラム構造診断（membership方式）")
+        print("="*80)
+        
+        for layer_idx in range(self.n_layers):
+            membership = self.column_membership_all_layers[layer_idx]  # [n_classes, n_neurons] boolean
+            n_neurons = self.n_hidden[layer_idx]
+            n_classes = self.n_output
+            
+            print(f"\n【Layer {layer_idx} - {n_neurons}ニューロン】")
+            
+            # 1. 各クラスのコラム参加率
+            print("\n1. 各クラスのコラムメンバーニューロン数:")
+            class_neuron_counts = []
+            for class_idx in range(n_classes):
+                # membershipフラグがTrueのニューロン数
+                participating = int(np.sum(membership[class_idx]))
+                class_neuron_counts.append(participating)
+                participation_rate = participating / n_neurons * 100
+                print(f"  Class {class_idx}: {participating:3d}個 ({participation_rate:5.1f}%)")
+            
+            print(f"  平均: {np.mean(class_neuron_counts):.1f}個")
+            print(f"  標準偏差: {np.std(class_neuron_counts):.1f}個")
+            
+            # 2. ニューロンごとの重複度（何個のクラスのメンバーか）
+            print("\n2. ニューロンの重複度分析:")
+            overlap_counts = np.zeros(n_neurons, dtype=int)
+            for neuron_idx in range(n_neurons):
+                # このニューロンがメンバーになっているクラス数
+                n_classes_for_neuron = int(np.sum(membership[:, neuron_idx]))
+                overlap_counts[neuron_idx] = n_classes_for_neuron
+            
+            # ヒストグラム
+            unique_overlaps, counts = np.unique(overlap_counts, return_counts=True)
+            print("  重複度分布:")
+            for overlap, count in zip(unique_overlaps, counts):
+                pct = count / n_neurons * 100
+                print(f"    {overlap}クラスのメンバー: {count:3d}個 ({pct:5.1f}%)")
+            
+            print(f"  平均重複度: {np.mean(overlap_counts):.2f}クラス/ニューロン")
+            print(f"  非メンバーニューロン数: {np.count_nonzero(overlap_counts == 0)}個")
+            
+            # 3. membership統計
+            print("\n3. membershipフラグ統計:")
+            total_flags = n_classes * n_neurons
+            true_flags = int(np.sum(membership))
+            print(f"  総フラグ数: {total_flags}")
+            print(f"  Trueフラグ数: {true_flags} ({true_flags/total_flags*100:.1f}%)")
+            print(f"  Falseフラグ数: {total_flags - true_flags} ({(total_flags-true_flags)/total_flags*100:.1f}%)")
+            
+            # 4. クラス間の重複ニューロン分析
+            print("\n4. クラス間重複メンバーニューロン数（上位5ペア）:")
+            overlap_matrix = np.zeros((n_classes, n_classes), dtype=int)
+            for i in range(n_classes):
+                for j in range(i+1, n_classes):
+                    # クラスiとjの両方のメンバーになっているニューロン数
+                    both_member = int(np.sum(membership[i] & membership[j]))
+                    overlap_matrix[i, j] = both_member
+            
+            # 上位5ペアを表示
+            overlap_pairs = []
+            for i in range(n_classes):
+                for j in range(i+1, n_classes):
+                    overlap_pairs.append((i, j, overlap_matrix[i, j]))
+            overlap_pairs.sort(key=lambda x: x[2], reverse=True)
+            
+            for i, j, count in overlap_pairs[:5]:
+                print(f"  Class {i} ⇔ Class {j}: {count}個共有")
+        
+        print("\n" + "="*80)

@@ -1,8 +1,112 @@
 #!/usr/bin/env python3
 """
-コラムED法
-columnar_ed_ann.py version: 1.033
-"""
+columnar_ed_ann.py version: 1.034
+多層多クラス分類対応 (モジュール化版) - TensorFlowデータローダー統合版【自動データセット対応】
+
+【v034について】(2026-01-05作成)
+v033からコピーして作成された最新の開発用バージョンです。
+v033で実装したコラムパラメータ簡素化（3モード→2モード、排他的選択）および
+2次元円環配置の正式化の全機能を継承しています。
+
+【v034の更新内容】(2026-01-05)
+■ パラメータクリーンアップ 🎯
+  - 効果のないコマンドラインオプション5項目を削除
+    * --activation: tanh固定運用（他選択肢は実験用のみ）
+    * --leaky-alpha: leaky_relu未使用のため不要
+    * --gradient_clip: デッドコード（使用されていない）
+    * --lateral_lr: 検証結果で効果なし（Test精度差分±0.0000）
+    * --ridge_lambda: CLI削除、内部デフォルト値1e-3保持
+  
+  - パラメータテーブルから削除
+    * winner_suppression_factor: 2層設定から削除（1.0=無効化状態）
+  
+  - activation簡略化
+    * 6種類の分岐 → tanh固定
+    * コード削減: 45行 → 3行（93%削減）
+  
+  - 側方抑制更新削除
+    * modules/ed_network.py: lateral_lr使用箇所削除
+    * 検証結果で効果なしと判明（±0.0000）
+  
+  - config/hyperparameters.yaml修正
+    * 全層（1層、2層、3層、4層、5層）からlateral_lr削除
+    * 2層からwinner_suppression_factor削除
+  
+  検証結果（Serena MCPサーバー使用）:
+  - ✅ プロジェクト全体の残存パラメータ確認完了
+  - ✅ columnar_ed.prompt.md準拠検証完了
+  - ✅ 動作確認テスト成功（500サンプル×2エポック）
+  
+  成果:
+  - CLIオプション数: -14% (35項目 → 30項目)
+  - activation分岐コード: -93% (45行 → 3行)
+  - デッドコード: -100% (1項目 → 0項目)
+  
+  詳細: PARAMETER_CLEANUP_REPORT_20250103.md 参照
+
+■ README.md実験結果更新 🎯
+  - Test精度: 81.6% → 85.8%に更新
+  - 実行条件の詳細追記
+    * ネットワーク構成: --hidden 2048,1024
+    * 学習条件: --train 3000 --test 3000 --epochs 10
+    * コラム設定: --column_neurons 1 --wis 1.1,1.2,0.6
+    * ハイパーパラメータ: learning_rate=0.1, u1=1.0, u2=2.5
+  
+  実験結果:
+  - Epoch 10/10: Train=94.63%, Test=85.77%
+  - デッドニューロン: L1=0/2048, L2=1/1024（非常に少ない）
+
+■ diagnose_column_structure実装 🎯
+  - membership方式（v032）対応の診断機能実装
+  - modules/ed_network.py: diagnose_column_structure()メソッド追加
+  
+  診断内容:
+  - 各クラスのメンバーニューロン数と参加率
+  - ニューロンの重複度分布（何クラスのメンバーか）
+  - membershipフラグ統計（True/False比率）
+  - クラス間の共有ニューロン数（上位5ペア）
+  
+  --diagnose_columnヘルプメッセージ改善:
+  - 動作内容を詳細に説明
+  - 他のオプションとの連携を明記
+  - 学習スキップを明記
+  
+  検証結果:
+  - ✅ 1層構成（--hidden 1024）で正常動作
+  - ✅ 2層構成（--hidden 512,256）で正常動作
+  - ✅ 3層構成（--hidden 1024,512,256）で正常動作
+
+【v033の更新内容】(2026-01-05)
+■ コラムパラメータの簡素化（3モード→2モード、排他的選択） 🎯
+  - column_radius方式を完全廃止（複雑性が高く、実用性が低い）
+  - participation_rateとcolumn_neuronsを排他的選択に変更
+  - デフォルト: column_neurons=1（HyperParams自動取得、リザバーコンピューティング最適値）
+  - 排他性チェック実装（両方指定時にエラー終了）
+  
+  実装内容:
+  - columnar_ed_ann_v033.py: --column_radius削除、排他性チェック追加、デフォルト値設定
+  - modules/column_structure.py: column_radius削除、排他的選択ロジック実装
+  - modules/ed_network.py: column_radius削除、自動スケーリング削除
+  - config/hyperparameters.yaml: column_neurons=1追加（1層・2層）
+  - README.md & columnar_ed.prompt.md: ドキュメント更新
+  
+  検証結果:
+  - ✅ デフォルト動作: column_neurons=1自動設定
+  - ✅ 排他性エラー: 両方指定時にエラー終了
+  - ✅ participation_rate指定: 各クラス51個（0.5指定時、1024ニューロン）
+
+■ 2次元円環配置の正式化 🎯
+  - 旧1次元円環構造（--use_circular）を廃止
+  - 2次元円環配置（--use_circular_2d）を--use_circularとして正式版に昇格
+  - 関数名: create_column_membership_circular_2d → create_column_membership_circular
+  - 全モジュール: use_circular_2d → use_circular に統一
+  - README.md & columnar_ed.prompt.md: ドキュメント更新
+
+■ --wisヘルプメッセージの更新
+  - 最新のHyperParamsテーブル値を反映
+  - 隠れ層1層: [1.25, 2.0]
+  - 隠れ層2層: [1.1, 1.2, 1.2]
+  - 繰り返し記法の例を簡潔化
 
 【v032の更新内容】(2026-01-04)
 ■ カスタムデータセット矩形画像表示対応 🎯
@@ -671,29 +775,18 @@ def parse_args():
     ed_group = parser.add_argument_group('ED法関連のパラメータ')
     ed_group.add_argument('--hidden', type=str, default='512',
                          help='隠れ層ニューロン数（例: 512=1層, 256,128=2層）（デフォルト値: 512）')
-    ed_group.add_argument('--activation', type=str, default='tanh',
-                         choices=['tanh', 'sigmoid', 'leaky_relu', 'clipped_leaky_relu', 'shifted_sigmoid', 'clipped_identity'],
-                         help='活性化関数（デフォルト: tanh）※グリッドサーチ用、将来的に削除予定')
-    ed_group.add_argument('--leaky-alpha', type=float, default=0.1,
-                         help='Leaky ReLUの負勾配係数（デフォルト: 0.1、推奨値: 0.01-0.2）')
     ed_group.add_argument('--lr', type=float, default=None,
                          help='学習率（層数により自動設定: 1層=0.20, 2層=0.25、明示指定で上書き）')
     ed_group.add_argument('--u1', type=float, default=None,
                          help='アミン拡散係数u1（出力層→最終隠れ層、層数により自動設定: 1層=0.5, 2層=0.5、明示指定で上書き）')
     ed_group.add_argument('--u2', type=float, default=None,
                          help='アミン拡散係数u2（隠れ層間、層数により自動設定: 1層=0.8, 2層=0.8、明示指定で上書き）')
-    ed_group.add_argument('--lateral_lr', type=float, default=None,
-                         help='側方抑制の学習率（層数により自動設定: 1層=0.08, 2層=0.08、明示指定で上書き）')
-    ed_group.add_argument('--gradient_clip', type=float, default=0.05,
-                         help='gradient clipping値（デフォルト値: 0.05）')
     ed_group.add_argument('--batch', type=int, default=None,
                          help='ミニバッチサイズ（未指定=オンライン学習、32/128推奨）')
     ed_group.add_argument('--shuffle', action='store_true',
                          help='データをシャッフル（TensorFlow Dataset API使用、オンライン/ミニバッチ両対応）')
     ed_group.add_argument('--use_ridge', action='store_true',
                          help='★最適化★ Ridge回帰を使用（ELM/RC標準手法、学習高速化）')
-    ed_group.add_argument('--ridge_lambda', type=float, default=1e-3,
-                         help='Ridge回帰の正則化パラメータ（デフォルト: 1e-3）')
     ed_group.add_argument('--weight_sparsity', type=float, default=0.0,
                          help='★最適化★ スパースリザーバ（0.0〜1.0、0.1=90%%スパース、RC/ELM標準手法）')
     
@@ -703,25 +796,28 @@ def parse_args():
     column_group = parser.add_argument_group('コラム関連のパラメータ')
     column_group.add_argument('--list_hyperparams', action='store_true',
                              help='利用可能なHyperParams設定一覧を表示して終了')
-    column_group.add_argument('--column_radius', type=float, default=None,
-                             help='コラム半径（層数により自動設定、明示指定で上書き）')
     column_group.add_argument('--participation_rate', type=float, default=None,
-                             help='コラム参加率（層数により自動設定、明示指定で上書き）')
+                             help='コラム参加率（--column_neuronsと排他的、層数により自動設定、明示指定で上書き）')
     column_group.add_argument('--column_neurons', type=int, default=None,
-                             help='各クラスの明示的ニューロン数（デフォルト値: None、重複許容、優先度：中）')
+                             help='各クラスの明示的ニューロン数（--participation_rateと排他的、デフォルト: HyperParamsから1、リザバーコンピューティング推奨）')
     column_group.add_argument('--use_circular', action='store_true',
-                             help='旧円環構造を使用（デフォルトはハニカム）')
+                             help='2次元円環配置を使用（円周上に等角度間隔配置、デフォルトはハニカム）')
     column_group.add_argument('--overlap', type=float, default=0.0,
                              help='コラム間の重複度（デフォルト値: 0.0、0.0-1.0、円環構造でのみ有効、0.0=重複なし）')
     column_group.add_argument('--diagnose_column', action='store_true',
-                             help='コラム構造の詳細診断を実行')
+                             help='コラム構造の詳細診断を実行（学習はスキップ）。\n'
+                                  '指定したネットワーク構成（--hidden等）で初期化し、以下を分析:\n'
+                                  '  - 各クラスのメンバーニューロン数と参加率\n'
+                                  '  - ニューロンの重複度分布（何クラスのメンバーか）\n'
+                                  '  - membershipフラグ統計（True/False比率）\n'
+                                  '  - クラス間の共有ニューロン数（上位5ペア）')
     column_group.add_argument('--wis', '--weight_init_scales', type=str, default=None,
                              dest='weight_init_scales',
                              help='重み初期化係数。隠れ層と出力層分を合わせて指定する。\n'
                                   'カンマ区切り、繰り返しは値[回数]で指定。\n'
-                                  '例: 2.25,2.75,12.00 (隠れ層2層と出力層)\n'
-                                  '    2.25,3.0[9],12.00 (隠れ層10層と出力層。Layer1-9を3.0に設定)\n'
-                                  '    2.0,3.0[99],12.00 (隠れ層100層と出力層)\n'
+                                  '例: 1.25,2.0 (隠れ層1層と出力層)\n'
+                                  '    1.1,1.2,1.2 (隠れ層2層と出力層)\n'
+                                  '    2.0,3.0[9],12.0 (隠れ層10層と出力層。Layer2-10を3.0に設定)\n'
                                   'デフォルト: HyperParamsテーブルから自動取得')
     
     # ========================================
@@ -796,12 +892,7 @@ def main():
             args.u1 = config['u1']
         if args.u2 is None and 'u2' in config:
             args.u2 = config['u2']
-        if args.lateral_lr is None and 'lateral_lr' in config:
-            args.lateral_lr = config['lateral_lr']
-        if args.column_radius is None:
-            args.column_radius = config['column_radius']
-        if args.participation_rate is None and 'participation_rate' in config:
-            args.participation_rate = config['participation_rate']
+        # participation_rateはHyperParamsから自動取得しない（column_neuronsとの競合を避けるため）
         if args.epochs is None:
             args.epochs = config['epochs']
         
@@ -812,9 +903,6 @@ def main():
         print(f"learning_rate: {args.lr}")
         print(f"u1: {args.u1}")
         print(f"u2: {args.u2}")
-        print(f"lateral_lr: {args.lateral_lr}")
-        print(f"column_radius: {args.column_radius}")
-        print(f"participation_rate: {args.participation_rate}")
         print(f"epochs: {args.epochs}")
         
         print("="*70 + "\n")
@@ -874,6 +962,32 @@ def main():
             print(f"[重み初期化係数] HyperParams取得失敗、デフォルト値を使用")
     
     # ========================================
+    # コラムパラメータの排他性チェックとデフォルト値設定
+    # ========================================
+    if args.participation_rate is not None and args.column_neurons is not None:
+        print("\n" + "="*70)
+        print("エラー: --participation_rate と --column_neurons は同時に指定できません")
+        print("="*70)
+        print(f"--participation_rate指定: {args.participation_rate}")
+        print(f"--column_neurons指定: {args.column_neurons}")
+        print("\nどちらか一方を選択してください。")
+        print("推奨: --column_neurons 1 （リザバーコンピューティング最適値）")
+        print("="*70 + "\n")
+        import sys
+        sys.exit(1)
+    
+    # デフォルト値設定（column_neuronsを優先）
+    if args.participation_rate is None and args.column_neurons is None:
+        # HyperParamsからcolumn_neuronsを取得（デフォルト）
+        try:
+            config = hp.get_config(n_layers)
+            args.column_neurons = config.get('column_neurons', 1)
+            print(f"[コラムパラメータ] HyperParamsから取得: column_neurons={args.column_neurons}")
+        except:
+            args.column_neurons = 1
+            print(f"[コラムパラメータ] デフォルト値使用: column_neurons=1")
+    
+    # ========================================
     # 3. データ読み込み
     # ========================================
     # データセット名の解決（優先順位: --dataset > --fashion > デフォルト）
@@ -924,21 +1038,16 @@ def main():
         n_hidden=hidden_sizes,
         n_output=n_classes,
         learning_rate=args.lr,
-        lateral_lr=args.lateral_lr,
         u1=args.u1,
         u2=args.u2,
-        column_radius=args.column_radius,
         column_neurons=args.column_neurons,
         participation_rate=args.participation_rate,
         use_hexagonal=not args.use_circular,
+        use_circular=args.use_circular,
         overlap=args.overlap,
-        gradient_clip=args.gradient_clip,
-        activation=args.activation,  # activationパラメータを追加
-        leaky_alpha=args.leaky_alpha,  # Leaky ReLUの負勾配係数
         top_k_winners=3,  # ★新機能★ Top-3協調学習
         column_weight_diversity=0.0,  # 0.0が最適（79.8%）、重み多様化不要
         use_ridge_regression=args.use_ridge,  # ★最適化★ Ridge回帰使用
-        ridge_lambda=args.ridge_lambda,  # ★最適化★ Ridge回帰正則化パラメータ
         weight_sparsity=args.weight_sparsity,  # ★最適化★ スパースリザーバ（RC/ELM標準手法）
         hyperparams=hp,  # HyperParamsインスタンスを渡す（重み初期化係数の取得に必要）
         weight_init_scales=weight_init_scales,  # CLI/HyperParamsから取得した値
@@ -956,6 +1065,13 @@ def main():
     # 5. 可視化マネージャーの初期化
     # ========================================
     viz_manager = None
+    
+    # --heatmapのみ指定された場合の警告
+    if args.heatmap and not args.viz:
+        print("\n警告: --heatmapが指定されていますが、--vizが指定されていないため、")
+        print("      ヒートマップリアルタイム表示は有効化されません。")
+        print("      ヒートマップを表示するには、--viz --heatmap の両方を指定してください。")
+    
     if args.viz:
         try:
             viz_manager = VisualizationManager(
@@ -963,11 +1079,16 @@ def main():
                 enable_heatmap=args.heatmap,
                 save_path=args.save_viz,
                 total_epochs=args.epochs,
-                input_shape=custom_input_shape  # カスタムデータセットの画像形状を渡す
+                input_shape=custom_input_shape,  # カスタムデータセットの画像形状を渡す
+                network=network  # ★コラム構造可視化のためネットワークを渡す★
             )
             print("\n可視化機能: 有効")
             if args.heatmap:
                 print("  - ヒートマップ表示: 有効")
+                if args.use_circular:
+                    print("  - コラム構造: 2次元円環配置")
+                else:
+                    print("  - コラム構造: 2-3-3-2ハニカム配置")
             if args.save_viz:
                 print(f"  - 保存先: {args.save_viz}")
             if custom_input_shape:
@@ -1066,22 +1187,7 @@ def main():
             network.reset_neuron_stats()
         
         # 訓練
-        if network.use_ridge_regression and epoch == 1:
-            # ★Ridge回帰: 1回だけ解析的に最適化（エポック不要）
-            train_loss, train_acc = network.train_readout_ridge(x_train, y_train)
-            print(f"\n★Ridge回帰完了: Train Loss={train_loss:.6f}, Train Acc={train_acc:.4f}")
-        elif network.use_ridge_regression and epoch > 1:
-            # Ridge回帰後は学習不要、評価のみ
-            train_loss = 0.0
-            train_acc = 0.0
-            for i, (x, y_true) in enumerate(zip(x_train, y_train)):
-                z_hiddens, z_output, _ = network.forward(x)
-                y_pred = np.argmax(z_output)
-                train_acc += (y_pred == y_true)
-                train_loss += -np.log(z_output[y_true] + 1e-10)
-            train_acc /= len(x_train)
-            train_loss /= len(x_train)
-        elif train_dataset_tf is not None:
+        if train_dataset_tf is not None:
             # TensorFlow Dataset API使用（ミニバッチまたはオンライン+シャッフル）
             train_acc, train_loss = network.train_epoch_minibatch_tf(
                 train_dataset_tf, x_train, y_train

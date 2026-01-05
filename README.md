@@ -98,7 +98,9 @@
 
 **実験結果**:
 
-- MNIST: `column_neurons=1`で81.6%の精度達成
+- MNIST: 85.8%の精度達成
+  - 実行条件: `--hidden 2048,1024 --train 3000 --test 3000 --epochs 10 --column_neurons 1 --wis 1.1,1.2,0.6`
+  - 設定: `learning_rate=0.1, u1=1.0, u2=2.5`
 - 学習対象が全ニューロンの2%でも高い性能を実現
 - リザバーの固定ランダム重みが汎化性能に貢献
 
@@ -577,8 +579,6 @@ python columnar_ed_ann.py --dataset /path/to/my_custom_data
 | `--lr` | 0.20 | 学習率 |
 | `--u1` | 0.5 | アミン拡散係数 |
 | `--u2` | 0.8 | アミン拡散係数（隠れ層間） |
-| `--lateral_lr` | 0.08 | 側方抑制の学習率 |
-| `--gradient_clip` | 0.05 | gradient clipping値 |
 | `--wis` | None | 重み初期化係数（層ごとに指定、優先順位: CLI > HyperParams > デフォルト） |
 
 **重み初期化係数（--wis）の使用例**:

@@ -137,7 +137,7 @@ class VisualizationManager:
     - 図の保存
     """
     
-    def __init__(self, enable_viz=False, enable_heatmap=False, save_path=None, total_epochs=100, input_shape=None):
+    def __init__(self, enable_viz=False, enable_heatmap=False, save_path=None, total_epochs=100, input_shape=None, network=None):
         """
         Parameters:
         -----------
@@ -155,10 +155,13 @@ class VisualizationManager:
         input_shape : list or None
             入力画像の形状 [height, width] or [height, width, channels]
             カスタムデータセットの矩形画像表示に使用
+        network : object or None
+            ネットワークオブジェクト（コラム構造情報の取得用）
         """
         self.enable_viz = enable_viz
         self.enable_heatmap = enable_heatmap
         self.input_shape = input_shape  # 入力画像形状を保存
+        self.network = network  # ネットワークオブジェクトを保存
         
         # 日本語フォント設定（matplotlib用）
         setup_japanese_font()
@@ -397,7 +400,7 @@ class VisualizationManager:
                         h, w = self.input_shape
                         if h * w == n_neurons:
                             z_reshaped = z_data.reshape(h, w)
-                            im = ax.imshow(z_reshaped, cmap='gray', aspect='equal', vmin=0, vmax=1)
+                            im = ax.imshow(z_reshaped, cmap='rainbow', aspect='equal', vmin=0, vmax=1)
                         else:
                             # サイズ不一致の場合は警告して正方形表示
                             print(f"警告: input_shape {self.input_shape} と実際のニューロン数 {n_neurons} が一致しません")
@@ -426,7 +429,7 @@ class VisualizationManager:
                 elif n_neurons == 784:
                     # MNIST/Fashion-MNIST: 28×28
                     z_reshaped = z_data.reshape(28, 28)
-                    im = ax.imshow(z_reshaped, cmap='gray', aspect='equal', vmin=0, vmax=1)
+                    im = ax.imshow(z_reshaped, cmap='rainbow', aspect='equal', vmin=0, vmax=1)
                 else:
                     # その他のサイズ：正方形に近い形状で表示
                     side = int(np.ceil(np.sqrt(n_neurons)))
@@ -434,10 +437,18 @@ class VisualizationManager:
                     z_reshaped.flat[:n_neurons] = z_data
                     im = ax.imshow(z_reshaped, cmap='rainbow', aspect='equal', vmin=0, vmax=1)
             else:
-                # 隠れ層・出力層：正方形に近い形状で表示
+                # 隠れ層・出力層の表示
                 side = int(np.ceil(np.sqrt(n_neurons)))
                 z_reshaped = np.zeros((side, side))
-                z_reshaped.flat[:n_neurons] = z_data
+                
+                # 配置方式の切り替え
+                if self.network is not None and self.network.use_circular:
+                    # 2次元円環配置: 既に2次元座標で配置済みのため、通常配置
+                    z_reshaped.flat[:n_neurons] = z_data
+                else:
+                    # ハニカム構造: 左上から通常配置
+                    z_reshaped.flat[:n_neurons] = z_data
+                
                 im = ax.imshow(z_reshaped, cmap='rainbow', aspect='equal', vmin=0, vmax=1)
             
             ax.set_title(layer_name, fontsize=10)

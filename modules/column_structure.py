@@ -41,8 +41,8 @@
 import numpy as np
 
 
-def create_column_membership(n_hidden, n_classes, participation_rate=1.0, 
-                             use_hexagonal=True, column_radius=0.4, column_neurons=None):
+def create_column_membership(n_hidden, n_classes, participation_rate=None, 
+                             use_hexagonal=True, column_neurons=None):
     """
     コラムメンバーシップフラグを作成（Affinity代替、学習可能化対応）
     
@@ -54,10 +54,9 @@ def create_column_membership(n_hidden, n_classes, participation_rate=1.0,
     Args:
         n_hidden: 隠れ層のニューロン総数
         n_classes: 出力クラス数
-        participation_rate: 各クラスに割り当てるニューロンの割合（0.0-1.0）
+        participation_rate: 各クラスに割り当てるニューロンの割合（0.0-1.0、column_neuronsと排他的）
         use_hexagonal: Trueならハニカム配置、Falseなら順次割り当て
-        column_radius: コラム半径（ハニカム配置時の参考値）
-        column_neurons: 各クラスに割り当てるニューロン数（明示指定、優先度最高）
+        column_neurons: 各クラスに割り当てるニューロン数（明示指定、participation_rateと排他的）
     
     Returns:
         membership: shape [n_classes, n_hidden] のブール配列
@@ -70,36 +69,47 @@ def create_column_membership(n_hidden, n_classes, participation_rate=1.0,
     """
     membership = np.zeros((n_classes, n_hidden), dtype=bool)
     
-    # 各クラスに割り当てるニューロン数（優先順位: column_neurons > participation_rate）
+    # 各クラスに割り当てるニューロン数（column_neuronsとparticipation_rateは排他的）
     if column_neurons is not None:
         neurons_per_class = column_neurons
-    else:
+    elif participation_rate is not None:
         neurons_per_class = int(n_hidden * participation_rate / n_classes)
+    else:
+        # デフォルト: column_neurons=1
+        neurons_per_class = 1
     
     if neurons_per_class == 0:
         neurons_per_class = 1  # 最低1個は割り当て
     
     if use_hexagonal:
-        # ハニカム配置（現在のcreate_hexagonal_column_affinityと同じ配置方法）
-        # 2-3-3-2パターンで10クラスを配置
+        # ハニカム配置（2-3-3-2パターンで10クラスを中心化配置）
+        # columnar_ed.prompt.mdの理論に準拠
+        grid_size = int(np.ceil(np.sqrt(n_hidden)))
+        grid_center = grid_size / 2.0  # グリッドの中心座標
+        
+        # 2-3-3-2配置の10クラス座標（中心化）
         row_patterns = [2, 3, 3, 2]
-        positions = []
-        for row_idx, cols in enumerate(row_patterns):
-            for col_idx in range(cols):
-                positions.append((row_idx, col_idx))
+        class_coords = {
+            0: (grid_center - 1, grid_center - 1), 
+            1: (grid_center + 1, grid_center - 1),
+            2: (grid_center - 2, grid_center), 
+            3: (grid_center, grid_center),
+            4: (grid_center + 2, grid_center),
+            5: (grid_center - 2, grid_center + 1), 
+            6: (grid_center, grid_center + 1),
+            7: (grid_center + 2, grid_center + 1),
+            8: (grid_center - 1, grid_center + 2), 
+            9: (grid_center + 1, grid_center + 2)
+        }
         
         # 2D グリッド配置
-        grid_size = int(np.ceil(np.sqrt(n_hidden)))
         neuron_positions = np.array([
             [i // grid_size, i % grid_size] for i in range(n_hidden)
         ])
         
-        for class_idx in range(min(n_classes, len(positions))):
-            row, col = positions[class_idx]
-            
-            # コラム中心位置
-            center_row = row * (grid_size / len(row_patterns))
-            center_col = col * (grid_size / max(row_patterns))
+        for class_idx in range(min(n_classes, len(class_coords))):
+            # 中心化された座標を取得
+            center_row, center_col = class_coords[class_idx]
             
             # 各ニューロンとの距離を計算
             distances = np.sqrt(
@@ -110,12 +120,80 @@ def create_column_membership(n_hidden, n_classes, participation_rate=1.0,
             # 距離が近い上位neurons_per_class個をメンバーに
             closest_indices = np.argsort(distances)[:neurons_per_class]
             membership[class_idx, closest_indices] = True
+    
+    return membership
+
+
+def create_column_membership_circular(n_hidden, n_classes, participation_rate=None,
+                                       column_neurons=None):
+    """
+    2次元円環配置によるコラムメンバーシップフラグを作成
+    
+    特徴:
+        - 2次元グリッド上で各クラスを円周上に等角度間隔で配置
+        - トーラストポロジーのイメージに合致
+        - 視覚的に理解しやすい円形配置
+        - 空間的一貫性を保持
+    
+    Args:
+        n_hidden: 隠れ層のニューロン総数
+        n_classes: 出力クラス数
+        participation_rate: 各クラスに割り当てるニューロンの割合（0.0-1.0、column_neuronsと排他的）
+        column_neurons: 各クラスに割り当てるニューロン数（明示指定、participation_rateと排他的）
+    
+    Returns:
+        membership: shape [n_classes, n_hidden] のブール配列
+                   membership[c, i] = Trueなら、ニューロンiはクラスcのコラムメンバー
+    
+    実装詳細:
+        1. 2次元グリッドの中心を計算
+        2. 各クラスを円周上に等角度間隔で配置
+        3. 各クラスの中心から近いニューロンを選択
+    """
+    membership = np.zeros((n_classes, n_hidden), dtype=bool)
+    
+    # 各クラスに割り当てるニューロン数（column_neuronsとparticipation_rateは排他的）
+    if column_neurons is not None:
+        neurons_per_class = column_neurons
+    elif participation_rate is not None:
+        neurons_per_class = int(n_hidden * participation_rate / n_classes)
     else:
-        # 順次割り当て（シンプル）
-        for class_idx in range(n_classes):
-            start_idx = class_idx * neurons_per_class
-            end_idx = min(start_idx + neurons_per_class, n_hidden)
-            membership[class_idx, start_idx:end_idx] = True
+        # デフォルト: column_neurons=1
+        neurons_per_class = 1
+    
+    if neurons_per_class == 0:
+        neurons_per_class = 1  # 最低1個は割り当て
+    
+    # 2次元グリッドサイズ
+    grid_size = int(np.ceil(np.sqrt(n_hidden)))
+    grid_center = grid_size / 2.0  # グリッド中心座標（float）
+    
+    # 円の半径（グリッドサイズの約40%）
+    circle_radius = grid_size * 0.4
+    
+    # 全ニューロンの2D座標
+    neuron_positions = np.array([
+        [i // grid_size, i % grid_size] for i in range(n_hidden)
+    ])
+    
+    # 各クラスを円周上に等角度間隔で配置
+    for class_idx in range(n_classes):
+        # 角度を計算（0度から開始、時計回り）
+        angle = 2 * np.pi * class_idx / n_classes
+        
+        # クラス中心の2D座標
+        center_row = grid_center + circle_radius * np.cos(angle)
+        center_col = grid_center + circle_radius * np.sin(angle)
+        
+        # 各ニューロンとの距離を計算（ユークリッド距離）
+        distances = np.sqrt(
+            (neuron_positions[:, 0] - center_row) ** 2 +
+            (neuron_positions[:, 1] - center_col) ** 2
+        )
+        
+        # 距離が近い上位neurons_per_class個をメンバーに
+        closest_indices = np.argsort(distances)[:neurons_per_class]
+        membership[class_idx, closest_indices] = True
     
     return membership
 
