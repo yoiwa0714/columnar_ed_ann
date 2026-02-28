@@ -22,7 +22,17 @@
 ## クイックスタート
 
 ```bash
-pip install numpy tensorflow PyYAML matplotlib tqdm
+# リポジトリのクローン
+git clone https://github.com/yoiwa0714/columnar_ed_ann.git
+cd columnar_ed_ann
+
+# 仮想環境の作成（推奨）
+python -m venv .venv
+source .venv/bin/activate  # Linux/macOS
+# .venv\Scripts\activate   # Windows
+
+# 依存パッケージのインストール
+pip install -r requirements.txt
 
 # 1層 + Gabor特徴（デフォルト）
 python columnar_ed_ann_simple.py --hidden 2048 --train 10000 --test 10000
