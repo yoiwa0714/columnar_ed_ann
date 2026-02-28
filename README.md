@@ -19,7 +19,7 @@
 | ED法解説 | [ED法 解説資料](docs/ja/ED法_解説資料.md) | [ED Method Explanation](docs/en/ED_Method_Explanation.md) |
 | カスタムデータ | [CUSTOM_DATASET_GUIDE.md](CUSTOM_DATASET_GUIDE.md) | [CUSTOM_DATASET_GUIDE.md](CUSTOM_DATASET_GUIDE.md) |
 
-## クイックスタート
+## クイックスタート (簡易版)
 
 ```bash
 # リポジトリのクローン
