@@ -1,0 +1,185 @@
+# ハイパーパラメータ設定
+# 最終更新: 2026-02-24
+
+layer_params:
+  1:  # 1層構成
+    hidden: [2048]  # v044グリッドサーチ最適値: 1024 → 2048 (2026-02-07)
+    u1: 0.5  # v044グリッドサーチ: 影響軽微だがデフォルト0.5維持
+    u2: 0.8  # 1層構成では未使用（2層以上で有効）
+    lateral_lr: 0.08  # 側方結合学習率
+    base_column_radius: 0.4  # コラム半径基準値
+    column_radius_per_layer: [1.13]  # [sqrt(2048/256) * 0.4]
+    participation_rate: 0.1  # 10%参加率 (column_neurons=1使用時は無視)
+    column_neurons: 1  # リザバーコンピューティング最適値 (v044グリッドサーチで再確認)
+    weight_init_scales: [0.4, 1.0]  # [Layer 0, 出力層] (v044グリッドサーチ最適値、2026-02-07)
+    hidden_sparsity: 0.4  # v044グリッドサーチ最適値: 0.2 → 0.4 (2026-02-07)
+    gradient_clip: 0.05  # v044グリッドサーチ確定値 (2026-02-07)
+    output_lr: 0.15  # 出力層学習率
+    non_column_lr: [0.15]  # 非コラムニューロン学習率（層別）
+    column_lr: [0.0015]  # コラムニューロン学習率（層別）
+    epochs: 10  # v044グリッドサーチ基準 (BestEpoch=10、学習曲線が単調増加)
+    # v044グリッドサーチ最適化結果（2026-02-07）:
+    #   Phase 1: init_scale_layer0 × init_scale_output × hidden_sparsity (27通り)
+    #     最適: L0=0.4, out=1.0, hs=0.4 → Test=87.64%
+    #   Phase 2a: L0拡張探索 [0.4-0.7]
+    #     確認: L0=0.4が最適ピーク
+    #   Phase 2b: lr × u1 × u2 (48通り)
+    #     最適: lr=0.15 → Test=87.66% (u1/u2は1層では影響軽微)
+    #   Phase 3a: column_neurons [1-200] (9通り)
+    #     確認: column_neurons=1が圧倒的最適（CN増加で単調劣化）
+    #   Phase 3b: hidden [512-4096] (6通り)
+    #     確認: hidden=2048が最適（3072以上は過学習）
+    #   ベースライン: Test=87.25% → 最適: Test=87.66% (+0.41%改善)
+    #   条件: seed=42, train=5000, test=5000, init_method=he
+    description: '1層最適構成、2048ニューロン、87.66%達成（2026-02-07、v044グリッドサーチ全Phase完了）'
+    
+  2:  # 2層構成
+    hidden: [2048, 1024]  # v045グリッドサーチ最適値 (2026-02-09)
+    u1: 0.5
+    u2: 0.8
+    lateral_lr: 0.08  # 側方結合学習率
+    base_column_radius: 0.4  # コラム半径基準値
+    column_radius_per_layer: [1.13, 0.80]  # [sqrt(2048/256)*0.4, sqrt(1024/256)*0.4]
+    participation_rate: 0.1  # 10%参加率 (column_neurons=1使用時は無視)
+    column_neurons: 10  # init_scales感度実験: cn=10がcn=1を一貫して上回る (2026-02-22 20k検証済)
+    weight_init_scales: [0.7, 1.8, 0.8]  # [Layer 0, Layer 1, 出力層] (init_scales感度実験+20k検証, 2026-02-22更新)
+    hidden_sparsity: [0.4, 0.4]  # v045 Phase 1a確定 + init×sparsityグリッドで再確認
+    gradient_clip: 0.03  # v045 2層Phase 2グリッドサーチ最適値 (2026-02-11)
+    output_lr: 0.15  # 出力層学習率
+    non_column_lr: [0.15, 0.15]  # 非コラムニューロン学習率（層別）
+    column_lr: [0.00075, 0.00045]  # コラムニューロン学習率（層別）
+    epochs: 20  # v048 Gabor実験で20エポックでBest更新継続 (2026-02-21)
+    # Gaborフィルタ推奨パラメータ (v048, 2026-02-21):
+    gabor_orientations: 8  # 方位数（探索結果: 4/8/16で大差なし、8が安定）
+    gabor_frequencies: 2   # 周波数帯域数（1は-0.84%悪化、4は+0.18%微改善、2が費用対効果最適）
+    gabor_kernel_size: 7   # カーネルサイズ（9で+0.44%改善あるが次元882維持で安定）
+    # v048 Gabor統合実験結果 (2026-02-21):
+    #   2層+Gabor(o8,f2,k7): Best Test=96.10% (Epoch 20, train=10000)
+    #   2層+Gabor(o4,f2,k9): Best Test=95.99% (Epoch 20, train=10000, 次元490)
+    #   2層 Gabor無し:        Best Test=90.54% (Epoch 12, train=10000)
+    #   Gabor改善幅: +5.56%
+    # init_scales感度実験 + 20k検証 (2026-02-22):
+    #   発見: is[1]を大きくするとLayer1→隠れ層2の活性化範囲拡大(max≈0.6→0.85)→精度改善
+    #   5k感度実験: cn=10,is[1]=1.8→95.18% vs cn=1,is[1]=0.7→93.42% (+1.76%)
+    #   20k検証: cn=10,is=[0.7,1.8,0.8]→97.43% vs cn=1,is=[0.7,0.7,0.8]→96.39% (+1.04%)
+    #   Proposed ep1(96.42%) > Baseline ep10(96.39%) — 収束劇的高速化
+    #   クラス別: 8/10改善, C2(+3.39%), C7(+2.73%)改善大, C9(-1.29%)のみ低下
+    # v045グリッドサーチ最適化結果（2026-02-12更新）:
+    #   Phase 1a: init_scales L0×L1×out (27通り) → L0=0.7, L1=0.7, out=0.8
+    #   Phase 1b: init_scales 精密探索 L0×L1 (16通り) → [0.7,0.7,0.8]確定
+    #   マルチシード検証 (seed=42/123/456):
+    #     [0.7,0.7,0.8]: 平均87.45% (範囲0.20%, より安定)
+    #     [0.5,0.7,0.8]: 平均87.39% (範囲0.24%)
+    #   Phase 2-1: 5パラメータスクリーニング(10実験) → lr, gc, clrの3つが有効
+    #   Phase 2-2: lr×gc×clr全組合せ(27実験) → lr=0.15, gc=0.03, clr=0.005,0.003
+    #   層サイズ比較: 4096,2048(87.76%) > 2048,1024(87.60%) > 2048,512(87.24%)
+    #   init×sparsityグリッド: is=0.7,hs=0.4が最適確認(0.5/-0.54%, 0.9/-0.10%)
+    #   条件: seed=42, train=5000, test=5000, init_method=he
+    # Gaborパラメータ探索結果 (2026-02-21, one-at-a-time, train=5000):
+    #   orient: 4(93.66%) ≈ 8(93.42%,BL) ≈ 16(93.68%) — 影響小
+    #   freq:   1(92.58%,-0.84%) < 2(93.42%,BL) ≈ 4(93.60%) — freq=1は避ける
+    #   kernel: 5(93.06%) < 7(93.42%,BL) < 9(93.86%,+0.44%) — 大きいほど良い
+    #   10k 20ep確認: o8f2k7=96.10% vs o4f2k9=95.99% — デフォルト(o8f2k7)が安定
+    description: '2層最適構成、cn=10, is=[0.7,1.8,0.8]。Gabor ON: 97.43%(20k)/96.10%(10k)/OFF: 90.54%達成（2026-02-22、init_scales感度実験+20k検証完了）'
+    
+  3:  # 3層構成（init_scales[2]感度検証完了、2026-02-22）
+    hidden: [2048, 1024, 1024]  # Layer2=512→1024: cn=10に対して十分なニューロン数を確保
+    u1: 0.5
+    u2: 0.8
+    lateral_lr: 0.08
+    base_column_radius: 0.4
+    column_radius_per_layer: [1.13, 0.80, 0.80]  # [sqrt(2048/256)*0.4, sqrt(1024/256)*0.4, sqrt(1024/256)*0.4]
+    participation_rate: 0.1
+    column_neurons: 10  # cn=10+十分な層サイズでcn=1を上回る（96.75%→97.08%）
+    weight_init_scales: [0.7, 1.8, 1.8, 0.8]  # [L0, L1, L2, 出力層] is[2]=1.8が最適（感度検証済）
+    hidden_sparsity: [0.4, 0.4, 0.4]  # 2層構成と同値(0.4)をOATで確認（変更不要）
+    gradient_clip: 0.03  # OAT探索: gc=0.02/-0.01%, gc=0.05/-0.04% → 0.03が最適（感度低）
+    output_lr: 0.20  # 出力層学習率（OAT探索: 0.20が+0.32%改善）
+    non_column_lr: [0.20, 0.20, 0.20]  # 非コラムニューロン学習率（層別）
+    column_lr: [0.001, 0.0006, 0.0004]  # コラムニューロン学習率（層別）
+    epochs: 30  # 30ep実験: Epoch 22でBest、過学習なし（Gap=0.59%安定）
+    gabor_orientations: 8
+    gabor_frequencies: 2
+    gabor_kernel_size: 7
+    # 3層 init_scales[2]感度検証 (2026-02-22, cn=10, h=[2048,1024,1024], train=10000, Gabor ON):
+    #   is[2]=1.8: Best Test=97.08% (ep10) — 安定した学習継続、最終epでBest
+    #   is[2]=2.0: Best Test=96.93% (ep5, -0.15%) — ep5以降振動、Layer3 max=0.94(飽和接近)
+    #   is[2]=2.2: Best Test=96.78% (ep5, -0.30%) — ep3/ep7で大きなdip、強い不安定性
+    #   → 単調減少(1.8>2.0>2.2)を確認: is[2]=1.8が最適値
+    #   → is増大でLayer3活性化がtanh飽和域に接近し学習が不安定化
+    # 3層init_scales検証 + Layer2サイズ検証結果 (2026-02-23, train=10000, epochs=10, Gabor ON):
+    #   baseline_cn1_yaml (cn=1, is=[0.7,0.7,0.9,0.8], h=[2048,1024,512]): 95.12% (ep10)
+    #   proposed_cn1_is18 (cn=1, is=[0.7,1.8,1.8,0.8], h=[2048,1024,512]): 96.75% (ep10, +1.63%)
+    #   proposed_cn10_is18 (cn=10, is=[0.7,1.8,1.8,0.8], h=[2048,1024,512]): 96.54% (ep8)
+    #   → cn=10+Layer2=512がcn=1に負ける原因: ニューロン数不足
+    #   Layer2=1024検証 (cn=10, is=[0.7,1.8,1.8,0.8], h=[2048,1024,1024]): 97.08% (ep10, +0.54%)
+    #   ★重要知見: cn=10は各層のニューロン数が十分に大きい必要がある
+    # 3層OATパラメータ探索結果 (2026-02-21, train=10000, epochs=10, Gabor ON):
+    #   感度分析（9実験）:
+    #     init_scales[2]: 感度最大(1.58%), 0.9=+0.44%, 0.5=-1.14% → 0.9に決定
+    #     learning_rate:  感度2位(1.05%), 0.20=+0.32%, 0.10=-0.73% → 0.20に決定
+    #     gradient_clip:  感度微小(0.03%), 0.02/-0.01%, 0.05/-0.04% → 0.03維持
+    #     column_lr_factors: 感度微小(0.03%), 変更不要 → デフォルト維持
+    #   組合せ実験（exp10, 10ep）: is[2]=0.9 + lr=0.20 → Test=95.12% (+0.70%)
+    #     加算性: 個別効果+0.76%予測 vs 実測+0.70% → 92%加算的
+    #   延長実験（exp11, 30ep）: Best Test=95.51% (Epoch 22)
+    #     10ep→30ep改善: +0.39%, 弱点クラス底上げ（C7:+1.1%, C2:+0.7%）
+    #     クラス間格差: 5.1pt（10epの6.1ptから改善）
+    #     過学習なし: Train-Test Gap=0.59%で安定
+    description: '3層最適構成、cn=10, is=[0.7,1.8,1.8,0.8], h=[2048,1024,1024]。Gabor ON: 97.08%(10k)達成（2026-02-22、init_scales[2]感度検証完了: 1.8>2.0>2.2単調減少確認）'
+    
+  4:  # 4層構成（暫定的に隠れ層2層構成のパラメータを適用中）
+    hidden: [2048, 1024, 512, 256]  # 2層構成の2:1比率パターンを踏襲
+    u1: 0.5
+    u2: 0.8
+    lateral_lr: 0.08
+    base_column_radius: 0.4
+    column_radius_per_layer: [1.13, 0.80, 0.57, 0.40]  # [sqrt(N/256)*0.4]
+    participation_rate: 0.1
+    column_neurons: 1
+    weight_init_scales: [0.7, 0.7, 0.7, 0.7, 0.8]  # [L0, L1, L2, L3, 出力層] 2層構成のパターン(0.7,0.8)を踏襲
+    hidden_sparsity: [0.4, 0.4, 0.4, 0.4]  # 2層構成と同値(0.4)を全層に適用
+    gradient_clip: 0.03  # 2層構成と同値
+    output_lr: 0.15  # 出力層学習率
+    non_column_lr: [0.15, 0.15, 0.15, 0.15]  # 非コラムニューロン学習率（層別）
+    column_lr: [0.00075, 0.00045, 0.0003, 0.00015]  # コラムニューロン学習率（層別）
+    epochs: 20  # 2層構成と同値
+    gabor_orientations: 8
+    gabor_frequencies: 2
+    gabor_kernel_size: 7
+    # 暫定的に隠れ層2層構成のパラメータを適用中
+    # 4層専用のパラメータ探索が完了次第、最適値に更新しこの記述を削除すること
+    description: '4層構成、暫定的に隠れ層2層構成のパラメータを適用中（未実験）'
+    
+  5:  # 5層構成（暫定的に隠れ層2層構成のパラメータを適用中）
+    hidden: [2048, 1024, 512, 256, 128]  # 2層構成の2:1比率パターンを踏襲
+    u1: 0.5
+    u2: 0.8
+    lateral_lr: 0.08
+    base_column_radius: 0.4
+    column_radius_per_layer: [1.13, 0.80, 0.57, 0.40, 0.28]  # [sqrt(N/256)*0.4]
+    participation_rate: 0.1
+    column_neurons: 1
+    weight_init_scales: [0.7, 0.7, 0.7, 0.7, 0.7, 0.8]  # [L0-L4, 出力層] 2層構成のパターン(0.7,0.8)を踏襲
+    hidden_sparsity: [0.4, 0.4, 0.4, 0.4, 0.4]  # 2層構成と同値(0.4)を全層に適用
+    gradient_clip: 0.03  # 2層構成と同値
+    output_lr: 0.15  # 出力層学習率
+    non_column_lr: [0.15, 0.15, 0.15, 0.15, 0.15]  # 非コラムニューロン学習率（層別）
+    column_lr: [0.00075, 0.00045, 0.0003, 0.00015, 0.00015]  # コラムニューロン学習率（層別）
+    epochs: 20  # 2層構成と同値
+    gabor_orientations: 8
+    gabor_frequencies: 2
+    gabor_kernel_size: 7
+    # 暫定的に隠れ層2層構成のパラメータを適用中
+    # 5層専用のパラメータ探索が完了次第、最適値に更新しこの記述を削除すること
+    description: '5層構成、暫定的に隠れ層2層構成のパラメータを適用中（未実験）'
+
+# 共通パラメータ（層数非依存）
+common_params:
+  w1: 1.0  # 重み初期化範囲
+  column_overlap: 0.1
+  column_ratio: 0.2
+  time_loops: 2
+  dataset: 'mnist'
+  train_samples: 10000
+  test_samples: 2000
