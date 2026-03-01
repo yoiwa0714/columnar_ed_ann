@@ -1076,7 +1076,8 @@ def main():
                 enable_viz=True,
                 enable_heatmap=args.heatmap,
                 save_path=args.save_viz,
-                total_epochs=args.epochs
+                total_epochs=args.epochs,
+                verbose=args.verbose
             )
             print("\n可視化機能: 有効")
             if args.heatmap:
