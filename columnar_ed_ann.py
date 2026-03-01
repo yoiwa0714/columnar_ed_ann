@@ -364,7 +364,7 @@ def _show_detailed_hyperparams(n_layers, hp, args):
     print(f"\n[ED法関連のパラメータ]")
     print(fmt("hidden", hidden_sizes))
     print(fmt("activation", args.activation))
-    print(fmt("lr", config['learning_rate']))
+    print(fmt("lr", config.get('output_lr', args.lr)))
     print(fmt("layer_learning_rates", None))
     print(fmt("epoch_lr_schedule", None))
     print(fmt("u1", config.get('u1', 0.5)))
@@ -520,7 +520,7 @@ def main():
             hidden_sizes = config['hidden']
         
         if not is_arg_specified(['lr', 'learning_rate']):
-            args.lr = config['learning_rate']
+            args.lr = config.get('output_lr', args.lr)
         if not is_arg_specified('u1') and 'u1' in config:
             args.u1 = config['u1']
         if not is_arg_specified('u2') and 'u2' in config:
