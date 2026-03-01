@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """
+Columnar ED-ANN 正式版（公開用）
+
 columnar_ed_ann.py - バージョン 1.1
 """
 
