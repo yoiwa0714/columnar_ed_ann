@@ -160,6 +160,9 @@ python columnar_ed_ann_simple.py --hidden 2048 --train 5000 --test 5000 --viz --
 python columnar_ed_ann_simple.py --hidden 2048 --train 5000 --test 5000 --viz --heatmap --save_viz results/my_experiment.png
 # → results/my_experiment_viz.png     （学習曲線・混同行列）
 # → results/my_experiment_heatmap.png （活性化ヒートマップ）
+
+# 不正解学習データの一覧表示（最終エポック完了後にスクロール可能ウィンドウで表示）
+python columnar_ed_ann_simple.py --hidden 2048 --train 5000 --test 5000 --show_train_errors
 ```
 
 ### その他のオプション
@@ -198,6 +201,8 @@ python columnar_ed_ann_simple.py --list_hyperparams
 | `--viz` | OFF | リアルタイム学習曲線を表示 |
 | `--heatmap` | OFF | ヒートマップ表示（`--viz`と併用） |
 | `--save_viz` | なし | 可視化結果の保存先ディレクトリ |
+| `--show_train_errors` | OFF | 最終エポックの不正解学習データを一覧表示 |
+| `--max_errors_per_class` | `100` | クラスごとの表示上限数 |
 
 **Gabor特徴抽出:**
 

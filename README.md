@@ -166,6 +166,12 @@ python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_feature
 
 # ファイル名を指定して保存
 python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_features --viz --heatmap --save_viz results/my_experiment.png
+
+# 不正解学習データの一覧表示（最終エポック完了後にスクロール可能ウィンドウで表示）
+python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_features --show_train_errors
+
+# クラスごとの表示上限数を指定（デフォルト: 100）
+python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_features --show_train_errors --max_errors_per_class 50
 ```
 
 ### 学習パラメータの指定
@@ -282,6 +288,8 @@ python columnar_ed_ann.py --hidden 2048 --diagnose_column
 | `--heatmap` | OFF | ヒートマップ表示（`--viz`と併用） |
 | `--save_viz` | なし | 可視化結果の保存先ディレクトリ |
 | `--save_weights` | OFF | エポックごとの重み統計を保存 |
+| `--show_train_errors` | OFF | 最終エポックの不正解学習データを一覧表示 |
+| `--max_errors_per_class` | `100` | クラスごとの表示上限数 |
 
 ### 早期停止
 
@@ -489,7 +497,7 @@ columnar_ed_ann/
 │   ├── data_augmentation.py        #   データ拡張（`--augment` オプション使用時に参照）
 │   ├── hyperparameters.py          #   YAMLパラメータ読み込み
 │   ├── data_loader.py              #   データセット読み込み
-│   └── visualization_manager.py    #   可視化（学習曲線、ヒートマップ）
+│   └── visualization_manager.py    #   可視化（学習曲線、ヒートマップ、不正解学習データ一覧）
 │
 ├── modules_simple/                 # 簡易版モジュール
 ├── config/                         # パラメータ設定ファイル

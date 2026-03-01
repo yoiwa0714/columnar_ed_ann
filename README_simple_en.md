@@ -160,6 +160,9 @@ python columnar_ed_ann_simple.py --hidden 2048 --train 5000 --test 5000 --viz --
 python columnar_ed_ann_simple.py --hidden 2048 --train 5000 --test 5000 --viz --heatmap --save_viz results/my_experiment.png
 # → results/my_experiment_viz.png     (learning curves & confusion matrix)
 # → results/my_experiment_heatmap.png (activation heatmap)
+
+# Display misclassified training data (scrollable window after final epoch)
+python columnar_ed_ann_simple.py --hidden 2048 --train 5000 --test 5000 --show_train_errors
 ```
 
 ### Other Options
@@ -198,6 +201,8 @@ python columnar_ed_ann_simple.py --list_hyperparams
 | `--viz` | OFF | Display real-time learning curves |
 | `--heatmap` | OFF | Display heatmaps (use with `--viz`) |
 | `--save_viz` | None | Directory to save visualization results |
+| `--show_train_errors` | OFF | Display misclassified training data after final epoch |
+| `--max_errors_per_class` | `100` | Maximum number of errors displayed per class |
 
 **Gabor Feature Extraction:**
 

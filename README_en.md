@@ -165,6 +165,12 @@ python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_feature
 
 # Save with a specified filename
 python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_features --viz --heatmap --save_viz results/my_experiment.png
+
+# Display misclassified training data (scrollable window after final epoch)
+python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_features --show_train_errors
+
+# Specify maximum number of errors displayed per class (default: 100)
+python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_features --show_train_errors --max_errors_per_class 50
 ```
 
 ### Specifying Training Parameters
@@ -281,6 +287,8 @@ python columnar_ed_ann.py --hidden 2048 --diagnose_column
 | `--heatmap` | OFF | Display heatmap (used together with `--viz`) |
 | `--save_viz` | None | Directory to save visualization results |
 | `--save_weights` | OFF | Save weight statistics per epoch |
+| `--show_train_errors` | OFF | Display misclassified training data after final epoch |
+| `--max_errors_per_class` | `100` | Maximum number of errors displayed per class |
 
 ### Early Stopping
 
@@ -488,7 +496,7 @@ columnar_ed_ann/
 │   ├── data_augmentation.py        #   Data augmentation (referenced when using `--augment`)
 │   ├── hyperparameters.py          #   YAML parameter loading
 │   ├── data_loader.py              #   Dataset loading
-│   └── visualization_manager.py    #   Visualization (learning curves, heatmaps)
+│   └── visualization_manager.py    #   Visualization (learning curves, heatmaps, training error analysis)
 │
 ├── modules_simple/                 # Simple Version modules
 ├── config/                         # Parameter configuration files
