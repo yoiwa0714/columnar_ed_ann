@@ -176,9 +176,9 @@ class VisualizationManager:
         self.fig_viz.clear()
         ax1, ax2 = self.fig_viz.subplots(1, 2)
         
-        epochs_list = list(range(1, len(train_acc_history) + 1))
-        ax1.plot(epochs_list, train_acc_history, label='訓練', marker='o', markersize=3)
-        ax1.plot(epochs_list, test_acc_history, label='テスト', marker='s', markersize=3)
+        epochs_list = list(range(0, len(train_acc_history) + 1))
+        ax1.plot(epochs_list, [0.0] + list(train_acc_history), label='訓練', marker='o', markersize=3)
+        ax1.plot(epochs_list, [0.0] + list(test_acc_history), label='テスト', marker='s', markersize=3)
         ax1.set_xlabel('エポック')
         ax1.set_ylabel('正解率')
         ax1.set_title('学習進捗')
