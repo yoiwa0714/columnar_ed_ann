@@ -21,10 +21,33 @@ def setup_japanese_font():
     """日本語フォントを設定する（システムから自動検索、fallback付き）"""
     import matplotlib.font_manager as fm
     
+    # 優先フォントリスト（上から順に検索）
     preferred_fonts = [
+        # Linux系
         'Noto Sans CJK JP', 'Noto Sans JP',
         'IPAexGothic', 'IPAGothic', 'IPAexMincho', 'IPAMincho',
         'TakaoPGothic', 'TakaoGothic', 'VL PGothic', 'VL Gothic',
+        # Windows / WSL環境
+        'Yu Gothic', 'Yu Gothic UI', 'Meiryo', 'Meiryo UI',
+        'BIZ UDGothic', 'BIZ UDPGothic', 'BIZ UDMincho', 'BIZ UDPMincho',
+        'MS Gothic', 'MS PGothic', 'MS UI Gothic',
+        'MS Mincho', 'MS PMincho',
+        'Yu Mincho',
+        'UD Digi Kyokasho N', 'UD Digi Kyokasho NP', 'UD Digi Kyokasho NK',
+        # Windows HGフォント
+        'HGGothicM', 'HGPGothicM', 'HGSGothicM',
+        'HGGothicE', 'HGPGothicE', 'HGSGothicE',
+        'HGMinchoB', 'HGPMinchoB', 'HGSMinchoB',
+        'HGMinchoE', 'HGPMinchoE', 'HGSMinchoE',
+        'HGMaruGothicMPRO',
+        'HGSoeiKakugothicUB', 'HGPSoeiKakugothicUB', 'HGSSoeiKakugothicUB',
+        'HGSoeiKakupoptai', 'HGPSoeiKakupoptai', 'HGSSoeiKakupoptai',
+        'HGSoeiPresenceEB', 'HGPSoeiPresenceEB', 'HGSSoeiPresenceEB',
+        'HGGyoshotai', 'HGPGyoshotai', 'HGSGyoshotai',
+        'HGKyokashotai', 'HGPKyokashotai', 'HGSKyokashotai',
+        'HGSeikaishotaiPRO',
+        # Android / その他
+        'Droid Sans Fallback',
     ]
     
     available_fonts = [f.name for f in fm.fontManager.ttflist]
@@ -35,9 +58,12 @@ def setup_japanese_font():
             selected_font = font
             break
     
+    # フォールバック: フォント名にCJK/日本語関連キーワードを含むものを検索
     if selected_font is None:
         for font_name in available_fonts:
-            if any(keyword in font_name for keyword in ['CJK', 'Japan', 'Japanese', 'JP', 'IPA']):
+            if any(keyword in font_name for keyword in
+                   ['CJK', 'Japan', 'Japanese', 'JP', 'IPA',
+                    'Gothic', 'Mincho', 'Meiryo']):
                 selected_font = font_name
                 break
     
@@ -48,7 +74,12 @@ def setup_japanese_font():
         print(f"[可視化] 日本語フォント設定: {selected_font}")
         return selected_font
     else:
-        print("[可視化] 警告: 日本語フォントが見つかりませんでした。英語フォントを使用します。")
+        # 日本語フォント未検出: グリフ欠落警告を抑制し、ユーザーに案内
+        import warnings
+        warnings.filterwarnings('ignore', message='.*Glyph.*missing from.*font.*')
+        print("[可視化] 日本語フォントを検出できなかったため、日本語が文字化けします。")
+        print("         日本語フォントのインストールをお勧めします。")
+        print("         例: sudo apt install fonts-noto-cjk")
         return None
 
 
