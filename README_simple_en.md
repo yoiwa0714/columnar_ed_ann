@@ -31,14 +31,14 @@
 
 **The Columnar ED Method** is a neural network implementation that extends the Error Diffusion learning algorithm (ED method, hereinafter referred to as the "original ED method") conceived by Isamu Kaneko, by introducing cortical column structure from the cerebral cortex.
 
-The Columnar ED Method **does not use backpropagation based on the chain rule of derivatives at all**, and instead learns through biologically plausible amine diffusion mechanisms. Despite this, it achieves **97.08%** test accuracy on MNIST handwritten digit recognition (2-layer configuration, 10,000 training samples, 20 epochs).
+The Columnar ED Method **does not use backpropagation based on the chain rule of derivatives at all**, and instead learns through biologically plausible amine diffusion mechanisms. Despite this, it achieves **97.01%** test accuracy on MNIST handwritten digit recognition (3-layer configuration, 10,000 training samples, 30 epochs).
 
 This repository provides two implementations:
 
 | Implementation | File | Purpose |
 |------|---------|------|
 | **Simple version** | `columnar_ed_ann_simple.py` | Achieves high accuracy with minimal arguments. Subject of this document |
-| Full version | `columnar_ed_ann.py` | Allows more parameter specifications than the simple version (coming soon) |
+| Full version | `columnar_ed_ann.py` | Allows more parameter specifications than the simple version. See [README.md](README.md) for details |
 
 The **simple version** removes some supplementary features from the full version, retaining only the core ED method and Gabor feature-related implementations, making it easier to understand how the ED method and Gabor features work.
 
@@ -129,13 +129,13 @@ Best Accuracy: Test=0.9500 (Epoch 10)
 python columnar_ed_ann_simple.py --hidden 2048 --train 10000 --test 10000
 # → Test ≈ 96.13%
 
-# 2-layer + Gabor features (~10 minutes, best accuracy)
+# 2-layer + Gabor features (~10 minutes)
 python columnar_ed_ann_simple.py --hidden 2048,1024 --train 10000 --test 10000
-# → Test ≈ 97.08%
+# → Test ≈ 96.85%
 
-# 3-layer + Gabor features (~20 minutes)
+# 3-layer + Gabor features (~20 minutes, best accuracy)
 python columnar_ed_ann_simple.py --hidden 2048,1024,1024 --train 10000 --test 10000
-# → Test ≈ 96.84%
+# → Test ≈ 97.01%
 
 # Without Gabor (to verify the pure learning capability of the original ED method)
 python columnar_ed_ann_simple.py --hidden 2048 --train 10000 --test 10000 --no_gabor
@@ -329,7 +329,7 @@ This configuration allows the Columnar ED Method to achieve both biological plau
 
 For example, with `column_neurons=10` (default for 2+ layer configurations), 10 column neurons are assigned per class. In a 2048-neuron hidden layer, 100 neurons (about 4.9% of total) become training targets, while the remaining 1948 retain fixed random weights.
 
-Compared to cn=1, the increased number of learning neurons allows each class to be represented by more diverse features. While the reservoir computing-like structure (majority of weights remain fixed) is maintained, the increased column neurons improve classification performance. For configurations with 2 or more layers, cn=10 is the default, achieving 97.08% accuracy with a 2-layer configuration.
+Compared to cn=1, the increased number of learning neurons allows each class to be represented by more diverse features. While the reservoir computing-like structure (majority of weights remain fixed) is maintained, the increased column neurons improve classification performance. For configurations with 2 or more layers, cn=10 is the default, achieving 97.01% accuracy with a 3-layer configuration.
 
 ---
 
@@ -342,8 +342,8 @@ Experimental results on MNIST handwritten digit recognition (seed=42, reproducib
 | Configuration | Hidden Layers | Test Accuracy | Runtime (*) |
 |------|--------|-----------|----------------|
 | 1-layer | [2048] | 96.13% | ~3 min |
-| 2-layer | [2048, 1024] | **97.08%** | ~10 min |
-| 3-layer | [2048, 1024, 1024] | 96.84% | ~20 min |
+| 2-layer | [2048, 1024] | 96.85% | ~10 min |
+| 3-layer | [2048, 1024, 1024] | **97.01%** | ~20 min |
 
 \* Runtimes measured on an Intel Core i5-11th gen / RTX 3060 system and will vary depending on your environment.
 
@@ -352,8 +352,8 @@ Experimental results on MNIST handwritten digit recognition (seed=42, reproducib
 | Configuration | Hidden Layers | Test Accuracy |
 |------|--------|-----------|
 | 1-layer | [2048] | 90.37% |
-| 2-layer | [2048, 1024] | 88.50% |
-| 3-layer | [2048, 1024, 1024] | 87.31% |
+| 2-layer | [2048, 1024] | 89.38% |
+| 3-layer | [2048, 1024, 1024] | 89.41% |
 
 > **Experimental conditions:** 10,000 training samples, 10,000 test samples, seed=42 (all under identical conditions, fully reproducible). Epoch counts vary by layer configuration (1-layer: 10, 2-layer: 20, 3-layer: 30 — automatically set from `config/hyperparameters.yaml`).
 
@@ -366,9 +366,10 @@ Experimental results on MNIST handwritten digit recognition (seed=42, reproducib
 ```
 columnar_ed_ann/
 ├── columnar_ed_ann_simple.py       # ★ Simple version main script (recommended)
+├── columnar_ed_ann.py              # Full version (all parameters configurable)
 ├── README_simple.md                # ★ This document in Japanese
 ├── README_simple_en.md             # ★ This document in English
-├── README.md                       # Repository guide
+├── README.md                       # Full version documentation
 ├── LICENSE                         # License
 ├── requirements.txt                # Dependencies
 ├── CUSTOM_DATASET_GUIDE.md         # Custom dataset guide
@@ -383,6 +384,7 @@ columnar_ed_ann/
 │   ├── data_loader.py              #   Dataset loading
 │   └── visualization_manager.py    #   Visualization (learning curves, heatmaps)
 │
+├── modules/                        # Full version modules
 ├── config/                         # Parameter configuration files
 │   ├── hyperparameters.yaml        #   Per-layer optimal parameters (editable)
 │   └── hyperparameters_initial.yaml#   Initial state (for restoration)
