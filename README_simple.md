@@ -396,7 +396,11 @@ columnar_ed_ann/
 │   └── hyperparameters_initial.yaml#   初期状態（復元用）
 ├── docs/                           # 関連ドキュメント
 │   ├── ja/ED法_解説資料.md          #   オリジナルED法の詳細解説（日本語）
-│   └── en/ED_Method_Explanation.md  #   オリジナルED法の詳細解説（英語）
+│   ├── ja/EDLA_金子勇氏.md          #   ED法の学術的背景と金子勇氏の業績（日本語）
+│   ├── ja/コラムED法_動作の流れ.md  #   コラムED法のコア関数詳細解説（日本語）
+│   ├── en/ED_Method_Explanation.md  #   オリジナルED法の詳細解説（英語）
+│   ├── en/EDLA_Isamu_Kaneko.md      #   ED法の学術的背景と金子勇氏の業績（英語）
+│   └── en/Columnar_ED_Method_Flow.md#   コラムED法のコア関数詳細解説（英語）
 ├── images/                         # コラム構造図
 └── original-c-source-code/         # 金子勇氏オリジナルCソースコード
 ```

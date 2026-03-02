@@ -333,7 +333,7 @@ Extracts input features using fixed filters that model V1 simple cells.
 
 ## How It Works
 
-> 📖 For detailed explanations of the internal operation flow and core algorithms, see **[Columnar ED Method — How It Works](docs/en/Columnar_ED_Method_How_It_Works.md)**.
+> 📖 For detailed explanations of the internal operation flow and core algorithms, see **[Columnar ED Method — How It Works](docs/en/Columnar_ED_Method_Flow.md)**.
 
 ### What Is the Columnar ED Method?
 
@@ -504,7 +504,11 @@ columnar_ed_ann/
 │   └── hyperparameters_initial.yaml#   Initial state (for restoration)
 ├── docs/                           # Related documentation
 │   ├── ja/ED法_解説資料.md          #   Detailed explanation of original ED method (Japanese)
-│   └── en/ED_Method_Explanation.md  #   Detailed explanation of original ED method (English)
+│   ├── ja/EDLA_金子勇氏.md          #   Academic background & Isamu Kaneko's achievements (Japanese)
+│   ├── ja/コラムED法_動作の流れ.md  #   Core function details of Columnar ED Method (Japanese)
+│   ├── en/ED_Method_Explanation.md  #   Detailed explanation of original ED method (English)
+│   ├── en/EDLA_Isamu_Kaneko.md      #   Academic background & Isamu Kaneko's achievements (English)
+│   └── en/Columnar_ED_Method_Flow.md#   Core function details of Columnar ED Method (English)
 ├── images/                         # Column structure diagrams
 └── original-c-source-code/         # Isamu Kaneko's original C source code
 ```

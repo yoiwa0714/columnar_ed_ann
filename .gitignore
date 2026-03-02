@@ -19,3 +19,6 @@ viz_results/
 
 # Verification reports (internal documentation)
 CUSTOM_RECTANGLE_IMAGE_VERIFICATION_REPORT.md
+
+# Unused modules (kept for development reference)
+modules/amine_diffusion.py

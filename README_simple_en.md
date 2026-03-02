@@ -38,7 +38,7 @@ This repository provides two implementations:
 | Implementation | File | Purpose |
 |------|---------|------|
 | **Simple version** | `columnar_ed_ann_simple.py` | Achieves high accuracy with minimal arguments. Subject of this document |
-| Full version | `columnar_ed_ann.py` | Allows more parameter specifications than the simple version. See [README.md](README.md) for details |
+| Full version | `columnar_ed_ann.py` | Allows more parameter specifications than the simple version. See [README_en.md](README_en.md) for details |
 
 The **simple version** removes some supplementary features from the full version, retaining only the core ED method and Gabor feature-related implementations, making it easier to understand how the ED method and Gabor features work.
 
@@ -395,7 +395,11 @@ columnar_ed_ann/
 │   └── hyperparameters_initial.yaml#   Initial state (for restoration)
 ├── docs/                           # Related documents
 │   ├── ja/ED法_解説資料.md          #   Detailed explanation of original ED method (Japanese)
-│   └── en/ED_Method_Explanation.md  #   Detailed explanation of original ED method (English)
+│   ├── ja/EDLA_金子勇氏.md          #   Academic background & Isamu Kaneko's achievements (Japanese)
+│   ├── ja/コラムED法_動作の流れ.md  #   Core function details of Columnar ED Method (Japanese)
+│   ├── en/ED_Method_Explanation.md  #   Detailed explanation of original ED method (English)
+│   ├── en/EDLA_Isamu_Kaneko.md      #   Academic background & Isamu Kaneko's achievements (English)
+│   └── en/Columnar_ED_Method_Flow.md#   Core function details of Columnar ED Method (English)
 ├── images/                         # Column structure diagrams
 └── original-c-source-code/         # Isamu Kaneko's original C source code
 ```
