@@ -22,3 +22,11 @@ CUSTOM_RECTANGLE_IMAGE_VERIFICATION_REPORT.md
 
 # Unused modules (kept for development reference)
 modules/amine_diffusion.py
+
+# Local development environment assets
+.vscode/mcp.json
+.vscode/prev_mcp.json
+.github/copilot-instructions.md
+.python-version
+pyproject.toml
+uv.lock
