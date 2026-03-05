@@ -50,11 +50,6 @@ except ImportError:
 
 from .activation_functions import sigmoid, tanh_activation, softmax, softmax_batch, cross_entropy_loss
 from .neuron_structure import create_ei_pairs, create_ei_pairs_batch, create_ei_flags
-from .amine_diffusion import (
-    initialize_activity_association,
-    update_activity_association,
-    distribute_amine_by_output_weights
-)
 from .column_structure import (
     hex_distance,
     create_hexagonal_column_affinity,
