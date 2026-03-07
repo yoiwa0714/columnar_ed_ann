@@ -1922,7 +1922,7 @@ class RefinedDistributionEDNetwork:
                             self.w_hidden[0][active_neurons] *= \
                                 self.receptive_field_masks[0][active_neurons]
     
-    def train_epoch(self, x_train, y_train, return_true_accuracy=True, progress_callback=None):
+    def train_epoch(self, x_train, y_train, return_true_accuracy=True, progress_callback=None, collect_errors=False):
         """
         1エポックの学習
         
@@ -1976,8 +1976,13 @@ class RefinedDistributionEDNetwork:
             # 学習完了後、全訓練データを最終重みで再評価（推奨）
             # これにより、Test精度と同じ条件で評価される
             # ★P2最適化★ 並列評価で高速化
-            true_accuracy, true_loss = self.evaluate_parallel(x_train, y_train)
-            return true_accuracy, true_loss
+            if collect_errors:
+                # 最終エポック用: 評価と同時に不正解サンプルを収集（追加コストなし）
+                true_accuracy, true_loss, error_list = self.evaluate_with_errors(x_train, y_train)
+                return true_accuracy, true_loss, error_list
+            else:
+                true_accuracy, true_loss = self.evaluate_parallel(x_train, y_train)
+                return true_accuracy, true_loss
         else:
             # 学習中の平均精度を返す（従来動作、非推奨）
             return training_accuracy, avg_loss
@@ -2277,6 +2282,60 @@ class RefinedDistributionEDNetwork:
             return accuracy, avg_loss, class_accuracies
         
         return accuracy, avg_loss
+
+    def evaluate_with_errors(self, x_data, y_data, batch_size=256):
+        """
+        並列バッチ評価（誤り収集付き）
+
+        evaluate_parallel と同じ効率で動作し、追加パスなしで不正解サンプルを収集する。
+        最終エポックの train_epoch(collect_errors=True) から呼び出される。
+
+        Args:
+            x_data: 評価データ shape: (n_samples, n_input)
+            y_data: ラベル shape: (n_samples,)
+            batch_size: バッチサイズ（デフォルト256）
+
+        Returns:
+            accuracy: 精度
+            avg_loss: 平均損失
+            error_list: 不正解サンプルのリスト [(sample_idx, true_label, pred_label), ...]
+        """
+        n_samples = len(x_data)
+        n_batches = (n_samples + batch_size - 1) // batch_size
+
+        all_predictions = []
+        all_losses = []
+
+        for batch_idx in range(n_batches):
+            start_idx = batch_idx * batch_size
+            end_idx = min((batch_idx + 1) * batch_size, n_samples)
+
+            x_batch = x_data[start_idx:end_idx]
+            y_batch = y_data[start_idx:end_idx]
+
+            _, z_output_batch, _ = self.forward_batch(x_batch)
+            y_pred_batch = np.argmax(z_output_batch, axis=1)
+            all_predictions.extend(y_pred_batch)
+
+            batch_losses = -np.log(
+                z_output_batch[np.arange(len(y_batch)), y_batch] + 1e-10
+            )
+            all_losses.extend(batch_losses)
+
+        all_predictions = np.array(all_predictions)
+        all_losses = np.array(all_losses)
+
+        n_correct = np.sum(all_predictions == y_data)
+        accuracy = n_correct / n_samples
+        avg_loss = np.mean(all_losses)
+
+        error_list = [
+            (int(i), int(y_data[i]), int(all_predictions[i]))
+            for i in range(n_samples)
+            if all_predictions[i] != y_data[i]
+        ]
+
+        return accuracy, avg_loss, error_list
     
     @overload
     def evaluate_parallel(self, x_test, y_test, batch_size: int = 256, return_per_class: Literal[True] = ..., use_cupy: bool = False) -> tuple[float, float, list]: ...
