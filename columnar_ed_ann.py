@@ -177,8 +177,11 @@ def parse_args():
     # 可視化関連のパラメータ
     # ========================================
     viz_group = parser.add_argument_group('可視化関連のパラメータ')
-    viz_group.add_argument('--viz', action='store_true',
-                          help='学習曲線のリアルタイム可視化を有効化')
+    viz_group.add_argument('--viz', type=int, nargs='?', const=1, default=None,
+                          choices=[1, 2, 3, 4], metavar='SIZE',
+                          help='学習曲線のリアルタイム可視化を有効化（サイズ指定: 1-4）\n'
+                               '1=50%%, 2=65%%, 3=80%%, 4=100%%（従来サイズ）\n'
+                               '数値省略時は1（--viz == --viz 1）')
     viz_group.add_argument('--heatmap', action='store_true',
                           help='活性化ヒートマップの表示を有効化（--vizと併用）')
     viz_group.add_argument('--save_viz', type=str, nargs='?', const='viz_results',
@@ -1089,16 +1092,19 @@ def main():
     # 5. 可視化マネージャーの初期化
     # ========================================
     viz_manager = None
-    if args.viz:
+    if args.viz is not None:
         try:
+            viz_scale_map = {1: 0.50, 2: 0.65, 3: 0.80, 4: 1.00}
+            viz_scale = viz_scale_map.get(args.viz, 0.50)
             viz_manager = VisualizationManager(
                 enable_viz=True,
                 enable_heatmap=args.heatmap,
                 save_path=args.save_viz,
                 total_epochs=args.epochs,
-                verbose=getattr(args, 'verbose', False)
+                verbose=getattr(args, 'verbose', False),
+                window_scale=viz_scale
             )
-            print("\n可視化機能: 有効")
+            print(f"\n可視化機能: 有効 (サイズレベル{args.viz}, 比率{int(viz_scale*100)}%)")
             if args.heatmap:
                 print("  - ヒートマップ表示: 有効")
             if args.save_viz:
