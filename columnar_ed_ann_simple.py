@@ -29,8 +29,8 @@ Columnar ED-ANN 簡易版（公開用）
   # Gabor無し
   python columnar_ed_ann_simple.py --hidden 2048 --train 5000 --test 5000 --no_gabor
 
-  # リアルタイム可視化 + ヒートマップ
-  python columnar_ed_ann_simple.py --hidden 2048 --train 5000 --test 5000 --viz --heatmap
+    # リアルタイム可視化 + ヒートマップ（サイズレベル指定）
+    python columnar_ed_ann_simple.py --hidden 2048 --train 5000 --test 5000 --viz 2 --heatmap
 
   # 利用可能なハイパーパラメータ一覧を表示
   python columnar_ed_ann_simple.py --list_hyperparams
@@ -81,8 +81,11 @@ def parse_args():
                         help='乱数シード（デフォルト: 42）')
     parser.add_argument('--dataset', type=str, default='mnist',
                         help='データセット名（mnist, fashion, cifar10）またはカスタムデータパス')
-    parser.add_argument('--viz', action='store_true',
-                        help='リアルタイム学習曲線を表示')
+    parser.add_argument('--viz', type=int, nargs='?', const=1, default=None,
+                        choices=[1, 2, 3, 4], metavar='SIZE',
+                        help='リアルタイム学習曲線を表示（サイズ指定: 1-4）\n'
+                            '1=50%%, 2=65%%, 3=80%%, 4=100%%（従来サイズ）\n'
+                             '数値省略時は1（--viz == --viz 1）')
     parser.add_argument('--heatmap', action='store_true',
                         help='隠れ層・出力層のヒートマップを表示（--vizと併用）')
     parser.add_argument('--save_viz', type=str, default=None,
@@ -321,14 +324,17 @@ def main():
     # === 可視化の初期化 ===
     viz_manager = None
     if args.viz:
+        viz_scale_map = {1: 0.5, 2: 0.65, 3: 0.8, 4: 1.0}
+        viz_scale = viz_scale_map.get(args.viz, 1.0)
         try:
             viz_manager = VisualizationManager(
                 enable_viz=True,
                 enable_heatmap=args.heatmap,
                 save_path=args.save_viz,
                 total_epochs=args.epochs,
+                window_scale=viz_scale,
             )
-            print("可視化: ON")
+            print(f"可視化: ON (サイズレベル{args.viz}, 比率{int(viz_scale * 100)}%)")
             if use_gabor and gabor_info:
                 viz_manager.set_gabor_info(gabor_info)
                 viz_manager.set_gabor_extractor(extractor)

@@ -129,9 +129,10 @@ def _infer_image_shape(n_pixels):
 class VisualizationManager:
     """リアルタイム可視化マネージャー"""
     
-    def __init__(self, enable_viz=False, enable_heatmap=False, save_path=None, total_epochs=100):
+    def __init__(self, enable_viz=False, enable_heatmap=False, save_path=None, total_epochs=100, window_scale=1.0):
         self.enable_viz = enable_viz
         self.enable_heatmap = enable_heatmap
+        self.window_scale = window_scale if window_scale > 0 else 1.0
         
         setup_japanese_font()
         
@@ -156,14 +157,17 @@ class VisualizationManager:
         self.fig_viz = None
         self.fig_heatmap = None
         
+        viz_figsize = (15 * self.window_scale, 5 * self.window_scale)
+        heatmap_figsize = (12.8 * self.window_scale, 6.4 * self.window_scale)
+
         if self.enable_viz:
             plt.ion()
-            self.fig_viz = plt.figure(figsize=(15, 5))
+            self.fig_viz = plt.figure(figsize=viz_figsize)
             self.fig_viz.canvas.manager.set_window_title('学習曲線 + 混同行列')
         
         if self.enable_heatmap:
             plt.ion()
-            self.fig_heatmap = plt.figure(figsize=(12.8, 6.4))
+            self.fig_heatmap = plt.figure(figsize=heatmap_figsize)
             self.fig_heatmap.canvas.manager.set_window_title('層別活性化ヒートマップ')
         
         self.gabor_info = None
@@ -327,21 +331,37 @@ class VisualizationManager:
             true_text = f'真のクラス: {sample_y_true}'
             pred_text = f'予測クラス: {sample_y_pred}'
         
+        if np.isclose(self.window_scale, 0.5):
+            info_font_main = 9
+            info_font_progress = 9
+        elif np.isclose(self.window_scale, 0.65):
+            info_font_main = 10
+            info_font_progress = 10
+        elif np.isclose(self.window_scale, 0.8):
+            info_font_main = 10
+            info_font_progress = 10
+        elif np.isclose(self.window_scale, 1.0):
+            info_font_main = 10
+            info_font_progress = 10
+        else:
+            info_font_main = 13
+            info_font_progress = 11
+
         if progress_text:
-            ax_info.text(0.05, 0.85, epoch_text, fontsize=13, fontweight='bold',
+            ax_info.text(0.05, 0.85, epoch_text, fontsize=info_font_main, fontweight='bold',
                     ha='left', va='top', transform=ax_info.transAxes)
-            ax_info.text(0.05, 0.62, progress_text, fontsize=11, fontweight='bold',
+            ax_info.text(0.05, 0.62, progress_text, fontsize=info_font_progress, fontweight='bold',
                     ha='left', va='top', transform=ax_info.transAxes)
-            ax_info.text(0.05, 0.39, true_text, fontsize=13, fontweight='bold',
+            ax_info.text(0.05, 0.39, true_text, fontsize=info_font_main, fontweight='bold',
                     ha='left', va='top', transform=ax_info.transAxes)
-            ax_info.text(0.05, 0.16, pred_text, fontsize=13, fontweight='bold', color=pred_color,
+            ax_info.text(0.05, 0.16, pred_text, fontsize=info_font_main, fontweight='bold', color=pred_color,
                     ha='left', va='top', transform=ax_info.transAxes)
         else:
-            ax_info.text(0.05, 0.75, epoch_text, fontsize=13, fontweight='bold',
+            ax_info.text(0.05, 0.75, epoch_text, fontsize=info_font_main, fontweight='bold',
                     ha='left', va='top', transform=ax_info.transAxes)
-            ax_info.text(0.05, 0.50, true_text, fontsize=13, fontweight='bold',
+            ax_info.text(0.05, 0.50, true_text, fontsize=info_font_main, fontweight='bold',
                     ha='left', va='top', transform=ax_info.transAxes)
-            ax_info.text(0.05, 0.25, pred_text, fontsize=13, fontweight='bold', color=pred_color,
+            ax_info.text(0.05, 0.25, pred_text, fontsize=info_font_main, fontweight='bold', color=pred_color,
                     ha='left', va='top', transform=ax_info.transAxes)
         
         # 画像パネル
@@ -349,18 +369,32 @@ class VisualizationManager:
             img_shape = self.gabor_info.get('image_shape', (28, 28))
             
             ax_raw = self.fig_heatmap.add_subplot(top_gs[0, 1])
+            if np.isclose(self.window_scale, 0.5):
+                ax_raw_img = ax_raw.inset_axes([0.22, 0.25, 0.70, 0.70])
+                ax_raw.axis('off')
+            elif np.isclose(self.window_scale, 0.65):
+                ax_raw_img = ax_raw.inset_axes([0.29, 0.15, 0.70, 0.70])
+                ax_raw.axis('off')
+            elif np.isclose(self.window_scale, 0.8):
+                ax_raw_img = ax_raw.inset_axes([0.29, 0.15, 0.70, 0.70])
+                ax_raw.axis('off')
+            elif np.isclose(self.window_scale, 1.0):
+                ax_raw_img = ax_raw.inset_axes([0.29, 0.15, 0.70, 0.70])
+                ax_raw.axis('off')
+            else:
+                ax_raw_img = ax_raw
             # カラー画像の場合はチャネル次元付きでreshape
             raw_shape = _infer_image_shape(len(sample_x_raw))
             if raw_shape is not None and len(raw_shape) == 3:
                 img = sample_x_raw.reshape(raw_shape)
-                im = ax_raw.imshow(img, aspect='equal', vmin=0, vmax=1)
-                ax_raw.set_title(f'元画像 ({raw_shape[0]}×{raw_shape[1]} RGB)', fontsize=10)
+                im = ax_raw_img.imshow(img, aspect='equal', vmin=0, vmax=1)
+                ax_raw_img.set_title(f'元画像 ({raw_shape[0]}×{raw_shape[1]} RGB)', fontsize=10, pad=1)
             else:
                 img = sample_x_raw.reshape(img_shape)
-                im = ax_raw.imshow(img, cmap='gray', aspect='equal', vmin=0, vmax=1)
-                ax_raw.set_title(f'元画像 ({img_shape[0]}×{img_shape[1]})', fontsize=10)
-            pyplot.figure(self.fig_heatmap.number)
-            pyplot.colorbar(im, ax=ax_raw, fraction=0.046, pad=0.04)
+                im = ax_raw_img.imshow(img, cmap='gray', aspect='equal', vmin=0, vmax=1)
+                ax_raw_img.set_title(f'元画像 ({img_shape[0]}×{img_shape[1]})', fontsize=10, pad=1)
+            ax_raw_img.set_xticks([])
+            ax_raw_img.set_yticks([])
             
             ax_gabor = self.fig_heatmap.add_subplot(top_gs[0, 2])
             tiled = self._tile_gabor_features(sample_x)
@@ -386,28 +420,42 @@ class VisualizationManager:
             pyplot.colorbar(im, ax=ax_gabor, fraction=0.046, pad=0.04)
         else:
             ax_raw = self.fig_heatmap.add_subplot(top_gs[0, 1])
+            if np.isclose(self.window_scale, 0.5):
+                ax_raw_img = ax_raw.inset_axes([0.22, 0.25, 0.70, 0.70])
+                ax_raw.axis('off')
+            elif np.isclose(self.window_scale, 0.65):
+                ax_raw_img = ax_raw.inset_axes([0.29, 0.15, 0.70, 0.70])
+                ax_raw.axis('off')
+            elif np.isclose(self.window_scale, 0.8):
+                ax_raw_img = ax_raw.inset_axes([0.29, 0.15, 0.70, 0.70])
+                ax_raw.axis('off')
+            elif np.isclose(self.window_scale, 1.0):
+                ax_raw_img = ax_raw.inset_axes([0.29, 0.15, 0.70, 0.70])
+                ax_raw.axis('off')
+            else:
+                ax_raw_img = ax_raw
             n_pixels = len(sample_x)
             img_shape = _infer_image_shape(n_pixels)
             if img_shape is not None and len(img_shape) == 3:
                 # カラー画像 (例: CIFAR-10 32×32×3)
                 img = sample_x.reshape(img_shape)
-                im = ax_raw.imshow(img, aspect='equal', vmin=0, vmax=1)
-                ax_raw.set_title(f'元画像 ({img_shape[0]}×{img_shape[1]} RGB)', fontsize=10)
+                im = ax_raw_img.imshow(img, aspect='equal', vmin=0, vmax=1)
+                ax_raw_img.set_title(f'元画像 ({img_shape[0]}×{img_shape[1]} RGB)', fontsize=10, pad=1)
             elif img_shape is not None:
                 # グレースケール画像
                 img = sample_x.reshape(img_shape)
-                im = ax_raw.imshow(img, cmap='gray', aspect='equal', vmin=0, vmax=1)
-                ax_raw.set_title(f'元画像 ({img_shape[0]}×{img_shape[1]})', fontsize=10)
+                im = ax_raw_img.imshow(img, cmap='gray', aspect='equal', vmin=0, vmax=1)
+                ax_raw_img.set_title(f'元画像 ({img_shape[0]}×{img_shape[1]})', fontsize=10, pad=1)
             else:
                 # 正方形にできない場合はパディング
                 side = int(np.ceil(np.sqrt(n_pixels)))
                 img = np.zeros(side * side)
                 img[:n_pixels] = sample_x
                 img = img.reshape(side, side)
-                im = ax_raw.imshow(img, cmap='gray', aspect='equal', vmin=0, vmax=1)
-                ax_raw.set_title(f'元画像 ({side}×{side})', fontsize=10)
-            pyplot.figure(self.fig_heatmap.number)
-            pyplot.colorbar(im, ax=ax_raw, fraction=0.046, pad=0.04)
+                im = ax_raw_img.imshow(img, cmap='gray', aspect='equal', vmin=0, vmax=1)
+                ax_raw_img.set_title(f'元画像 ({side}×{side})', fontsize=10, pad=1)
+            ax_raw_img.set_xticks([])
+            ax_raw_img.set_yticks([])
         
         # 層パネル
         for i, layer_idx in enumerate(bottom_layers):
