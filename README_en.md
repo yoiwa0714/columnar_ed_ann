@@ -110,7 +110,7 @@ pip install -r requirements.txt
 python columnar_ed_ann.py --hidden 2048 --train 10000 --test 10000 --gabor_features
 
 # 1-layer + Gabor features + visualization (learning curve, confusion matrix, activation heatmap)
-python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_features --viz --heatmap
+python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_features --viz 2 --heatmap
 ```
 
 With seed=42 (default), approximately 96% test accuracy is obtained.
@@ -154,17 +154,18 @@ python columnar_ed_ann.py --hidden 2048 --train 10000 --test 10000
 ### Visualization
 
 ```bash
-# Display real-time learning curve
-python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_features --viz
+# Display real-time learning curve (size levels: 1=50%, 2=65%, 3=80%, 4=100%)
+# Omitting SIZE is equivalent to --viz 1
+python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_features --viz 2
 
 # Learning curve + hidden layer and output layer heatmaps
-python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_features --viz --heatmap
+python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_features --viz 2 --heatmap
 
 # Save visualization to a directory (auto-named with timestamp)
-python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_features --viz --heatmap --save_viz results/
+python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_features --viz 2 --heatmap --save_viz results/
 
 # Save with a specified filename
-python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_features --viz --heatmap --save_viz results/my_experiment.png
+python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_features --viz 2 --heatmap --save_viz results/my_experiment.png
 
 # Display misclassified training data (scrollable window after final epoch)
 python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_features --show_train_errors
@@ -283,7 +284,7 @@ python columnar_ed_ann.py --hidden 2048 --diagnose_column
 
 | Argument | Default | Description |
 |----------|---------|-------------|
-| `--viz` | OFF | Display real-time learning curve |
+| `--viz [SIZE]` | OFF | Display real-time learning curve (`1=50%`, `2=65%`, `3=80%`, `4=100%`, omitted SIZE defaults to `1`) |
 | `--heatmap` | OFF | Display heatmap (used together with `--viz`) |
 | `--save_viz` | None | Directory to save visualization results |
 | `--save_weights` | OFF | Save weight statistics per epoch |

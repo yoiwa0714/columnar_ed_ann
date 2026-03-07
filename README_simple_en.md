@@ -101,7 +101,7 @@ pip install -r requirements.txt
 python columnar_ed_ann_simple.py --hidden 2048 --train 5000 --test 5000
 
 # 1-layer + Gabor features + visualization (learning curves, confusion matrix, activation heatmap)
-python columnar_ed_ann_simple.py --hidden 2048 --train 5000 --test 5000 --viz --heatmap
+python columnar_ed_ann_simple.py --hidden 2048 --train 5000 --test 5000 --viz 2 --heatmap
 ```
 
 With seed=42 (default), you should get approximately 95% test accuracy.
@@ -145,19 +145,20 @@ python columnar_ed_ann_simple.py --hidden 2048 --train 10000 --test 10000 --no_g
 ### Visualization
 
 ```bash
-# Display real-time learning curves
-python columnar_ed_ann_simple.py --hidden 2048 --train 5000 --test 5000 --viz
+# Display real-time learning curves (size levels: 1=50%, 2=65%, 3=80%, 4=100%)
+# Omitting SIZE is equivalent to --viz 1
+python columnar_ed_ann_simple.py --hidden 2048 --train 5000 --test 5000 --viz 2
 
 # Learning curves + hidden/output layer heatmaps
-python columnar_ed_ann_simple.py --hidden 2048 --train 5000 --test 5000 --viz --heatmap
+python columnar_ed_ann_simple.py --hidden 2048 --train 5000 --test 5000 --viz 2 --heatmap
 
 # Save visualization results to a directory (auto-named with timestamp)
-python columnar_ed_ann_simple.py --hidden 2048 --train 5000 --test 5000 --viz --heatmap --save_viz results/
+python columnar_ed_ann_simple.py --hidden 2048 --train 5000 --test 5000 --viz 2 --heatmap --save_viz results/
 # → results/viz_results_20260222_123456_viz.png     (learning curves & confusion matrix)
 # → results/viz_results_20260222_123456_heatmap.png (activation heatmap)
 
 # Save with a specified filename
-python columnar_ed_ann_simple.py --hidden 2048 --train 5000 --test 5000 --viz --heatmap --save_viz results/my_experiment.png
+python columnar_ed_ann_simple.py --hidden 2048 --train 5000 --test 5000 --viz 2 --heatmap --save_viz results/my_experiment.png
 # → results/my_experiment_viz.png     (learning curves & confusion matrix)
 # → results/my_experiment_heatmap.png (activation heatmap)
 
@@ -198,11 +199,11 @@ python columnar_ed_ann_simple.py --list_hyperparams
 
 | Argument | Default | Description |
 |------|-----------|------|
-| `--viz` | OFF | Display real-time learning curves |
+| `--viz [SIZE]` | OFF | Display real-time learning curves (`1=50%`, `2=65%`, `3=80%`, `4=100%`, omitted SIZE defaults to `1`) |
 | `--heatmap` | OFF | Display heatmaps (use with `--viz`) |
 | `--save_viz` | None | Directory to save visualization results |
 | `--show_train_errors` | OFF | Display misclassified training data after final epoch |
-| `--max_errors_per_class` | `100` | Maximum number of errors displayed per class |
+| `--max_errors_per_class` | `20` | Maximum number of errors displayed per class |
 
 **Gabor Feature Extraction:**
 

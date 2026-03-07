@@ -101,7 +101,7 @@ pip install -r requirements.txt
 python columnar_ed_ann_simple.py --hidden 2048 --train 5000 --test 5000
 
 # 1層 + Gabor特徴 + 可視化（学習曲線・混同行列・活性化ヒートマップ）
-python columnar_ed_ann_simple.py --hidden 2048 --train 5000 --test 5000 --viz --heatmap
+python columnar_ed_ann_simple.py --hidden 2048 --train 5000 --test 5000 --viz 2 --heatmap
 ```
 
 seed=42（デフォルト）で約95%のテスト精度が得られます。
@@ -145,19 +145,20 @@ python columnar_ed_ann_simple.py --hidden 2048 --train 10000 --test 10000 --no_g
 ### 可視化
 
 ```bash
-# リアルタイム学習曲線を表示
-python columnar_ed_ann_simple.py --hidden 2048 --train 5000 --test 5000 --viz
+# リアルタイム学習曲線を表示（サイズ指定: 1=50%, 2=65%, 3=80%, 4=100%）
+# 数値省略時は --viz 1 と同じ
+python columnar_ed_ann_simple.py --hidden 2048 --train 5000 --test 5000 --viz 2
 
 # 学習曲線 + 隠れ層・出力層ヒートマップ
-python columnar_ed_ann_simple.py --hidden 2048 --train 5000 --test 5000 --viz --heatmap
+python columnar_ed_ann_simple.py --hidden 2048 --train 5000 --test 5000 --viz 2 --heatmap
 
 # 可視化結果をディレクトリに保存（タイムスタンプ付き自動命名）
-python columnar_ed_ann_simple.py --hidden 2048 --train 5000 --test 5000 --viz --heatmap --save_viz results/
+python columnar_ed_ann_simple.py --hidden 2048 --train 5000 --test 5000 --viz 2 --heatmap --save_viz results/
 # → results/viz_results_20260222_123456_viz.png     （学習曲線・混同行列）
 # → results/viz_results_20260222_123456_heatmap.png （活性化ヒートマップ）
 
 # ファイル名を指定して保存
-python columnar_ed_ann_simple.py --hidden 2048 --train 5000 --test 5000 --viz --heatmap --save_viz results/my_experiment.png
+python columnar_ed_ann_simple.py --hidden 2048 --train 5000 --test 5000 --viz 2 --heatmap --save_viz results/my_experiment.png
 # → results/my_experiment_viz.png     （学習曲線・混同行列）
 # → results/my_experiment_heatmap.png （活性化ヒートマップ）
 
@@ -198,11 +199,11 @@ python columnar_ed_ann_simple.py --list_hyperparams
 
 | 引数 | デフォルト | 説明 |
 |------|-----------|------|
-| `--viz` | OFF | リアルタイム学習曲線を表示 |
+| `--viz [SIZE]` | OFF | リアルタイム学習曲線を表示（`1=50%`, `2=65%`, `3=80%`, `4=100%`、省略時は`1`） |
 | `--heatmap` | OFF | ヒートマップ表示（`--viz`と併用） |
 | `--save_viz` | なし | 可視化結果の保存先ディレクトリ |
 | `--show_train_errors` | OFF | 最終エポックの不正解学習データを一覧表示 |
-| `--max_errors_per_class` | `100` | クラスごとの表示上限数 |
+| `--max_errors_per_class` | `20` | クラスごとの表示上限数 |
 
 **Gabor特徴抽出:**
 
