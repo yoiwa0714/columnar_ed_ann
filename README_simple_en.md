@@ -417,9 +417,9 @@ In the simple version, optimal parameters for each number of hidden layers are a
 
 | Parameter | 1-layer | 2-layer | 3-layer | Description |
 |-----------|------|------|------|------|
-| output_lr | 0.15 | 0.15 | 0.20 | Output layer learning rate |
-| non_column_lr | [0.15] | [0.15, 0.15] | [0.20, 0.20, 0.20] | Hidden layer base learning rate (per layer) *1 |
-| column_lr | [0.0015] | [0.00075, 0.00045] | [0.001, 0.0006, 0.0004] | Column neuron learning rate (per layer) |
+| output_lr | 0.15 | 0.15 | 0.15 | Output layer learning rate |
+| non_column_lr | [0.15] | [0.15, 0.15] | [0.15, 0.15, 0.15] | Hidden layer base learning rate (per layer) *1 |
+| column_lr | [0.0015] | [0.00075, 0.00045] | [0.00075, 0.00045, 0.0003] | Column neuron learning rate (per layer) |
 | column_neurons | 1 | 10 | 10 | Number of column neurons |
 | init_scales | [0.4, 1.0] | [0.7, 1.8, 0.8] | [0.7, 1.8, 1.8, 0.8] | Per-layer initialization scales |
 | hidden_sparsity | 0.4 | [0.4, 0.4] | [0.4, 0.4, 0.4] | Hidden layer sparsity |
