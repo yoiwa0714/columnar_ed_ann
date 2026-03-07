@@ -335,6 +335,8 @@ Extracts input features using fixed filters that model V1 simple cells.
 ## How It Works
 
 > 📖 For detailed explanations of the internal operation flow and core algorithms, see **[Columnar ED Method — How It Works](docs/en/Columnar_ED_Method_Flow.md)**.
+>
+> 🔗 For Mermaid-based code-anchored flow diagrams, see **[ED Learning Mechanism (Mermaid Anchors, EN)](docs/en/ed_learning_mechanism_anchors_en.md)**.
 
 ### What Is the Columnar ED Method?
 
@@ -565,6 +567,8 @@ The implementation has been verified against Isamu Kaneko's C source code as a r
 
 - [Original ED Method Explanation (Japanese)](docs/ja/ED法_解説資料.md) — Detailed explanation of the theory and operation of the original ED method
 - [EDLA — Isamu Kaneko's Error Diffusion Learning Algorithm (Japanese)](docs/ja/EDLA_金子勇氏.md) — Academic background of the ED method and Isamu Kaneko's contributions
+- [ED Learning Mechanism (Mermaid Anchors, EN)](docs/en/ed_learning_mechanism_anchors_en.md) — Code-anchored execution and feature flow diagrams
+- [ED学習メカニズム（Mermaidアンカー・日本語）](docs/ja/ed_learning_mechanism_anchors.md) — 日本語版のコード行番号アンカー付きフロー図
 - [Isamu Kaneko (1999) Original ED Method C Source Code](original-c-source-code/main.c) — The original implementation on which this work is based
 - [Cortical Column Structure](https://neu-brains.co.jp/neuro-plus/glossary/ka/140/) — Biological background of column structure
 

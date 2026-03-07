@@ -230,6 +230,8 @@ python columnar_ed_ann_simple.py --list_hyperparams
 ## How It Works
 
 > 📖 For a detailed walkthrough of the internal code flow and core algorithm explanations, see **[Columnar ED Method — Operational Flow](docs/en/Columnar_ED_Method_Flow.md)**.
+>
+> 🔗 For Mermaid-based code-anchored flow diagrams, see **[ED Learning Mechanism (Mermaid Anchors, EN)](docs/en/ed_learning_mechanism_anchors_en.md)**.
 
 ### What Is the Columnar ED Method?
 
@@ -456,6 +458,8 @@ This implementation has been verified to comply with the original ED method, usi
 
 - [Original ED Method Explanation](docs/en/ED_Method_Explanation.md) — Detailed explanation of the theory and operation of the original ED method
 - [EDLA — Isamu Kaneko's Error Diffusion Learning Algorithm](docs/en/EDLA_Isamu_Kaneko.md) — Academic background of the ED method and Isamu Kaneko's contributions
+- [ED Learning Mechanism (Mermaid Anchors, EN)](docs/en/ed_learning_mechanism_anchors_en.md) — Code-anchored execution and feature flow diagrams
+- [ED学習メカニズム（Mermaidアンカー・日本語）](docs/ja/ed_learning_mechanism_anchors.md) — Japanese code-anchored flow diagrams
 - [Isamu Kaneko (1999) Original ED Method C Source Code](original-c-source-code/main.c) — The original implementation on which this work is based
 - [About Cortical Column Structure (Japanese)](https://neu-brains.co.jp/neuro-plus/glossary/ka/140/) — Biological background of column structure
 

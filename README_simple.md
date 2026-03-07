@@ -230,6 +230,8 @@ python columnar_ed_ann_simple.py --list_hyperparams
 ## 動作原理
 
 > 📖 コード内部の動作フローとコアアルゴリズムの詳細解説は **[コラムED法 動作の流れ](docs/ja/コラムED法_動作の流れ.md)** を参照してください。
+>
+> 🔗 Mermaidによるコードアンカー付きフロー図は **[ED学習メカニズム（Mermaidアンカー・日本語）](docs/ja/ed_learning_mechanism_anchors.md)** を参照してください。
 
 ### コラムED法とは
 
@@ -457,6 +459,8 @@ columnar_ed_ann/
 
 - [オリジナルED法 解説資料（日本語）](docs/ja/ED法_解説資料.md) — オリジナルED法の理論と動作の詳細解説
 - [EDLA — 金子勇氏のError Diffusion学習法（日本語）](docs/ja/EDLA_金子勇氏.md) — ED法の学術的背景と金子勇氏の業績
+- [ED学習メカニズム（Mermaidアンカー・日本語）](docs/ja/ed_learning_mechanism_anchors.md) — コード行番号アンカー付きの実行パス/機能別フロー図
+- [ED Learning Mechanism (Mermaid Anchors, EN)](docs/en/ed_learning_mechanism_anchors_en.md) — Code-anchored execution and feature flow diagrams
 - [金子勇氏 (1999) オリジナルED法 Cソースコード](original-c-source-code/main.c) — 本実装の基となったオリジナル実装
 - [大脳皮質のコラム構造について](https://neu-brains.co.jp/neuro-plus/glossary/ka/140/) — コラム構造の生物学的背景
 
