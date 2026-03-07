@@ -43,16 +43,29 @@ def load_hyperparameters(config_path=None):
         - デフォルトパス: config/hyperparameters.yaml
         - エラー時はconfig/hyperparameters_initial.yamlを参照してください
     """
+    searched_paths = []
     if config_path is None:
-        # columnar_ed_ann/ の親ディレクトリ（プロジェクトルート）のconfig/を参照
-        project_root = Path(__file__).parent.parent.parent
-        config_path = project_root / 'config' / 'hyperparameters.yaml'
+        # 新規クローン直後でも確実に見つけられるよう、
+        # まずこのモジュール基準のリポジトリ直下configを最優先に探索する。
+        module_dir = Path(__file__).resolve().parent
+        project_root = module_dir.parent
+        candidate_paths = [
+            project_root / 'config' / 'hyperparameters.yaml',
+            Path.cwd() / 'config' / 'hyperparameters.yaml',
+            project_root.parent / 'config' / 'hyperparameters.yaml',
+        ]
+        searched_paths = candidate_paths
+        config_path = next((p for p in candidate_paths if p.exists()), candidate_paths[0])
+    else:
+        searched_paths = [Path(config_path)]
     
     config_path = Path(config_path)
     
     if not config_path.exists():
+        searched = '\n'.join(f"- {p}" for p in searched_paths)
         raise FileNotFoundError(
             f"設定ファイルが見つかりません: {config_path}\n"
+            f"探索したパス:\n{searched}\n"
             f"config/hyperparameters_initial.yaml を参照して作成してください。"
         )
     
