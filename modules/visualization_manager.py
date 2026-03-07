@@ -607,8 +607,9 @@ class VisualizationManager:
             ax = self.fig_heatmap.add_subplot(bottom_gs[0, i])
             
             if layer_idx == -2:
-                z_data = sample_x
-                layer_name = f'入力層 ({len(sample_x)})'
+                input_data = sample_x_raw if sample_x_raw is not None else sample_x
+                z_data = input_data
+                layer_name = f'入力層 ({len(input_data)})'
             elif layer_idx == -1:
                 z_data = z_output
                 layer_name = f'出力層 ({len(z_output)})'
