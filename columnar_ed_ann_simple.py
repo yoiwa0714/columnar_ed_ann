@@ -84,7 +84,7 @@ def parse_args():
     parser.add_argument('--viz', type=int, nargs='?', const=1, default=None,
                         choices=[1, 2, 3, 4], metavar='SIZE',
                         help='リアルタイム学習曲線を表示（サイズ指定: 1-4）\n'
-                            '1=50%%, 2=65%%, 3=80%%, 4=100%%（従来サイズ）\n'
+                            '1=基準, 2=1.3倍, 3=1.6倍, 4=2倍（ウィンドウサイズ）\n'
                              '数値省略時は1（--viz == --viz 1）')
     parser.add_argument('--heatmap', action='store_true',
                         help='隠れ層・出力層のヒートマップを表示（--vizと併用）')
@@ -324,7 +324,7 @@ def main():
     # === 可視化の初期化 ===
     viz_manager = None
     if args.viz:
-        viz_scale_map = {1: 0.5, 2: 0.65, 3: 0.8, 4: 1.0}
+        viz_scale_map = {1: 1.0, 2: 1.3, 3: 1.6, 4: 2.0}
         viz_scale = viz_scale_map.get(args.viz, 1.0)
         try:
             viz_manager = VisualizationManager(
@@ -334,7 +334,7 @@ def main():
                 total_epochs=args.epochs,
                 window_scale=viz_scale,
             )
-            print(f"可視化: ON (サイズレベル{args.viz}, 比率{int(viz_scale * 100)}%)")
+            print(f"可視化: ON (サイズレベル{args.viz}, 倍率x{viz_scale:.1f})")
             if use_gabor and gabor_info:
                 viz_manager.set_gabor_info(gabor_info)
                 viz_manager.set_gabor_extractor(extractor)

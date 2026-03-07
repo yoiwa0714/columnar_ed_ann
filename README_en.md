@@ -154,7 +154,7 @@ python columnar_ed_ann.py --hidden 2048 --train 10000 --test 10000
 ### Visualization
 
 ```bash
-# Display real-time learning curve (size levels: 1=50%, 2=65%, 3=80%, 4=100%)
+# Display real-time learning curve (size levels: 1=base, 2=1.3x, 3=1.6x, 4=2x; window size)
 # Omitting SIZE is equivalent to --viz 1
 python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_features --viz 2
 
@@ -284,7 +284,7 @@ python columnar_ed_ann.py --hidden 2048 --diagnose_column
 
 | Argument | Default | Description |
 |----------|---------|-------------|
-| `--viz [SIZE]` | OFF | Display real-time learning curve (`1=50%`, `2=65%`, `3=80%`, `4=100%`, omitted SIZE defaults to `1`) |
+| `--viz [SIZE]` | OFF | Display real-time learning curve (`1=base`, `2=1.3x`, `3=1.6x`, `4=2x` window size; omitted SIZE defaults to `1`) |
 | `--heatmap` | OFF | Display heatmap (used together with `--viz`) |
 | `--save_viz` | None | Directory to save visualization results |
 | `--save_weights` | OFF | Save weight statistics per epoch |

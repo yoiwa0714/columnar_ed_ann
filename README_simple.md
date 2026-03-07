@@ -145,7 +145,7 @@ python columnar_ed_ann_simple.py --hidden 2048 --train 10000 --test 10000 --no_g
 ### 可視化
 
 ```bash
-# リアルタイム学習曲線を表示（サイズ指定: 1=50%, 2=65%, 3=80%, 4=100%）
+# リアルタイム学習曲線を表示（サイズ指定: 1=基準, 2=1.3倍, 3=1.6倍, 4=2倍）
 # 数値省略時は --viz 1 と同じ
 python columnar_ed_ann_simple.py --hidden 2048 --train 5000 --test 5000 --viz 2
 
@@ -199,7 +199,7 @@ python columnar_ed_ann_simple.py --list_hyperparams
 
 | 引数 | デフォルト | 説明 |
 |------|-----------|------|
-| `--viz [SIZE]` | OFF | リアルタイム学習曲線を表示（`1=50%`, `2=65%`, `3=80%`, `4=100%`、省略時は`1`） |
+| `--viz [SIZE]` | OFF | リアルタイム学習曲線を表示（`1=基準`, `2=1.3倍`, `3=1.6倍`, `4=2倍`、省略時は`1`） |
 | `--heatmap` | OFF | ヒートマップ表示（`--viz`と併用） |
 | `--save_viz` | なし | 可視化結果の保存先ディレクトリ |
 | `--show_train_errors` | OFF | 最終エポックの不正解学習データを一覧表示 |

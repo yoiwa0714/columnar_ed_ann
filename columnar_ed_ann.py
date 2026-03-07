@@ -180,7 +180,7 @@ def parse_args():
     viz_group.add_argument('--viz', type=int, nargs='?', const=1, default=None,
                           choices=[1, 2, 3, 4], metavar='SIZE',
                           help='学習曲線のリアルタイム可視化を有効化（サイズ指定: 1-4）\n'
-                               '1=50%%, 2=65%%, 3=80%%, 4=100%%（従来サイズ）\n'
+                             '1=基準, 2=1.3倍, 3=1.6倍, 4=2倍（ウィンドウサイズ）\n'
                                '数値省略時は1（--viz == --viz 1）')
     viz_group.add_argument('--heatmap', action='store_true',
                           help='活性化ヒートマップの表示を有効化（--vizと併用）')
@@ -1094,8 +1094,8 @@ def main():
     viz_manager = None
     if args.viz is not None:
         try:
-            viz_scale_map = {1: 0.50, 2: 0.65, 3: 0.80, 4: 1.00}
-            viz_scale = viz_scale_map.get(args.viz, 0.50)
+            viz_scale_map = {1: 1.00, 2: 1.30, 3: 1.60, 4: 2.00}
+            viz_scale = viz_scale_map.get(args.viz, 1.00)
             viz_manager = VisualizationManager(
                 enable_viz=True,
                 enable_heatmap=args.heatmap,
@@ -1104,7 +1104,7 @@ def main():
                 verbose=getattr(args, 'verbose', False),
                 window_scale=viz_scale
             )
-            print(f"\n可視化機能: 有効 (サイズレベル{args.viz}, 比率{int(viz_scale*100)}%)")
+            print(f"\n可視化機能: 有効 (サイズレベル{args.viz}, 倍率x{viz_scale:.1f})")
             if args.heatmap:
                 print("  - ヒートマップ表示: 有効")
             if args.save_viz:
