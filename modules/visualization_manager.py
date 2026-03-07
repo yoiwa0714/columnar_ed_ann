@@ -618,6 +618,42 @@ class VisualizationManager:
             
             # 2Dグリッドに整形
             n_neurons = len(z_data)
+
+            # Gabor ON時でも入力層は変換前画像を表示して、Gabor OFF時と同じ見た目の基準に揃える
+            if layer_idx == -2 and sample_x_raw is not None:
+                n_raw = len(sample_x_raw)
+                inferred_raw = None
+                if n_raw % 3 == 0:
+                    per_channel = n_raw // 3
+                    side_rgb = int(np.sqrt(per_channel))
+                    if side_rgb * side_rgb == per_channel:
+                        inferred_raw = (side_rgb, side_rgb, 3)
+                if inferred_raw is None:
+                    side_gray = int(np.sqrt(n_raw))
+                    if side_gray * side_gray == n_raw:
+                        inferred_raw = (side_gray, side_gray)
+                if inferred_raw is not None and len(inferred_raw) == 3:
+                    img_rgb = sample_x_raw.reshape(inferred_raw)
+                    luminance = (0.299 * img_rgb[:, :, 0] +
+                                 0.587 * img_rgb[:, :, 1] +
+                                 0.114 * img_rgb[:, :, 2])
+                    im = ax.imshow(luminance, cmap='rainbow', aspect='equal', vmin=0, vmax=1)
+                    ax.set_xticks([])
+                    ax.set_yticks([])
+                    ax.set_title(layer_name, fontsize=10)
+                    pyplot.figure(self.fig_heatmap.number)
+                    pyplot.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+                    continue
+                if inferred_raw is not None:
+                    img_raw = sample_x_raw.reshape(inferred_raw)
+                    im = ax.imshow(img_raw, cmap='rainbow', aspect='equal', vmin=0, vmax=1)
+                    ax.set_xticks([])
+                    ax.set_yticks([])
+                    ax.set_title(layer_name, fontsize=10)
+                    pyplot.figure(self.fig_heatmap.number)
+                    pyplot.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+                    continue
+
             side = int(np.ceil(np.sqrt(n_neurons)))
             z_reshaped = np.zeros((side, side))
             for j in range(n_neurons):

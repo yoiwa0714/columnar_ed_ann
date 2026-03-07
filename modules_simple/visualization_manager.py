@@ -475,24 +475,34 @@ class VisualizationManager:
             
             # 入力層の特別処理
             if layer_idx == -2:
-                # Gabor ON: プーリング前畳み込み平均を元解像度で表示
-                ext = getattr(self, 'gabor_extractor', None)
-                if ext is not None and ext.last_conv_mean is not None:
-                    conv_mean = ext.last_conv_mean
-                    vmax = max(0.01, np.max(conv_mean) * 1.1)
-                    im = ax.imshow(conv_mean, cmap='rainbow', aspect='equal',
-                                   vmin=0, vmax=vmax)
-                    ax.set_xticks([])
-                    ax.set_yticks([])
-                    ax.set_title(layer_name, fontsize=10)
-                    pyplot.figure(self.fig_heatmap.number)
-                    pyplot.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-                    continue
-                
+                # Gabor ON時でも入力層は変換前画像を表示して、Gabor OFF時と同じ見た目の基準に揃える
+                if sample_x_raw is not None:
+                    inferred_raw = _infer_image_shape(len(sample_x_raw))
+                    if inferred_raw is not None and len(inferred_raw) == 3:
+                        img_rgb = sample_x_raw.reshape(inferred_raw)
+                        luminance = (0.299 * img_rgb[:, :, 0] +
+                                     0.587 * img_rgb[:, :, 1] +
+                                     0.114 * img_rgb[:, :, 2])
+                        im = ax.imshow(luminance, cmap='rainbow', aspect='equal', vmin=0, vmax=1)
+                        ax.set_xticks([])
+                        ax.set_yticks([])
+                        ax.set_title(layer_name, fontsize=10)
+                        pyplot.figure(self.fig_heatmap.number)
+                        pyplot.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+                        continue
+                    if inferred_raw is not None:
+                        img_raw = sample_x_raw.reshape(inferred_raw)
+                        im = ax.imshow(img_raw, cmap='rainbow', aspect='equal', vmin=0, vmax=1)
+                        ax.set_xticks([])
+                        ax.set_yticks([])
+                        ax.set_title(layer_name, fontsize=10)
+                        pyplot.figure(self.fig_heatmap.number)
+                        pyplot.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+                        continue
+
                 # Gabor OFF + カラー画像: 輝度変換してヒートマップ
                 inferred = _infer_image_shape(n_neurons)
                 if inferred is not None and len(inferred) == 3:
-                    h, w, c = inferred
                     img_rgb = z_data.reshape(inferred)
                     luminance = 0.299 * img_rgb[:,:,0] + 0.587 * img_rgb[:,:,1] + 0.114 * img_rgb[:,:,2]
                     im = ax.imshow(luminance, cmap='rainbow', aspect='equal', vmin=0, vmax=1)
