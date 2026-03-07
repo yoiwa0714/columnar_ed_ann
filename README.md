@@ -170,7 +170,7 @@ python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_feature
 # 不正解学習データの一覧表示（最終エポック完了後にスクロール可能ウィンドウで表示）
 python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_features --show_train_errors
 
-# クラスごとの表示上限数を指定（デフォルト: 100）
+# クラスごとの表示上限数を指定（デフォルト: 20）
 python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_features --show_train_errors --max_errors_per_class 50
 ```
 
@@ -289,7 +289,7 @@ python columnar_ed_ann.py --hidden 2048 --diagnose_column
 | `--save_viz` | なし | 可視化結果の保存先ディレクトリ |
 | `--save_weights` | OFF | エポックごとの重み統計を保存 |
 | `--show_train_errors` | OFF | 最終エポックの不正解学習データを一覧表示 |
-| `--max_errors_per_class` | `100` | クラスごとの表示上限数 |
+| `--max_errors_per_class` | `20` | クラスごとの表示上限数 |
 
 ### 早期停止
 

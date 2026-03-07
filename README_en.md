@@ -169,7 +169,7 @@ python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_feature
 # Display misclassified training data (scrollable window after final epoch)
 python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_features --show_train_errors
 
-# Specify maximum number of errors displayed per class (default: 100)
+# Specify maximum number of errors displayed per class (default: 20)
 python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_features --show_train_errors --max_errors_per_class 50
 ```
 
@@ -288,7 +288,7 @@ python columnar_ed_ann.py --hidden 2048 --diagnose_column
 | `--save_viz` | None | Directory to save visualization results |
 | `--save_weights` | OFF | Save weight statistics per epoch |
 | `--show_train_errors` | OFF | Display misclassified training data after final epoch |
-| `--max_errors_per_class` | `100` | Maximum number of errors displayed per class |
+| `--max_errors_per_class` | `20` | Maximum number of errors displayed per class |
 
 ### Early Stopping
 
