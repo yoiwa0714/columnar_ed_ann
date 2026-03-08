@@ -548,6 +548,19 @@ class VisualizationManager:
         bottom_gs = gridspec.GridSpecFromSubplotSpec(1, n_bottom, subplot_spec=outer_gs[1], wspace=0.3)
         
         from matplotlib import pyplot
+
+        # カラーバー目盛りが隣接パネルへ重ならないよう、控えめな文字サイズを使用
+        if self.window_scale <= 1.0:
+            cbar_tick_fs = 5
+        elif self.window_scale <= 1.3:
+            cbar_tick_fs = 6
+        else:
+            cbar_tick_fs = 7
+
+        def add_cbar(image, axis):
+            cbar = pyplot.colorbar(image, ax=axis, fraction=0.046, pad=0.04)
+            cbar.ax.tick_params(labelsize=cbar_tick_fs)
+            return cbar
         
         # ---- 上段左: テキスト情報パネル ----
         ax_info = self.fig_heatmap.add_subplot(top_gs[0, 0])
@@ -661,7 +674,7 @@ class VisualizationManager:
             ax_gabor.set_yticklabels(y_labels, fontsize=6)
             ax_gabor.set_title(f'Gabor特徴 ({gi["n_filters"]}maps)', fontsize=10)
             pyplot.figure(self.fig_heatmap.number)
-            pyplot.colorbar(im, ax=ax_gabor, fraction=0.046, pad=0.04)
+            add_cbar(im, ax_gabor)
         else:
             # Gabor OFF: 元画像のみ（sample_xを2D画像として表示）
             ax_raw = self.fig_heatmap.add_subplot(top_gs[0, 1])
@@ -738,7 +751,7 @@ class VisualizationManager:
                     ax.set_yticks([])
                     ax.set_title(layer_name, fontsize=10)
                     pyplot.figure(self.fig_heatmap.number)
-                    pyplot.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+                    add_cbar(im, ax)
                     continue
                 if inferred_raw is not None:
                     img_raw = sample_x_raw.reshape(inferred_raw)
@@ -747,7 +760,7 @@ class VisualizationManager:
                     ax.set_yticks([])
                     ax.set_title(layer_name, fontsize=10)
                     pyplot.figure(self.fig_heatmap.number)
-                    pyplot.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+                    add_cbar(im, ax)
                     continue
 
             side = int(np.ceil(np.sqrt(n_neurons)))
@@ -776,7 +789,7 @@ class VisualizationManager:
             
             ax.set_title(layer_name, fontsize=10)
             pyplot.figure(self.fig_heatmap.number)
-            pyplot.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+            add_cbar(im, ax)
         
         plt.figure(self.fig_heatmap.number)
         plt.pause(0.1)

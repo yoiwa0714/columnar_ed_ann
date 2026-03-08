@@ -70,7 +70,7 @@ def parse_args():
                          choices=['tanh', 'sigmoid', 'leaky_relu'],
                          help='活性化関数（デフォルト: tanh）※グリッドサーチ用、将来的に削除予定')
     ed_group.add_argument('--lr', type=float, default=0.15,
-                         help='学習率（デフォルト値: 0.15。3層構成は再現性・安定性優先で0.15を採用）')
+                         help='学習率（デフォルト値: 0.15。層別最適値: 3層=0.15, 4層=0.05, 5層=0.03）')
     ed_group.add_argument('--layer_learning_rates', type=str, default=None,
                          help='層別学習率（カンマ区切り、例: 0.05,0.1,0.15）\n'
                               '層数+1個の値が必要（隠れ層1用、...、出力層用）\n'
@@ -90,7 +90,7 @@ def parse_args():
     ed_group.add_argument('--lateral_lr', type=float, default=0.08,
                          help='側方抑制の学習率（デフォルト値: 0.08）')
     ed_group.add_argument('--gradient_clip', type=float, default=0.03,
-                         help='gradient clipping値（デフォルト値: 0.03、v045 2層Phase 2で0.03最適と確認、1層では影響なし）')
+                         help='gradient clipping値（デフォルト値: 0.03。層別最適値: 3層=0.06, 4層=0.03, 5層=0.03）')
     
     # ========================================
     # コラム関連のパラメータ
@@ -126,8 +126,8 @@ def parse_args():
                              help='学習参加ニューロン数の上限（デフォルト: None=全員参加、Phase C実証: 1で最適）')
     column_group.add_argument('--debug_lc', action='store_true',
                              help='lateral_cooperationデバッグモードを有効化（影響度の詳細分析）')
-    column_group.add_argument('--column_lr_factors', type=str, default="0.005,0.003",
-                             help='層別コラム学習率係数（デフォルト: 0.005,0.003、v045 2層Phase 2最適値、重み飽和抑制に有効）')
+    column_group.add_argument('--column_lr_factors', type=str, default="0.005,0.003,0.002",
+                             help='層別コラム学習率係数（デフォルト: 0.005,0.003,0.002。3層最適は0.005,0.004,0.002）')
     column_group.add_argument('--use_affinity', action='store_true',
                              help='Affinity方式を使用（デフォルト: False=Membership方式、実験用）')
     column_group.add_argument('--affinity_max', type=float, default=1.0,
@@ -227,8 +227,10 @@ def parse_args():
                                 '層数+1個の値が必要（Layer 0用、Layer 1用、...、出力層用）\n'
                                 '未指定時: 層数依存デフォルト値を使用\n'
                                 '  1層: [0.4, 1.0]\n'
-                                '  2層: [0.7, 0.7, 0.8]\n'
-                                '  3層: [0.3, 0.5, 0.7, 1.0]\n'
+                                '  2層: [0.7, 1.8, 0.8]\n'
+                                '  3層: [0.7, 1.8, 1.8, 0.8]\n'
+                                '  4層: [0.9, 0.9, 1.8, 1.6, 0.8]\n'
+                                '  5層: [0.9, 0.9, 1.8, 1.8, 1.8, 0.8]\n'
                                 '例: --init_method he --init_scales 0.2,0.8,1.2')
     init_group.add_argument('--normalize_output_weights', action='store_true',
                            help='★v039.4新機能★ 出力層重みをクラス別に正規化（公平な初期活性化を保証）\n'
