@@ -165,7 +165,13 @@ class HyperParams:
         for n_layers, config in sorted(self.layer_configs.items()):
             print(f"\n[{n_layers}層] {config.get('description', '説明なし')}")
             print(f"  hidden: {config['hidden']}")
-            print(f"  learning_rate: {config['learning_rate']}")
+            # 旧キー learning_rate との後方互換を保ちつつ、現行3系統学習率を優先表示
+            if 'output_lr' in config:
+                print(f"  output_lr: {config.get('output_lr', 'N/A')}")
+                print(f"  non_column_lr: {config.get('non_column_lr', 'N/A')}")
+                print(f"  column_lr: {config.get('column_lr', 'N/A')}")
+            else:
+                print(f"  learning_rate: {config.get('learning_rate', 'N/A')}")
             print(f"  u1: {config.get('u1', 'N/A')}")
             print(f"  u2: {config.get('u2', 'N/A')}")
             print(f"  lateral_lr: {config.get('lateral_lr', 'N/A')}")
@@ -177,7 +183,7 @@ class HyperParams:
             print(f"  hidden_sparsity: {config.get('hidden_sparsity', 'N/A')}")
             print(f"  gradient_clip: {config.get('gradient_clip', 'N/A')}")
             print(f"  column_lr_factors: {config.get('column_lr_factors', 'N/A')}")
-            print(f"  epochs: {config['epochs']}")
+            print(f"  epochs: {config.get('epochs', 'N/A')}")
             # Gabor関連（定義されている場合のみ表示）
             if 'gabor_orientations' in config:
                 print(f"  gabor_orientations: {config['gabor_orientations']}")
