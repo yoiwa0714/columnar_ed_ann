@@ -70,7 +70,7 @@ def parse_args():
                          choices=['tanh', 'sigmoid', 'leaky_relu'],
                          help='活性化関数（デフォルト: tanh）※グリッドサーチ用、将来的に削除予定')
     ed_group.add_argument('--lr', type=float, default=0.15,
-                         help='学習率（デフォルト値: 0.15。3層構成は再現性・安定性優先で0.15を採用）')
+                         help='学習率（デフォルト値: 0.15、v044グリッドサーチ最適値）')
     ed_group.add_argument('--layer_learning_rates', type=str, default=None,
                          help='層別学習率（カンマ区切り、例: 0.05,0.1,0.15）\n'
                               '層数+1個の値が必要（隠れ層1用、...、出力層用）\n'
@@ -177,11 +177,8 @@ def parse_args():
     # 可視化関連のパラメータ
     # ========================================
     viz_group = parser.add_argument_group('可視化関連のパラメータ')
-    viz_group.add_argument('--viz', type=int, nargs='?', const=1, default=None,
-                          choices=[1, 2, 3, 4], metavar='SIZE',
-                          help='学習曲線のリアルタイム可視化を有効化（サイズ指定: 1-4）\n'
-                             '1=基準, 2=1.3倍, 3=1.6倍, 4=2倍（ウィンドウサイズ）\n'
-                               '数値省略時は1（--viz == --viz 1）')
+    viz_group.add_argument('--viz', action='store_true',
+                          help='学習曲線のリアルタイム可視化を有効化')
     viz_group.add_argument('--heatmap', action='store_true',
                           help='活性化ヒートマップの表示を有効化（--vizと併用）')
     viz_group.add_argument('--save_viz', type=str, nargs='?', const='viz_results',
@@ -1092,19 +1089,16 @@ def main():
     # 5. 可視化マネージャーの初期化
     # ========================================
     viz_manager = None
-    if args.viz is not None:
+    if args.viz:
         try:
-            viz_scale_map = {1: 1.00, 2: 1.30, 3: 1.60, 4: 2.00}
-            viz_scale = viz_scale_map.get(args.viz, 1.00)
             viz_manager = VisualizationManager(
                 enable_viz=True,
                 enable_heatmap=args.heatmap,
                 save_path=args.save_viz,
                 total_epochs=args.epochs,
-                verbose=getattr(args, 'verbose', False),
-                window_scale=viz_scale
+                verbose=getattr(args, 'verbose', False)
             )
-            print(f"\n可視化機能: 有効 (サイズレベル{args.viz}, 倍率x{viz_scale:.1f})")
+            print("\n可視化機能: 有効")
             if args.heatmap:
                 print("  - ヒートマップ表示: 有効")
             if args.save_viz:

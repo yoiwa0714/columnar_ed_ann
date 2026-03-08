@@ -17,6 +17,7 @@
   - [4.3 アミン濃度計算と拡散](#43-アミン濃度計算と拡散)
   - [4.4 隠れ層の重み更新](#44-隠れ層の重み更新)
   - [4.5 create_column_membership() — コラム構造](#45-create_column_membership--コラム構造)
+- [5. 実装アンカー付き学習メカニズム（フル版）](#5-実装アンカー付き学習メカニズムフル版)
 
 ---
 
@@ -738,3 +739,94 @@ def create_column_membership(n_hidden, n_classes, participation_rate=1.0,
 3. **コラム構造** — 隠れ層のニューロンをクラスに割り当て、アミン信号の選択的な伝達を実現する仕組み
 
 これらはすべて生物学的に妥当なメカニズムであり、微分の連鎖律を用いた誤差逆伝播法（BP法）を一切使用していません。
+
+---
+
+## 5. 実装アンカー付き学習メカニズム（フル版）
+
+本章は、上記の概念説明を**現行フル版実装**に1対1対応させるためのアンカー集です。
+
+- 対象ファイル: `columnar_ed_ann.py`, `modules/ed_network.py`
+- 目的: 理論要素を「どの行で実装しているか」を即確認できるようにする
+
+### 5.1 実行フロー（mainから学習まで）
+
+1. CLI引数の受け取り（学習率、コラム関連、初期化、Gabor）
+`columnar_ed_ann.py:72`
+`columnar_ed_ann.py:113`
+`columnar_ed_ann.py:129`
+`columnar_ed_ann.py:218`
+`columnar_ed_ann.py:298`
+
+2. 層数に応じたYAML自動パラメータ適用
+`columnar_ed_ann.py:501`
+`columnar_ed_ann.py:516`
+
+3. ネットワーク生成（ED学習則パラメータ注入）
+`columnar_ed_ann.py:987`
+
+4. 学習実行（オンラインED）
+`columnar_ed_ann.py:1245`
+`modules/ed_network.py:1930`
+
+5. 評価実行（学習後の性能計測）
+`columnar_ed_ann.py:1251`
+`modules/ed_network.py:2291`
+
+### 5.2 理論要素とコード対応（1:1）
+
+1. 連鎖律を使わないED勾配計算
+`modules/ed_network.py:1301`
+`_compute_gradients()` で各層を独立更新し、BPの連鎖微分を使わない。
+
+2. 出力誤差の正解クラス基準化
+`modules/ed_network.py:1354`
+`error_correct = 1.0 - z_output[y_true]` により正解クラス由来の学習信号を生成。
+
+3. 飽和抑制項 `abs(z) * (1 - abs(z))`
+`modules/ed_network.py:1333`
+`modules/ed_network.py:1516`
+出力層と隠れ層で同一原理を適用。
+
+4. アミン拡散（u1/u2）
+`modules/ed_network.py:1382`
+`amine_diffused = amine_concentration_output * diffusion_coef`。
+
+5. コラムmembershipに基づく選択的学習
+`modules/ed_network.py:1438`
+`modules/ed_network.py:1481`
+`learning_weights = np.where(...)` でコラム/非コラムの学習信号を分岐。
+
+6. 層別学習率
+`modules/ed_network.py:204`
+`modules/ed_network.py:1516`
+`self.layer_lrs` を各層更新信号に直接適用。
+
+7. コラム学習率抑制（層別）
+`modules/ed_network.py:250`
+`modules/ed_network.py:1559`
+`self.column_lr_factors[layer_idx]` でコラム行の勾配だけ抑制。
+
+8. 勾配クリッピング
+`modules/ed_network.py:279`
+`modules/ed_network.py:1547`
+過大更新を抑制して学習安定化。
+
+9. 順伝播（tanh + softmax）
+`modules/ed_network.py:972`
+`modules/ed_network.py:1102`
+
+10. オンライン逐次更新（EDの時間順更新）
+`modules/ed_network.py:1745`
+`modules/ed_network.py:1930`
+`train_epoch()` が各サンプルで `train_one_sample()` を呼び、即時更新。
+
+### 5.3 実行モードごとの注意
+
+1. 通常実行（`--batch_size` なし）
+`columnar_ed_ann.py:1245`
+NumPyオンライン経路（本章のアンカー対象）が使われる。
+
+2. `--batch_size` または `--use_cupy` 指定時
+`columnar_ed_ann.py:1226`
+ミニバッチ/高速化経路に分岐するため、内部実装アンカーは別系統も確認が必要。

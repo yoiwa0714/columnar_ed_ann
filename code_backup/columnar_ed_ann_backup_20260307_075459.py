@@ -70,7 +70,7 @@ def parse_args():
                          choices=['tanh', 'sigmoid', 'leaky_relu'],
                          help='活性化関数（デフォルト: tanh）※グリッドサーチ用、将来的に削除予定')
     ed_group.add_argument('--lr', type=float, default=0.15,
-                         help='学習率（デフォルト値: 0.15。3層構成は再現性・安定性優先で0.15を採用）')
+                         help='学習率（デフォルト値: 0.15、v044グリッドサーチ最適値）')
     ed_group.add_argument('--layer_learning_rates', type=str, default=None,
                          help='層別学習率（カンマ区切り、例: 0.05,0.1,0.15）\n'
                               '層数+1個の値が必要（隠れ層1用、...、出力層用）\n'
@@ -177,11 +177,8 @@ def parse_args():
     # 可視化関連のパラメータ
     # ========================================
     viz_group = parser.add_argument_group('可視化関連のパラメータ')
-    viz_group.add_argument('--viz', type=int, nargs='?', const=1, default=None,
-                          choices=[1, 2, 3, 4], metavar='SIZE',
-                          help='学習曲線のリアルタイム可視化を有効化（サイズ指定: 1-4）\n'
-                             '1=基準, 2=1.3倍, 3=1.6倍, 4=2倍（ウィンドウサイズ）\n'
-                               '数値省略時は1（--viz == --viz 1）')
+    viz_group.add_argument('--viz', action='store_true',
+                          help='学習曲線のリアルタイム可視化を有効化')
     viz_group.add_argument('--heatmap', action='store_true',
                           help='活性化ヒートマップの表示を有効化（--vizと併用）')
     viz_group.add_argument('--save_viz', type=str, nargs='?', const='viz_results',
@@ -192,10 +189,6 @@ def parse_args():
                                'オプション未指定: 保存しない。')
     viz_group.add_argument('--save_weights', action='store_true',
                           help='エポックごとの重み統計を保存（詳細分析用）')
-    viz_group.add_argument('--show_train_errors', action='store_true',
-                          help='学習完了後、最終エポックの不正解学習データを一覧表示')
-    viz_group.add_argument('--max_errors_per_class', type=int, default=20,
-                          help='不正解表示のクラスごとの上限数（デフォルト: 20）')
     
     # ========================================
     # 初期化関連のパラメータ (v036.5新規, v036.6拡張, v038.1拡張)
@@ -897,20 +890,6 @@ def main():
     # 入力次元とクラス数を自動検出
     n_input = x_train.shape[1]  # 自動検出: 784 (MNIST/Fashion), 3072 (CIFAR-10), etc.
     n_classes = len(np.unique(y_train))  # 自動検出: 10, 100, etc.
-
-    # 表示用画像形状を推定
-    if custom_input_shape is not None:
-        display_img_shape = custom_input_shape
-    elif n_input == 784:
-        display_img_shape = (28, 28)
-    elif n_input == 3072:
-        display_img_shape = (32, 32, 3)
-    else:
-        side = int(np.sqrt(n_input))
-        display_img_shape = (side, side) if side * side == n_input else (1, n_input)
-
-    # x_train_raw: Gabor変換前の生データ保持用（Gabor使用時のみ設定）
-    x_train_raw = None
     
     print(f"データセット情報: 入力次元={n_input}, クラス数={n_classes}")
     
@@ -955,8 +934,7 @@ def main():
         print(f"  プーリング後空間サイズ: {info['pool_output_shape']}")
         print(f"  特徴次元: {info['feature_dim']} (元の入力: {n_input})")
         
-        # ヒートマップ表示用にGabor変換前のデータを保存
-        x_train_raw = x_train.copy()
+        # ヒートマップ表示用にGabor変換前のテストデータを保存
         x_test_raw = x_test.copy()
         
         # 訓練データの特徴抽出
@@ -1092,19 +1070,16 @@ def main():
     # 5. 可視化マネージャーの初期化
     # ========================================
     viz_manager = None
-    if args.viz is not None:
+    if args.viz:
         try:
-            viz_scale_map = {1: 1.00, 2: 1.30, 3: 1.60, 4: 2.00}
-            viz_scale = viz_scale_map.get(args.viz, 1.00)
             viz_manager = VisualizationManager(
                 enable_viz=True,
                 enable_heatmap=args.heatmap,
                 save_path=args.save_viz,
                 total_epochs=args.epochs,
-                verbose=getattr(args, 'verbose', False),
-                window_scale=viz_scale
+                verbose=args.verbose
             )
-            print(f"\n可視化機能: 有効 (サイズレベル{args.viz}, 倍率x{viz_scale:.1f})")
+            print("\n可視化機能: 有効")
             if args.heatmap:
                 print("  - ヒートマップ表示: 有効")
             if args.save_viz:
@@ -1197,7 +1172,6 @@ def main():
         _heatmap_callback = _make_heatmap_callback()
     
     # tqdmを使ったエポックループ
-    train_errors = None  # 最終エポックで不正解収集（--show_train_errors 使用時）
     pbar = tqdm(range(1, args.epochs + 1), desc="Training", ncols=120)
     for epoch in pbar:
         epoch_start = time.time()
@@ -1249,12 +1223,6 @@ def main():
             network.set_epoch_lr_scale(epoch - 1, epoch_lr_schedule)
         
         # 訓練（ミニバッチ or オンライン学習）
-        is_final_epoch = (
-            epoch == args.epochs or
-            (args.early_stop_epoch is not None and epoch == args.early_stop_epoch)
-        )
-        collect_errors = args.show_train_errors and is_final_epoch
-
         if args.batch_size is not None:
             if args.use_cupy:
                 # ★CuPy版★ GPU最適化バッチ学習（期待: 2-3倍高速化）
@@ -1272,17 +1240,9 @@ def main():
                     seed=args.seed + epoch  # エポックごとに異なるシャッフル
                 )
                 train_acc, train_loss = network.train_epoch_minibatch_tf(train_dataset, progress_callback=_heatmap_callback)
-            # ミニバッチ/CuPy モード: 最終エポックのみ別途エラー収集（1回の評価パスが追加される）
-            if collect_errors:
-                _, _, train_errors = network.evaluate_with_errors(x_train, y_train)
         else:
             # オンライン学習（従来方式）
-            if collect_errors:
-                train_acc, train_loss, train_errors = network.train_epoch(
-                    x_train, y_train, collect_errors=True, progress_callback=_heatmap_callback
-                )
-            else:
-                train_acc, train_loss = network.train_epoch(x_train, y_train, progress_callback=_heatmap_callback)
+            train_acc, train_loss = network.train_epoch(x_train, y_train, progress_callback=_heatmap_callback)
         
         # ★v039.3新機能★ エポック終了後に勝者選択統計を取得
         winner_stats = network.get_winner_selection_stats()
@@ -1617,33 +1577,6 @@ def main():
         viz_manager.save_figures()
         if args.save_viz:
             print(f"\n可視化結果を保存しました: {args.save_viz}")
-
-    # 不正解学習データの一覧表示
-    if args.show_train_errors and train_errors is not None:
-        from modules.visualization_manager import show_train_errors
-        x_display = x_train_raw if x_train_raw is not None else x_train
-
-        # viz/heatmapウィンドウを先に閉じてplt.ion()の影響を排除する
-        if viz_manager is not None:
-            viz_manager.close()
-
-        total_rows = 0
-        # 行数を事前計算してユーザーにスクロール可否を伝える
-        from collections import Counter
-        cls_count = Counter(int(t) for _, t, _ in train_errors)
-        for n in cls_count.values():
-            capped = min(n, args.max_errors_per_class)
-            total_rows += 1 + (capped + 9) // 10  # ヘッダ1行 + 画像行
-        print(f"\n不正解学習データを表示中... ({len(train_errors)}/{len(x_train)} 件, {total_rows} 行)")
-        print("  ウィンドウを閉じると終了します。↑↓キーまたはマウスホイールでスクロール")
-        show_train_errors(
-            error_list=train_errors,
-            x_display=x_display,
-            y_train=y_train,
-            class_names=class_names,
-            img_shape=display_img_shape,
-            max_per_class=args.max_errors_per_class
-        )
     
     print("\n" + "=" * 70)
 

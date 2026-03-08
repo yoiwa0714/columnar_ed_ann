@@ -166,7 +166,7 @@ class VisualizationManager:
     - 図の保存
     """
     
-    def __init__(self, enable_viz=False, enable_heatmap=False, save_path=None, total_epochs=100, verbose=False, window_scale=1.0):
+    def __init__(self, enable_viz=False, enable_heatmap=False, save_path=None, total_epochs=100, verbose=False):
         """
         Parameters:
         -----------
@@ -181,13 +181,9 @@ class VisualizationManager:
             - 末尾が'/'以外: ベースファイル名として扱い、_viz.png, _heatmap.png を追加
         total_epochs : int
             総エポック数（学習曲線の横軸設定用）
-        window_scale : float
-            可視化ウィンドウのサイズ倍率（1.0=従来サイズ）
         """
         self.enable_viz = enable_viz
         self.enable_heatmap = enable_heatmap
-        # 0以下は不正値のため従来サイズにフォールバック
-        self.window_scale = window_scale if window_scale > 0 else 1.0
         
         # 日本語フォント設定（matplotlib用）
         setup_japanese_font()
@@ -219,52 +215,21 @@ class VisualizationManager:
         self.verbose = verbose
         self.fig_viz = None
         self.fig_heatmap = None
-
-        viz_figsize = (15 * self.window_scale, 5 * self.window_scale)
-        heatmap_figsize = (12.8 * self.window_scale, 6.4 * self.window_scale)
         
         if self.enable_viz:
             plt.ion()
-            self.fig_viz = plt.figure(figsize=viz_figsize)
+            self.fig_viz = plt.figure(figsize=(15, 5))
             # ウィンドウタイトルを日本語に変更
             self.fig_viz.canvas.manager.set_window_title('学習曲線 + 混同行列')
-            self._enforce_window_size(self.fig_viz, viz_figsize)
         
         if self.enable_heatmap:
             plt.ion()
-            self.fig_heatmap = plt.figure(figsize=heatmap_figsize)
+            self.fig_heatmap = plt.figure(figsize=(12.8, 6.4))
             # ウィンドウタイトルを日本語に変更
             self.fig_heatmap.canvas.manager.set_window_title('層別活性化ヒートマップ')
-            self._enforce_window_size(self.fig_heatmap, heatmap_figsize)
         
         # Gabor特徴情報（set_gabor_info()で設定）
         self.gabor_info = None
-
-    def _enforce_window_size(self, fig, figsize_inches):
-        """バックエンド依存で保持される既存ウィンドウサイズを上書きする。"""
-        try:
-            dpi = fig.get_dpi()
-            w_px = int(figsize_inches[0] * dpi)
-            h_px = int(figsize_inches[1] * dpi)
-            manager = fig.canvas.manager
-            window = getattr(manager, 'window', None)
-            if window is None:
-                return
-
-            # TkAgg
-            if hasattr(window, 'wm_geometry'):
-                window.wm_geometry(f"{w_px}x{h_px}")
-                return
-            # Qt系
-            if hasattr(window, 'resize'):
-                window.resize(w_px, h_px)
-                return
-            # Wx系
-            if hasattr(window, 'SetSize'):
-                window.SetSize((w_px, h_px))
-        except Exception:
-            # 可視化補助処理の失敗で学習本体を止めない
-            pass
     
     def update_learning_curve(self, train_acc_history, test_acc_history, x_test, y_test, network):
         """
@@ -494,48 +459,31 @@ class VisualizationManager:
         else:
             true_text = f'真のクラス: {sample_y_true}'
             pred_text = f'予測クラス: {sample_y_pred}'
-
-        # 情報ブロック文字は層ラベルと同等の視認性を維持する
-        if np.isclose(self.window_scale, 1.0):
-            info_font_main = 9
-            info_font_progress = 9
-        elif np.isclose(self.window_scale, 1.3):
-            info_font_main = 10
-            info_font_progress = 10
-        elif np.isclose(self.window_scale, 1.6):
-            info_font_main = 10
-            info_font_progress = 10
-        elif np.isclose(self.window_scale, 2.0):
-            info_font_main = 10
-            info_font_progress = 10
-        else:
-            info_font_main = 13
-            info_font_progress = 11
         
         if progress_text:
             # エポック途中: 4行表示（エポック、学習データ、真のクラス、予測クラス）
             ax_info.text(0.05, 0.85, epoch_text,
-                fontsize=info_font_main, fontweight='bold',
+                    fontsize=13, fontweight='bold',
                     ha='left', va='top', transform=ax_info.transAxes)
             ax_info.text(0.05, 0.62, progress_text,
-                fontsize=info_font_progress, fontweight='bold',
+                    fontsize=11, fontweight='bold',
                     ha='left', va='top', transform=ax_info.transAxes)
             ax_info.text(0.05, 0.39, true_text,
-                fontsize=info_font_main, fontweight='bold',
+                    fontsize=13, fontweight='bold',
                     ha='left', va='top', transform=ax_info.transAxes)
             ax_info.text(0.05, 0.16, pred_text,
-                fontsize=info_font_main, fontweight='bold', color=pred_color,
+                    fontsize=13, fontweight='bold', color=pred_color,
                     ha='left', va='top', transform=ax_info.transAxes)
         else:
             # エポック完了時: 3行表示（エポック、真のクラス、予測クラス）
             ax_info.text(0.05, 0.75, epoch_text,
-                fontsize=info_font_main, fontweight='bold',
+                    fontsize=13, fontweight='bold',
                     ha='left', va='top', transform=ax_info.transAxes)
             ax_info.text(0.05, 0.50, true_text,
-                fontsize=info_font_main, fontweight='bold',
+                    fontsize=13, fontweight='bold',
                     ha='left', va='top', transform=ax_info.transAxes)
             ax_info.text(0.05, 0.25, pred_text,
-                fontsize=info_font_main, fontweight='bold', color=pred_color,
+                    fontsize=13, fontweight='bold', color=pred_color,
                     ha='left', va='top', transform=ax_info.transAxes)
         
         # ---- 上段: 画像パネル ----
@@ -545,29 +493,11 @@ class VisualizationManager:
             
             # 元画像
             ax_raw = self.fig_heatmap.add_subplot(top_gs[0, 1])
-            if np.isclose(self.window_scale, 0.5):
-                # --viz 1 では元画像を右寄せ＆上寄せし、情報ブロックとの距離を確保
-                ax_raw_img = ax_raw.inset_axes([0.22, 0.25, 0.70, 0.70])
-                ax_raw.axis('off')
-            elif np.isclose(self.window_scale, 0.65):
-                # --viz 2: 元画像サイズを70%にし、表示幅の20%分だけ右へ移動
-                ax_raw_img = ax_raw.inset_axes([0.29, 0.15, 0.70, 0.70])
-                ax_raw.axis('off')
-            elif np.isclose(self.window_scale, 0.8):
-                # --viz 3: --viz 2 と同じく70%縮小＋右寄せ
-                ax_raw_img = ax_raw.inset_axes([0.29, 0.15, 0.70, 0.70])
-                ax_raw.axis('off')
-            elif np.isclose(self.window_scale, 1.0):
-                # --viz 4: --viz 3 と同じく70%縮小＋右寄せ
-                ax_raw_img = ax_raw.inset_axes([0.29, 0.15, 0.70, 0.70])
-                ax_raw.axis('off')
-            else:
-                ax_raw_img = ax_raw
             img = sample_x_raw.reshape(img_shape)
-            im = ax_raw_img.imshow(img, cmap='gray', aspect='equal', vmin=0, vmax=1)
-            ax_raw_img.set_xticks([])
-            ax_raw_img.set_yticks([])
-            ax_raw_img.set_title(f'元画像 ({img_shape[0]}×{img_shape[1]})', fontsize=10, pad=1)
+            im = ax_raw.imshow(img, cmap='gray', aspect='equal', vmin=0, vmax=1)
+            ax_raw.set_title(f'元画像 ({img_shape[0]}×{img_shape[1]})', fontsize=10)
+            pyplot.figure(self.fig_heatmap.number)
+            pyplot.colorbar(im, ax=ax_raw, fraction=0.046, pad=0.04)
             
             # Gabor特徴マップ
             ax_gabor = self.fig_heatmap.add_subplot(top_gs[0, 2])
@@ -595,24 +525,6 @@ class VisualizationManager:
         else:
             # Gabor OFF: 元画像のみ（sample_xを2D画像として表示）
             ax_raw = self.fig_heatmap.add_subplot(top_gs[0, 1])
-            if np.isclose(self.window_scale, 0.5):
-                # --viz 1 では元画像を右寄せ＆上寄せし、情報ブロックとの距離を確保
-                ax_raw_img = ax_raw.inset_axes([0.22, 0.25, 0.70, 0.70])
-                ax_raw.axis('off')
-            elif np.isclose(self.window_scale, 0.65):
-                # --viz 2: 元画像サイズを70%にし、表示幅の20%分だけ右へ移動
-                ax_raw_img = ax_raw.inset_axes([0.29, 0.15, 0.70, 0.70])
-                ax_raw.axis('off')
-            elif np.isclose(self.window_scale, 0.8):
-                # --viz 3: --viz 2 と同じく70%縮小＋右寄せ
-                ax_raw_img = ax_raw.inset_axes([0.29, 0.15, 0.70, 0.70])
-                ax_raw.axis('off')
-            elif np.isclose(self.window_scale, 1.0):
-                # --viz 4: --viz 3 と同じく70%縮小＋右寄せ
-                ax_raw_img = ax_raw.inset_axes([0.29, 0.15, 0.70, 0.70])
-                ax_raw.axis('off')
-            else:
-                ax_raw_img = ax_raw
             n_pixels = len(sample_x)
             side = int(np.sqrt(n_pixels))
             if side * side == n_pixels:
@@ -622,19 +534,18 @@ class VisualizationManager:
                 img = np.zeros(side * side)
                 img[:n_pixels] = sample_x
                 img = img.reshape(side, side)
-            im = ax_raw_img.imshow(img, cmap='gray', aspect='equal', vmin=0, vmax=1)
-            ax_raw_img.set_xticks([])
-            ax_raw_img.set_yticks([])
-            ax_raw_img.set_title(f'元画像 ({side}×{side})', fontsize=10, pad=1)
+            im = ax_raw.imshow(img, cmap='gray', aspect='equal', vmin=0, vmax=1)
+            ax_raw.set_title(f'元画像 ({side}×{side})', fontsize=10)
+            pyplot.figure(self.fig_heatmap.number)
+            pyplot.colorbar(im, ax=ax_raw, fraction=0.046, pad=0.04)
         
         # ---- 下段: 層パネル ----
         for i, layer_idx in enumerate(bottom_layers):
             ax = self.fig_heatmap.add_subplot(bottom_gs[0, i])
             
             if layer_idx == -2:
-                input_data = sample_x_raw if sample_x_raw is not None else sample_x
-                z_data = input_data
-                layer_name = f'入力層 ({len(input_data)})'
+                z_data = sample_x
+                layer_name = f'入力層 ({len(sample_x)})'
             elif layer_idx == -1:
                 z_data = z_output
                 layer_name = f'出力層 ({len(z_output)})'
@@ -644,42 +555,6 @@ class VisualizationManager:
             
             # 2Dグリッドに整形
             n_neurons = len(z_data)
-
-            # Gabor ON時でも入力層は変換前画像を表示して、Gabor OFF時と同じ見た目の基準に揃える
-            if layer_idx == -2 and sample_x_raw is not None:
-                n_raw = len(sample_x_raw)
-                inferred_raw = None
-                if n_raw % 3 == 0:
-                    per_channel = n_raw // 3
-                    side_rgb = int(np.sqrt(per_channel))
-                    if side_rgb * side_rgb == per_channel:
-                        inferred_raw = (side_rgb, side_rgb, 3)
-                if inferred_raw is None:
-                    side_gray = int(np.sqrt(n_raw))
-                    if side_gray * side_gray == n_raw:
-                        inferred_raw = (side_gray, side_gray)
-                if inferred_raw is not None and len(inferred_raw) == 3:
-                    img_rgb = sample_x_raw.reshape(inferred_raw)
-                    luminance = (0.299 * img_rgb[:, :, 0] +
-                                 0.587 * img_rgb[:, :, 1] +
-                                 0.114 * img_rgb[:, :, 2])
-                    im = ax.imshow(luminance, cmap='rainbow', aspect='equal', vmin=0, vmax=1)
-                    ax.set_xticks([])
-                    ax.set_yticks([])
-                    ax.set_title(layer_name, fontsize=10)
-                    pyplot.figure(self.fig_heatmap.number)
-                    pyplot.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-                    continue
-                if inferred_raw is not None:
-                    img_raw = sample_x_raw.reshape(inferred_raw)
-                    im = ax.imshow(img_raw, cmap='rainbow', aspect='equal', vmin=0, vmax=1)
-                    ax.set_xticks([])
-                    ax.set_yticks([])
-                    ax.set_title(layer_name, fontsize=10)
-                    pyplot.figure(self.fig_heatmap.number)
-                    pyplot.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-                    continue
-
             side = int(np.ceil(np.sqrt(n_neurons)))
             z_reshaped = np.zeros((side, side))
             for j in range(n_neurons):
