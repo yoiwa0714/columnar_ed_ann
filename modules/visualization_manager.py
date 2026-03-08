@@ -220,8 +220,24 @@ class VisualizationManager:
         self.fig_viz = None
         self.fig_heatmap = None
 
-        viz_figsize = (15 * self.window_scale, 5 * self.window_scale)
-        heatmap_figsize = (12.8 * self.window_scale, 6.4 * self.window_scale)
+        # 1920x1080基準の1/4をviz=1の基準サイズとする
+        base_viz_px = (540, 270)
+        # heatmapは可読性のため、viz基準の約1.4倍を採用（端数調整済み）
+        base_heatmap_px = (670, 380)
+
+        viz_px = (
+            int(round(base_viz_px[0] * self.window_scale)),
+            int(round(base_viz_px[1] * self.window_scale)),
+        )
+        heatmap_px = (
+            int(round(base_heatmap_px[0] * self.window_scale)),
+            int(round(base_heatmap_px[1] * self.window_scale)),
+        )
+
+        # matplotlib.figureはinch指定のため、現在のDPIから換算
+        default_dpi = plt.rcParams.get('figure.dpi', 100)
+        viz_figsize = (viz_px[0] / default_dpi, viz_px[1] / default_dpi)
+        heatmap_figsize = (heatmap_px[0] / default_dpi, heatmap_px[1] / default_dpi)
         
         if self.enable_viz:
             plt.ion()
@@ -288,15 +304,27 @@ class VisualizationManager:
         
         self.fig_viz.clear()
         ax1, ax2 = self.fig_viz.subplots(1, 2)
+        # 可視化エリアを約90%に抑えて、軸ラベル・目盛のはみ出しを防ぐ
+        self.fig_viz.subplots_adjust(left=0.08, right=0.98, bottom=0.16, top=0.90, wspace=0.32)
+
+        if self.window_scale <= 1.3:
+            label_fs = 9
+            tick_fs = 8
+        else:
+            label_fs = 10
+            tick_fs = 9
+
+        # 学習曲線側は先に80%へ縮小する（混同行列側は描画後に縮小する）
         
         # 学習曲線（エポック0=0%を追加し、エポック番号と一致させる）
         epochs_list = list(range(0, len(train_acc_history) + 1))
         ax1.plot(epochs_list, [0.0] + list(train_acc_history), label='訓練', marker='o', markersize=3)
         ax1.plot(epochs_list, [0.0] + list(test_acc_history), label='テスト', marker='s', markersize=3)
-        ax1.set_xlabel('エポック')
-        ax1.set_ylabel('正解率')
-        ax1.set_title('学習進捗')
-        ax1.legend()
+        ax1.set_xlabel('エポック', fontsize=label_fs)
+        ax1.set_ylabel('正解率', fontsize=label_fs)
+        ax1.set_title('学習進捗', fontsize=label_fs)
+        ax1.legend(fontsize=tick_fs)
+        ax1.tick_params(axis='both', labelsize=tick_fs)
         
         # 縦軸設定: 0.0〜1.0
         ax1.set_ylim(0.0, 1.0)
@@ -314,6 +342,14 @@ class VisualizationManager:
             ax1.axhline(y=y, color='gray', linestyle=':', linewidth=0.5, alpha=0.5)
         for y in [0.2, 0.4, 0.6, 0.8]:
             ax1.axhline(y=y, color='gray', linestyle='-', linewidth=0.5, alpha=0.5)
+
+        # 学習進捗グラフのみ80%へ縮小
+        pos = ax1.get_position()
+        new_w = pos.width * 0.8
+        new_h = pos.height * 0.8
+        new_x = pos.x0 + (pos.width - new_w) / 2
+        new_y = pos.y0 + (pos.height - new_h) / 2
+        ax1.set_position([new_x, new_y, new_w, new_h])
         
         # 混同行列を表示（自前で計算）
         # y_testの形状を確認: (n_samples, n_classes)の2次元配列を想定
@@ -334,10 +370,44 @@ class VisualizationManager:
             conf_matrix[true, pred] += 1
         
         sns.heatmap(conf_matrix, annot=True, fmt='d',
-                   cmap='Blues', ax=ax2, cbar_kws={'label': '件数'})
-        ax2.set_xlabel('予測クラス')
-        ax2.set_ylabel('真のクラス')
-        ax2.set_title('混同行列（テストデータ）')
+                   cmap='Blues', ax=ax2,
+                   annot_kws={'size': tick_fs},
+                   cbar_kws={'label': '件数', 'fraction': 0.045, 'pad': 0.03})
+        # seabornの描画後に混同行列のみ80%へ縮小して確実に反映する
+        pos = ax2.get_position()
+        new_w = pos.width * 0.8
+        new_h = pos.height * 0.8
+        left_shift = 0.025
+        new_x = max(0.0, pos.x0 + (pos.width - new_w) / 2 - left_shift)
+        new_y = pos.y0 + (pos.height - new_h) / 2
+        ax2.set_position([new_x, new_y, new_w, new_h])
+        # カラーバーは別軸のため、混同行列に追従させて右端はみ出しを防ぐ
+        if ax2.collections:
+            cbar = ax2.collections[0].colorbar
+            if cbar is not None and getattr(cbar, 'ax', None) is not None:
+                cb_ax = cbar.ax
+                ax2_pos = ax2.get_position()
+                cb_pos = cb_ax.get_position()
+                cb_w = cb_pos.width
+                cb_pad = 0.008
+                max_right = 0.97
+
+                cb_x = ax2_pos.x1 + cb_pad
+                overflow = (cb_x + cb_w) - max_right
+                if overflow > 0:
+                    shifted_x0 = max(0.0, ax2_pos.x0 - overflow)
+                    ax2.set_position([shifted_x0, ax2_pos.y0, ax2_pos.width, ax2_pos.height])
+                    ax2_pos = ax2.get_position()
+                    cb_x = ax2_pos.x1 + cb_pad
+                if cb_x + cb_w > max_right:
+                    cb_x = max_right - cb_w
+
+                cb_ax.set_position([cb_x, ax2_pos.y0, cb_w, ax2_pos.height])
+        ax2.set_xlabel('予測クラス', fontsize=label_fs)
+        # 左ラベルが学習曲線へ重ならないよう、少し内側へ寄せる
+        ax2.set_ylabel('真のクラス', fontsize=label_fs, labelpad=2)
+        ax2.set_title('混同行列（テストデータ）', fontsize=label_fs)
+        ax2.tick_params(axis='both', labelsize=tick_fs)
         
         plt.figure(self.fig_viz.number)
         plt.pause(0.1)
