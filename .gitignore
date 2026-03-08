@@ -34,3 +34,8 @@ modules/amine_diffusion.py
 .python-version
 pyproject.toml
 uv.lock
+
+# Do not publish backup/versioned experiment scripts
+BACKUP_POLICY.md
+columnar_ed_ann_v???.py
+columnar_ed_ann_v049_gabor_experiment.py
