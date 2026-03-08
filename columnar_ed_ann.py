@@ -785,6 +785,7 @@ def main():
     
     # [コラム関連のパラメータ]
     print("\n[コラム関連のパラメータ]")
+    print(format_param("list_hyperparams", args.list_hyperparams, is_arg_specified('list_hyperparams')))
     print(format_param("base_column_radius", args.base_column_radius, is_arg_specified('base_column_radius')))
     print(format_param("column_radius", args.column_radius, is_arg_specified('column_radius')))
     print(format_param("participation_rate", args.participation_rate, is_arg_specified('participation_rate')))
@@ -800,6 +801,8 @@ def main():
     print(format_param("use_affinity", args.use_affinity, is_arg_specified('use_affinity')))
     print(format_param("affinity_max", args.affinity_max, is_arg_specified('affinity_max')))
     print(format_param("affinity_min", args.affinity_min, is_arg_specified('affinity_min')))
+    print(format_param("rf_overlap", args.rf_overlap, is_arg_specified('rf_overlap')))
+    print(format_param("rf_mode", args.rf_mode, is_arg_specified('rf_mode')))
     print(format_param("rank_lut_mode", args.rank_lut_mode, is_arg_specified('rank_lut_mode')))
     print(format_param("column_decorrelation", args.column_decorrelation, is_arg_specified('column_decorrelation')))
     print(format_param("output_spatial_bias", args.output_spatial_bias, is_arg_specified('output_spatial_bias')))
@@ -821,6 +824,8 @@ def main():
     print(format_param("heatmap", args.heatmap, is_arg_specified('heatmap')))
     print(format_param("save_viz", args.save_viz, is_arg_specified('save_viz')))
     print(format_param("save_weights", args.save_weights, is_arg_specified('save_weights')))
+    print(format_param("show_train_errors", args.show_train_errors, is_arg_specified('show_train_errors')))
+    print(format_param("max_errors_per_class", args.max_errors_per_class, is_arg_specified('max_errors_per_class')))
     
     # [初期化関連のパラメータ]
     print("\n[初期化関連のパラメータ]")
@@ -853,6 +858,7 @@ def main():
         print("\n[データ拡張関連のパラメータ]")
         mode_str = "オンライン（エポック毎にランダム変換）" if args.aug_online else f"事前拡張（{args.aug_copies}コピー、計{args.aug_copies + 1}倍）"
         print(format_param("augment", True, is_arg_specified('augment')))
+        print(format_param("aug_online", args.aug_online, is_arg_specified('aug_online')))
         print(format_param("aug_mode", mode_str, False))
         print(format_param("aug_shift", args.aug_shift, is_arg_specified('aug_shift')))
         print(format_param("aug_rotation", args.aug_rotation, is_arg_specified('aug_rotation')))
