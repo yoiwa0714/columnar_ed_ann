@@ -150,9 +150,9 @@ python columnar_ed_ann.py --hidden 2048,1024,1024 --train 10000 --test 10000 --g
 python columnar_ed_ann.py --dataset mnist --hidden 1024,1024,1024,1024 --train 10000 --test 10000 --epochs 10 --seed 42 --column_neurons 20 --init_method he --gabor_features --lr 0.04 --column_lr_factors 0.005,0.004,0.003,0.002 --gradient_clip 0.03 --init_scales 0.9,1.6,1.8,1.6,0.8 --viz 2 --heatmap
 # → Best = 97.16% (Epoch 10), Final = 97.16%
 
-# 5-layer + Gabor features (stability-focused)
-python columnar_ed_ann.py --hidden 1024,1024,1024,1024,1024 --train 10000 --test 10000 --dataset fashion --gabor_features
-# → Best ≈ 85.38%, Final ≈ 85.24%
+# 5-layer + Gabor features (MNIST, T3M adopted)
+python columnar_ed_ann.py --dataset mnist --hidden 1024,1024,1024,1024,1024 --train 10000 --test 10000 --epochs 10 --seed 42 --column_neurons 20 --init_method he --gabor_features --lr 0.04 --column_lr_factors 0.005,0.004,0.003,0.002,0.0015 --gradient_clip 0.03 --init_scales 0.9,1.6,1.8,1.2,1.4,0.8 --viz 2 --heatmap
+# → Best = 96.78% (Epoch 10), Final = 96.78%
 
 # Without Gabor (to verify the pure learning capability of the original ED method)
 python columnar_ed_ann.py --hidden 2048 --train 10000 --test 10000
@@ -452,7 +452,7 @@ This configuration allows the Columnar ED Method to reconcile biological plausib
 
 For example, with `column_neurons=10` (default for 2+ layer configurations), 10 column neurons are assigned per class. In a 2048-neuron hidden layer, 100 neurons (about 4.9% of total) become training targets, while the remaining 1948 retain fixed random weights.
 
-Compared to cn=1, the increased number of learning neurons allows each class to be represented by more diverse features. While the reservoir computing-like structure (majority of weights remain fixed) is maintained, the increased column neurons improve classification performance. For 2-3 layer configurations, cn=10 is the default; for 4-layer configurations, cn=20 is the default. This achieves 97.08% for 3 layers and Best 97.16% (Final 97.16%) for 4 layers.
+Compared to cn=1, the increased number of learning neurons allows each class to be represented by more diverse features. While the reservoir computing-like structure (majority of weights remain fixed) is maintained, the increased column neurons improve classification performance. For 2-3 layer configurations, cn=10 is the default; for 4-5 layer configurations, cn=20 is the default. This achieves 97.08% for 3 layers, Best 97.16% (Final 97.16%) for 4 layers, and Best 96.78% (Final 96.78%) for 5 layers.
 
 ---
 
@@ -473,7 +473,7 @@ Experimental results on MNIST handwritten digit recognition (seed=42, reproducib
 | Configuration | Hidden Layers | Test Accuracy | Runtime (*) |
 |------|--------|-----------|----------------|
 | 4-layer (MNIST, cn=20) | [1024, 1024, 1024, 1024] | **Best 97.16% / Final 97.16%** | ~20 min |
-| 5-layer (stability-focused) | [1024, 1024, 1024, 1024, 1024] | Best 85.38% / Final 85.24% | ~20 min |
+| 5-layer (MNIST, T3M adopted) | [1024, 1024, 1024, 1024, 1024] | Best 96.78% / Final 96.78% | ~20 min |
 
 \* Runtimes measured on an Intel Core i5-11th gen / RTX 3060 system and will vary depending on your environment.
 
@@ -539,13 +539,13 @@ Even in the Full Version, optimal parameters are automatically loaded from `conf
 
 ### Key Automatically Configured Parameters
 
-| Parameter | 1-layer | 2-layer | 3-layer | 4-layer | 5-layer (stability-focused) | Description |
+| Parameter | 1-layer | 2-layer | 3-layer | 4-layer | 5-layer (T3M adopted) | Description |
 |-----------|---------|---------|---------|---------|---------|-------------|
-| output_lr | 0.15 | 0.15 | 0.15 | 0.05 | 0.03 | Output layer learning rate |
-| non_column_lr | [0.15] | [0.15, 0.15] | [0.15, 0.15, 0.15] | [0.05, 0.05, 0.05, 0.05] | [0.03, 0.03, 0.03, 0.03, 0.03] | Hidden layer base learning rate (per layer) *1 |
-| column_lr | [0.0015] | [0.00075, 0.00045] | [0.00075, 0.0006, 0.0003] | [0.00025, 0.00015, 0.0001, 0.0001] | [0.00015, 0.00009, 0.00006, 0.00006, 0.00006] | Column neuron learning rate (per layer) |
-| column_neurons | 1 | 10 | 10 | 20 | 10 | Number of column neurons |
-| init_scales | [0.4, 1.0] | [0.7, 1.8, 0.8] | [0.7, 1.8, 1.8, 0.8] | [0.9, 0.9, 1.8, 1.6, 0.8] | [0.9, 0.9, 1.8, 1.8, 1.8, 0.8] | Per-layer initialization scales |
+| output_lr | 0.15 | 0.15 | 0.15 | 0.05 | 0.04 | Output layer learning rate |
+| non_column_lr | [0.15] | [0.15, 0.15] | [0.15, 0.15, 0.15] | [0.05, 0.05, 0.05, 0.05] | [0.04, 0.04, 0.04, 0.04, 0.04] | Hidden layer base learning rate (per layer) *1 |
+| column_lr | [0.0015] | [0.00075, 0.00045] | [0.00075, 0.0006, 0.0003] | [0.00025, 0.00015, 0.0001, 0.0001] | [0.0002, 0.00016, 0.00012, 0.00008, 0.00006] | Column neuron learning rate (per layer) |
+| column_neurons | 1 | 10 | 10 | 20 | 20 | Number of column neurons |
+| init_scales | [0.4, 1.0] | [0.7, 1.8, 0.8] | [0.7, 1.8, 1.8, 0.8] | [0.9, 0.9, 1.8, 1.6, 0.8] | [0.9, 1.6, 1.8, 1.2, 1.4, 0.8] | Per-layer initialization scales |
 | hidden_sparsity | 0.4 | [0.4, 0.4] | [0.4, 0.4, 0.4] | [0.4, 0.4, 0.4, 0.4] | [0.4, 0.4, 0.4, 0.4, 0.4] | Hidden layer sparsity |
 | gradient_clip | 0.05 | 0.03 | 0.06 | 0.03 | 0.03 | Gradient clipping |
 
