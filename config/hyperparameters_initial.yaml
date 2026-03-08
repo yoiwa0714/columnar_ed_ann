@@ -129,7 +129,7 @@ layer_params:
     #     過学習なし: Train-Test Gap=0.59%で安定
     description: '3層最適構成（H3最良）、cn=10, h=[2048,1024,1024], lr=0.15, gc=0.06, column_lr_factors=[0.005,0.004,0.002], is=[0.7,1.8,1.8,0.8]。Best/Final=97.08%（2026-03-08更新）'
     
-  4:  # 4層構成（H4グリッドサーチ最適更新、2026-03-08）
+  4:  # 4層構成（H4再実験でcn=20採用、2026-03-08）
     hidden: [1024, 1024, 1024, 1024]  # H4最良構成
     u1: 0.5
     u2: 0.8
@@ -137,7 +137,7 @@ layer_params:
     base_column_radius: 0.4
     column_radius_per_layer: [0.80, 0.80, 0.80, 0.80]  # [sqrt(1024/256)*0.4]
     participation_rate: 0.1
-    column_neurons: 10
+    column_neurons: 20
     weight_init_scales: [0.9, 0.9, 1.8, 1.6, 0.8]  # [L0, L1, L2, L3, 出力層]
     hidden_sparsity: [0.4, 0.4, 0.4, 0.4]  # 2層構成と同値(0.4)を全層に適用
     gradient_clip: 0.03  # 2層構成と同値
@@ -148,7 +148,7 @@ layer_params:
     gabor_orientations: 8
     gabor_frequencies: 2
     gabor_kernel_size: 7
-    description: '4層最適構成（H4最良）、cn=10, h=[1024,1024,1024,1024], lr=0.05, gc=0.03, column_lr_factors=[0.005,0.003,0.002], is=[0.9,0.9,1.8,1.6,0.8]。Best/Final=96.48%（2026-03-08更新）'
+    description: '4層最適構成（H4再実験で更新）、cn=20, h=[1024,1024,1024,1024], lr=0.05, gc=0.03, column_lr_factors=[0.005,0.003,0.002,0.002], is=[0.9,1.6,1.8,1.6,0.8]。Best=97.08%(Ep9)/Final=97.07%（2026-03-08更新）'
     
   5:  # 5層構成（H5グリッドサーチ最適更新、安定重視版、2026-03-08）
     hidden: [1024, 1024, 1024, 1024, 1024]  # H5探索構成

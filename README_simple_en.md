@@ -137,9 +137,9 @@ python columnar_ed_ann_simple.py --hidden 2048,1024 --train 10000 --test 10000
 python columnar_ed_ann_simple.py --hidden 2048,1024,1024 --train 10000 --test 10000
 # → Test ≈ 97.08%
 
-# 4-layer + Gabor features (best on Fashion-MNIST)
-python columnar_ed_ann_simple.py --hidden 1024,1024,1024,1024 --train 10000 --test 10000 --dataset fashion
-# → Test ≈ 96.48%
+# 4-layer + Gabor features (MNIST, cn=20 rerun)
+python columnar_ed_ann_simple.py --hidden 1024,1024,1024,1024 --train 10000 --test 10000
+# → Best ≈ 97.08% (Epoch 9), Final ≈ 97.07%
 
 # 5-layer + Gabor features (stability-focused)
 python columnar_ed_ann_simple.py --hidden 1024,1024,1024,1024,1024 --train 10000 --test 10000 --dataset fashion
@@ -345,7 +345,7 @@ This configuration allows the Columnar ED Method to achieve both biological plau
 
 For example, with `column_neurons=10` (default for 2+ layer configurations), 10 column neurons are assigned per class. In a 2048-neuron hidden layer, 100 neurons (about 4.9% of total) become training targets, while the remaining 1948 retain fixed random weights.
 
-Compared to cn=1, the increased number of learning neurons allows each class to be represented by more diverse features. While the reservoir computing-like structure (majority of weights remain fixed) is maintained, the increased column neurons improve classification performance. For configurations with 2 or more layers, cn=10 is the default, achieving 97.08% accuracy with a 3-layer configuration.
+Compared to cn=1, the increased number of learning neurons allows each class to be represented by more diverse features. While the reservoir computing-like structure (majority of weights remain fixed) is maintained, the increased column neurons improve classification performance. For 2-3 layer configurations, cn=10 is the default; for 4-layer configurations, cn=20 is the default. This achieves 97.08% for 3 layers and Best 97.08% (Final 97.07%) for 4 layers.
 
 ---
 
@@ -361,11 +361,11 @@ Experimental results on MNIST handwritten digit recognition (seed=42, reproducib
 | 2-layer | [2048, 1024] | 96.85% | ~10 min |
 | 3-layer | [2048, 1024, 1024] | **97.08%** | ~20 min |
 
-### With Gabor Features (Fashion-MNIST, seed=42)
+### With Gabor Features (Additional 4/5-layer results)
 
 | Configuration | Hidden Layers | Test Accuracy | Runtime (*) |
 |------|--------|-----------|----------------|
-| 4-layer | [1024, 1024, 1024, 1024] | **96.48%** | ~20 min |
+| 4-layer (MNIST, cn=20) | [1024, 1024, 1024, 1024] | **Best 97.08% / Final 97.07%** | ~20 min |
 | 5-layer (stability-focused) | [1024, 1024, 1024, 1024, 1024] | Best 85.38% / Final 85.24% | ~20 min |
 
 \* Runtimes measured on an Intel Core i5-11th gen / RTX 3060 system and will vary depending on your environment.
@@ -435,7 +435,7 @@ In the simple version, optimal parameters for each number of hidden layers are a
 | output_lr | 0.15 | 0.15 | 0.15 | 0.05 | 0.03 | Output layer learning rate |
 | non_column_lr | [0.15] | [0.15, 0.15] | [0.15, 0.15, 0.15] | [0.05, 0.05, 0.05, 0.05] | [0.03, 0.03, 0.03, 0.03, 0.03] | Hidden layer base learning rate (per layer) *1 |
 | column_lr | [0.0015] | [0.00075, 0.00045] | [0.00075, 0.0006, 0.0003] | [0.00025, 0.00015, 0.0001, 0.0001] | [0.00015, 0.00009, 0.00006, 0.00006, 0.00006] | Column neuron learning rate (per layer) |
-| column_neurons | 1 | 10 | 10 | 10 | 10 | Number of column neurons |
+| column_neurons | 1 | 10 | 10 | 20 | 10 | Number of column neurons |
 | init_scales | [0.4, 1.0] | [0.7, 1.8, 0.8] | [0.7, 1.8, 1.8, 0.8] | [0.9, 0.9, 1.8, 1.6, 0.8] | [0.9, 0.9, 1.8, 1.8, 1.8, 0.8] | Per-layer initialization scales |
 | hidden_sparsity | 0.4 | [0.4, 0.4] | [0.4, 0.4, 0.4] | [0.4, 0.4, 0.4, 0.4] | [0.4, 0.4, 0.4, 0.4, 0.4] | Hidden layer sparsity |
 | gradient_clip | 0.05 | 0.03 | 0.06 | 0.03 | 0.03 | Gradient clipping |
