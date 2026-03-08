@@ -31,7 +31,7 @@
 
 **The Columnar ED Method** is a neural network implementation that extends the Error Diffusion learning algorithm (ED method, hereinafter referred to as the "original ED method") conceived by Isamu Kaneko, by introducing cortical column structure from the cerebral cortex.
 
-The Columnar ED Method **does not use backpropagation based on the chain rule of derivatives at all**, and instead learns through biologically plausible amine diffusion mechanisms. Despite this, it achieves **97.08%** test accuracy on MNIST handwritten digit recognition (3-layer configuration, 10,000 training samples).
+The Columnar ED Method **does not use backpropagation based on the chain rule of derivatives at all**, and instead learns through biologically plausible amine diffusion mechanisms. Despite this, it achieves **97.16%** test accuracy on MNIST handwritten digit recognition (4-layer configuration, 10,000 training samples).
 
 This repository provides two implementations:
 
@@ -137,9 +137,9 @@ python columnar_ed_ann_simple.py --hidden 2048,1024 --train 10000 --test 10000
 python columnar_ed_ann_simple.py --hidden 2048,1024,1024 --train 10000 --test 10000
 # → Test ≈ 97.08%
 
-# 4-layer + Gabor features (MNIST, cn=20 rerun)
+# 4-layer + Gabor features (MNIST, cn=20 latest)
 python columnar_ed_ann_simple.py --hidden 1024,1024,1024,1024 --train 10000 --test 10000
-# → Best ≈ 97.08% (Epoch 9), Final ≈ 97.07%
+# → Best ≈ 97.16% (Epoch 10), Final ≈ 97.16%
 
 # 5-layer + Gabor features (stability-focused)
 python columnar_ed_ann_simple.py --hidden 1024,1024,1024,1024,1024 --train 10000 --test 10000 --dataset fashion
@@ -345,7 +345,7 @@ This configuration allows the Columnar ED Method to achieve both biological plau
 
 For example, with `column_neurons=10` (default for 2+ layer configurations), 10 column neurons are assigned per class. In a 2048-neuron hidden layer, 100 neurons (about 4.9% of total) become training targets, while the remaining 1948 retain fixed random weights.
 
-Compared to cn=1, the increased number of learning neurons allows each class to be represented by more diverse features. While the reservoir computing-like structure (majority of weights remain fixed) is maintained, the increased column neurons improve classification performance. For 2-3 layer configurations, cn=10 is the default; for 4-layer configurations, cn=20 is the default. This achieves 97.08% for 3 layers and Best 97.08% (Final 97.07%) for 4 layers.
+Compared to cn=1, the increased number of learning neurons allows each class to be represented by more diverse features. While the reservoir computing-like structure (majority of weights remain fixed) is maintained, the increased column neurons improve classification performance. For 2-3 layer configurations, cn=10 is the default; for 4-layer configurations, cn=20 is the default. This achieves 97.08% for 3 layers and Best 97.16% (Final 97.16%) for 4 layers.
 
 ---
 
@@ -365,7 +365,7 @@ Experimental results on MNIST handwritten digit recognition (seed=42, reproducib
 
 | Configuration | Hidden Layers | Test Accuracy | Runtime (*) |
 |------|--------|-----------|----------------|
-| 4-layer (MNIST, cn=20) | [1024, 1024, 1024, 1024] | **Best 97.08% / Final 97.07%** | ~20 min |
+| 4-layer (MNIST, cn=20) | [1024, 1024, 1024, 1024] | **Best 97.16% / Final 97.16%** | ~20 min |
 | 5-layer (stability-focused) | [1024, 1024, 1024, 1024, 1024] | Best 85.38% / Final 85.24% | ~20 min |
 
 \* Runtimes measured on an Intel Core i5-11th gen / RTX 3060 system and will vary depending on your environment.
