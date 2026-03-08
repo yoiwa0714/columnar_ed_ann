@@ -65,6 +65,7 @@ def parse_args():
                     '微分の連鎖律を使わず、アミン拡散機構で学習します。\n'
                     '\n'
                     '層数に応じた最適パラメータが config/hyperparameters.yaml から自動適用されます。\n'
+                    '1-5層は最適化済み、6層以上は5層パラメータをフォールバックします。\n'
                     '--list_hyperparams で設定一覧を確認できます。\n',
         formatter_class=argparse.RawTextHelpFormatter
     )
@@ -95,7 +96,7 @@ def parse_args():
     parser.add_argument('--column_neurons', type=int, default=None,
                         help='コラムニューロン数（未指定時はYAMLから自動設定）')
     parser.add_argument('--init_scales', type=str, default=None,
-                        help='層別初期化スケール（例: 0.7,1.8,0.8）（未指定時はYAMLから自動設定）')
+                        help='層別初期化スケール（例: 0.7,1.8,0.8 / 0.9,0.9,1.8,1.6,0.8）（未指定時はYAMLから自動設定）')
     parser.add_argument('--list_hyperparams', nargs='?', type=int, const=0, default=None,
                         help='ハイパーパラメータ一覧を表示（層数を指定可能、例: --list_hyperparams 2）')
     parser.add_argument('--verbose', action='store_true',
