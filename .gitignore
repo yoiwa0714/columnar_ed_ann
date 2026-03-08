@@ -39,3 +39,9 @@ uv.lock
 BACKUP_POLICY.md
 columnar_ed_ann_v???.py
 columnar_ed_ann_v049_gabor_experiment.py
+
+# Do not publish internal work directories
+chat_logs/
+code_backup/
+modules_backup/
+scripts/
