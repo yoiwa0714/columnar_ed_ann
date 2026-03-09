@@ -266,6 +266,7 @@ python columnar_ed_ann.py --hidden 2048 --diagnose_column
 | `--output_lr` | YAML自動 | 出力層学習率 |
 | `--non_column_lr` | YAML自動 | 非コラムニューロン層別学習率（カンマ区切り） |
 | `--column_lr` | YAML自動 | コラムニューロン層別学習率（カンマ区切り） |
+| `--column_lr_factors` | YAML自動 | コラム行の層別抑制係数（カンマ区切り） |
 | `--u1` | YAML自動 | アミン拡散係数 u1 |
 | `--u2` | YAML自動 | アミン拡散係数 u2 |
 | `--gradient_clip` | `0.03` | 勾配クリッピング値 |
@@ -346,6 +347,8 @@ V1単純型細胞を模した固定フィルタで入力特徴を抽出します
 > 📖 コード内部の動作フローとコアアルゴリズムの詳細解説は **[コラムED法 動作の流れ](docs/ja/コラムED法_動作の流れ.md)** を参照してください。
 >
 > 🔗 Mermaidによるコードアンカー付きフロー図は **[ED学習メカニズム（Mermaidアンカー・日本語）](docs/ja/ed_learning_mechanism_anchors.md)** を参照してください。
+>
+> 📘 数式ベースの詳細定式化は **[コラムED法の動作原理詳細](docs/ja/コラムED法の動作原理詳細.md)** を参照してください（英語版: **[Columnar ED Method: Detailed Principles](docs/en/Columnar_ED_Method_Detailed_Principles.md)**）。
 
 ### コラムED法とは
 
@@ -542,21 +545,22 @@ columnar_ed_ann/
 
 | パラメータ | 1層 | 2層 | 3層 | 4層 | 5層（T3M採用） | 説明 |
 |-----------|------|------|------|------|------|------|
-| output_lr | 0.15 | 0.15 | 0.15 | 0.05 | 0.04 | 出力層学習率 |
-| non_column_lr | [0.15] | [0.15, 0.15] | [0.15, 0.15, 0.15] | [0.05, 0.05, 0.05, 0.05] | [0.04, 0.04, 0.04, 0.04, 0.04] | 隠れ層基準学習率（層別）※1 |
-| column_lr | [0.0015] | [0.00075, 0.00045] | [0.00075, 0.0006, 0.0003] | [0.00025, 0.00015, 0.0001, 0.0001] | [0.0002, 0.00016, 0.00012, 0.00008, 0.00006] | コラムニューロン学習率（層別） |
+| output_lr | 0.15 | 0.15 | 0.15 | 0.04 | 0.04 | 出力層学習率 |
+| non_column_lr | [0.15] | [0.15, 0.15] | [0.15, 0.15, 0.15] | [0.04, 0.04, 0.04, 0.04] | [0.04, 0.04, 0.04, 0.04, 0.04] | 隠れ層基準学習率（層別）※1 |
+| column_lr | [0.0015] | [0.00075, 0.00045] | [0.00075, 0.0006, 0.0003] | [0.0002, 0.00016, 0.00012, 0.00008] | [0.0002, 0.00016, 0.00012, 0.00008, 0.00006] | コラムニューロン学習率（層別） |
+| column_lr_factors (clf) | [0.01] | [0.005, 0.003] | [0.005, 0.004, 0.002] | [0.005, 0.004, 0.003, 0.002] | [0.005, 0.004, 0.003, 0.002, 0.0015] | コラム行の抑制係数（層別） |
 | column_neurons | 1 | 10 | 10 | 20 | 20 | コラムニューロン数 |
 | init_scales | [0.4, 1.0] | [0.7, 1.8, 0.8] | [0.7, 1.8, 1.8, 0.8] | [0.9, 0.9, 1.8, 1.6, 0.8] | [0.9, 1.6, 1.8, 1.2, 1.4, 0.8] | 層別初期化スケール |
 | hidden_sparsity | 0.4 | [0.4, 0.4] | [0.4, 0.4, 0.4] | [0.4, 0.4, 0.4, 0.4] | [0.4, 0.4, 0.4, 0.4, 0.4] | 隠れ層スパース率 |
 | gradient_clip | 0.05 | 0.03 | 0.06 | 0.03 | 0.03 | 勾配クリッピング |
 
-> **3系統学習率**: `output_lr`（出力層）、`non_column_lr`（隠れ層基準、層別）、`column_lr`（コラムニューロン、層別）の3系統で学習率を独立制御します。
+> **3系統学習率**: `output_lr`（出力層）、`non_column_lr`（隠れ層基準、層別）、`column_lr`（コラムニューロン、層別）の3系統で学習率を独立制御します。`column_lr_factors` はコラム行にのみ適用する抑制係数です。
 >
 > ※1 `non_column_lr` は隠れ層全体の基準学習率として使用されます。非コラムニューロンはアミン信号を受け取らないため実際には学習せず、学習するのはコラムニューロン（`column_lr`の学習率で更新）と出力層（`output_lr`の学習率で更新）のみです。
 
 ### カスタマイズ方法
 
-1. **コマンドライン引数**: `--output_lr`, `--column_lr`, `--column_neurons`, `--init_scales` 等で上書き可能
+1. **コマンドライン引数**: `--output_lr`, `--column_lr`, `--column_lr_factors`, `--column_neurons`, `--init_scales` 等で上書き可能
 2. **YAML直接編集**: `config/hyperparameters.yaml` をエディタで編集
 3. **設定確認**: `python columnar_ed_ann.py --list_hyperparams` で一覧表示
 
@@ -585,6 +589,8 @@ columnar_ed_ann/
 - [EDLA — 金子勇氏のError Diffusion学習法（日本語）](docs/ja/EDLA_金子勇氏.md) — ED法の学術的背景と金子勇氏の業績
 - [ED学習メカニズム（Mermaidアンカー・日本語）](docs/ja/ed_learning_mechanism_anchors.md) — コード行番号アンカー付きの実行パス/機能別フロー図
 - [ED Learning Mechanism (Mermaid Anchors, English)](docs/en/ed_learning_mechanism_anchors_en.md) — Code-anchored execution and feature flow diagrams
+- [コラムED法の動作原理詳細](docs/ja/コラムED法の動作原理詳細.md) — 数式ベースの実装整合型定式化（日本語）
+- [Columnar ED Method: Detailed Principles](docs/en/Columnar_ED_Method_Detailed_Principles.md) — Implementation-aligned mathematical formalization (English)
 - [金子勇氏 (1999) オリジナルED法 Cソースコード](original-c-source-code/main.c) — 本実装の基となったオリジナル実装
 - [大脳皮質のコラム構造について](https://neu-brains.co.jp/neuro-plus/glossary/ka/140/) — コラム構造の生物学的背景
 

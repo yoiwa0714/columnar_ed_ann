@@ -240,6 +240,8 @@ python columnar_ed_ann_simple.py --list_hyperparams
 > 📖 For a detailed walkthrough of the internal code flow and core algorithm explanations, see **[Columnar ED Method — Operational Flow](docs/en/Columnar_ED_Method_Flow.md)**.
 >
 > 🔗 For Mermaid-based code-anchored flow diagrams, see **[ED Learning Mechanism (Mermaid Anchors, EN)](docs/en/ed_learning_mechanism_anchors_en.md)**.
+>
+> 📘 For equation-level formalization aligned with the implementation, see **[Columnar ED Method: Detailed Principles](docs/en/Columnar_ED_Method_Detailed_Principles.md)**.
 
 ### What Is the Columnar ED Method?
 
@@ -432,15 +434,16 @@ In the simple version, optimal parameters for each number of hidden layers are a
 
 | Parameter | 1-layer | 2-layer | 3-layer | 4-layer | 5-layer (T3M adopted) | Description |
 |-----------|------|------|------|------|------|------|
-| output_lr | 0.15 | 0.15 | 0.15 | 0.05 | 0.04 | Output layer learning rate |
-| non_column_lr | [0.15] | [0.15, 0.15] | [0.15, 0.15, 0.15] | [0.05, 0.05, 0.05, 0.05] | [0.04, 0.04, 0.04, 0.04, 0.04] | Hidden layer base learning rate (per layer) *1 |
-| column_lr | [0.0015] | [0.00075, 0.00045] | [0.00075, 0.0006, 0.0003] | [0.00025, 0.00015, 0.0001, 0.0001] | [0.0002, 0.00016, 0.00012, 0.00008, 0.00006] | Column neuron learning rate (per layer) |
+| output_lr | 0.15 | 0.15 | 0.15 | 0.04 | 0.04 | Output layer learning rate |
+| non_column_lr | [0.15] | [0.15, 0.15] | [0.15, 0.15, 0.15] | [0.04, 0.04, 0.04, 0.04] | [0.04, 0.04, 0.04, 0.04, 0.04] | Hidden layer base learning rate (per layer) *1 |
+| column_lr | [0.0015] | [0.00075, 0.00045] | [0.00075, 0.0006, 0.0003] | [0.0002, 0.00016, 0.00012, 0.00008] | [0.0002, 0.00016, 0.00012, 0.00008, 0.00006] | Column neuron learning rate (per layer) |
+| column_lr_factors (clf) | [0.01] | [0.005, 0.003] | [0.005, 0.004, 0.002] | [0.005, 0.004, 0.003, 0.002] | [0.005, 0.004, 0.003, 0.002, 0.0015] | Per-layer suppression factors for column rows |
 | column_neurons | 1 | 10 | 10 | 20 | 20 | Number of column neurons |
 | init_scales | [0.4, 1.0] | [0.7, 1.8, 0.8] | [0.7, 1.8, 1.8, 0.8] | [0.9, 0.9, 1.8, 1.6, 0.8] | [0.9, 1.6, 1.8, 1.2, 1.4, 0.8] | Per-layer initialization scales |
 | hidden_sparsity | 0.4 | [0.4, 0.4] | [0.4, 0.4, 0.4] | [0.4, 0.4, 0.4, 0.4] | [0.4, 0.4, 0.4, 0.4, 0.4] | Hidden layer sparsity |
 | gradient_clip | 0.05 | 0.03 | 0.06 | 0.03 | 0.03 | Gradient clipping |
 
-> **3-system learning rates**: Learning rates are independently controlled across three systems: `output_lr` (output layer), `non_column_lr` (hidden layer base, per layer), and `column_lr` (column neurons, per layer).
+> **3-system learning rates**: Learning rates are independently controlled across three systems: `output_lr` (output layer), `non_column_lr` (hidden layer base, per layer), and `column_lr` (column neurons, per layer). `column_lr_factors` is a per-layer suppression factor applied only to column rows.
 >
 > *1 `non_column_lr` is used as the base learning rate for the entire hidden layer. Non-column neurons do not receive amine signals and therefore do not actually learn. Only column neurons (updated at the `column_lr` learning rate) and the output layer (updated at the `output_lr` learning rate) participate in learning.
 
@@ -475,6 +478,8 @@ This implementation has been verified to comply with the original ED method, usi
 - [EDLA — Isamu Kaneko's Error Diffusion Learning Algorithm](docs/en/EDLA_Isamu_Kaneko.md) — Academic background of the ED method and Isamu Kaneko's contributions
 - [ED Learning Mechanism (Mermaid Anchors, EN)](docs/en/ed_learning_mechanism_anchors_en.md) — Code-anchored execution and feature flow diagrams
 - [ED学習メカニズム（Mermaidアンカー・日本語）](docs/ja/ed_learning_mechanism_anchors.md) — Japanese code-anchored flow diagrams
+- [Columnar ED Method: Detailed Principles](docs/en/Columnar_ED_Method_Detailed_Principles.md) — Implementation-aligned mathematical formalization
+- [コラムED法の動作原理詳細](docs/ja/コラムED法の動作原理詳細.md) — 数式ベースの実装整合型定式化（日本語）
 - [Isamu Kaneko (1999) Original ED Method C Source Code](original-c-source-code/main.c) — The original implementation on which this work is based
 - [About Cortical Column Structure (Japanese)](https://neu-brains.co.jp/neuro-plus/glossary/ka/140/) — Biological background of column structure
 

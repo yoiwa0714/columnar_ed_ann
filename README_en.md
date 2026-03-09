@@ -265,6 +265,7 @@ python columnar_ed_ann.py --hidden 2048 --diagnose_column
 | `--output_lr` | Auto (YAML) | Output layer learning rate |
 | `--non_column_lr` | Auto (YAML) | Non-column neuron learning rate per layer (comma-separated) |
 | `--column_lr` | Auto (YAML) | Column neuron learning rate per layer (comma-separated) |
+| `--column_lr_factors` | Auto (YAML) | Per-layer suppression factors applied to column rows (comma-separated) |
 | `--u1` | Auto (YAML) | Amine diffusion coefficient u1 |
 | `--u2` | Auto (YAML) | Amine diffusion coefficient u2 |
 | `--gradient_clip` | `0.03` | Gradient clipping value |
@@ -345,6 +346,8 @@ Extracts input features using fixed filters that model V1 simple cells.
 > 📖 For detailed explanations of the internal operation flow and core algorithms, see **[Columnar ED Method — How It Works](docs/en/Columnar_ED_Method_Flow.md)**.
 >
 > 🔗 For Mermaid-based code-anchored flow diagrams, see **[ED Learning Mechanism (Mermaid Anchors, EN)](docs/en/ed_learning_mechanism_anchors_en.md)**.
+>
+> 📘 For equation-level formalization aligned with the implementation, see **[Columnar ED Method: Detailed Principles](docs/en/Columnar_ED_Method_Detailed_Principles.md)**.
 
 ### What Is the Columnar ED Method?
 
@@ -541,21 +544,22 @@ Even in the Full Version, optimal parameters are automatically loaded from `conf
 
 | Parameter | 1-layer | 2-layer | 3-layer | 4-layer | 5-layer (T3M adopted) | Description |
 |-----------|---------|---------|---------|---------|---------|-------------|
-| output_lr | 0.15 | 0.15 | 0.15 | 0.05 | 0.04 | Output layer learning rate |
-| non_column_lr | [0.15] | [0.15, 0.15] | [0.15, 0.15, 0.15] | [0.05, 0.05, 0.05, 0.05] | [0.04, 0.04, 0.04, 0.04, 0.04] | Hidden layer base learning rate (per layer) *1 |
-| column_lr | [0.0015] | [0.00075, 0.00045] | [0.00075, 0.0006, 0.0003] | [0.00025, 0.00015, 0.0001, 0.0001] | [0.0002, 0.00016, 0.00012, 0.00008, 0.00006] | Column neuron learning rate (per layer) |
+| output_lr | 0.15 | 0.15 | 0.15 | 0.04 | 0.04 | Output layer learning rate |
+| non_column_lr | [0.15] | [0.15, 0.15] | [0.15, 0.15, 0.15] | [0.04, 0.04, 0.04, 0.04] | [0.04, 0.04, 0.04, 0.04, 0.04] | Hidden layer base learning rate (per layer) *1 |
+| column_lr | [0.0015] | [0.00075, 0.00045] | [0.00075, 0.0006, 0.0003] | [0.0002, 0.00016, 0.00012, 0.00008] | [0.0002, 0.00016, 0.00012, 0.00008, 0.00006] | Column neuron learning rate (per layer) |
+| column_lr_factors (clf) | [0.01] | [0.005, 0.003] | [0.005, 0.004, 0.002] | [0.005, 0.004, 0.003, 0.002] | [0.005, 0.004, 0.003, 0.002, 0.0015] | Per-layer suppression factors for column rows |
 | column_neurons | 1 | 10 | 10 | 20 | 20 | Number of column neurons |
 | init_scales | [0.4, 1.0] | [0.7, 1.8, 0.8] | [0.7, 1.8, 1.8, 0.8] | [0.9, 0.9, 1.8, 1.6, 0.8] | [0.9, 1.6, 1.8, 1.2, 1.4, 0.8] | Per-layer initialization scales |
 | hidden_sparsity | 0.4 | [0.4, 0.4] | [0.4, 0.4, 0.4] | [0.4, 0.4, 0.4, 0.4] | [0.4, 0.4, 0.4, 0.4, 0.4] | Hidden layer sparsity |
 | gradient_clip | 0.05 | 0.03 | 0.06 | 0.03 | 0.03 | Gradient clipping |
 
-> **3-system learning rates**: Learning rates are independently controlled via three systems: `output_lr` (output layer), `non_column_lr` (hidden layer base, per layer), and `column_lr` (column neurons, per layer).
+> **3-system learning rates**: Learning rates are independently controlled via three systems: `output_lr` (output layer), `non_column_lr` (hidden layer base, per layer), and `column_lr` (column neurons, per layer). `column_lr_factors` is a per-layer suppression factor applied only to column rows.
 >
 > *1 `non_column_lr` is used as the base learning rate for the entire hidden layer. Non-column neurons do not actually learn because they receive no amine signals; only column neurons (updated with `column_lr`) and the output layer (updated with `output_lr`) train.
 
 ### Customization
 
-1. **Command-line arguments**: Override with `--output_lr`, `--column_lr`, `--column_neurons`, `--init_scales`, etc.
+1. **Command-line arguments**: Override with `--output_lr`, `--column_lr`, `--column_lr_factors`, `--column_neurons`, `--init_scales`, etc.
 2. **Direct YAML editing**: Edit `config/hyperparameters.yaml` in a text editor
 3. **View settings**: `python columnar_ed_ann.py --list_hyperparams`
 
@@ -584,6 +588,8 @@ The implementation has been verified against Isamu Kaneko's C source code as a r
 - [EDLA — Isamu Kaneko's Error Diffusion Learning Algorithm (Japanese)](docs/ja/EDLA_金子勇氏.md) — Academic background of the ED method and Isamu Kaneko's contributions
 - [ED Learning Mechanism (Mermaid Anchors, EN)](docs/en/ed_learning_mechanism_anchors_en.md) — Code-anchored execution and feature flow diagrams
 - [ED学習メカニズム（Mermaidアンカー・日本語）](docs/ja/ed_learning_mechanism_anchors.md) — 日本語版のコード行番号アンカー付きフロー図
+- [Columnar ED Method: Detailed Principles](docs/en/Columnar_ED_Method_Detailed_Principles.md) — Implementation-aligned mathematical formalization
+- [コラムED法の動作原理詳細](docs/ja/コラムED法の動作原理詳細.md) — 数式ベースの実装整合型定式化（日本語）
 - [Isamu Kaneko (1999) Original ED Method C Source Code](original-c-source-code/main.c) — The original implementation on which this work is based
 - [Cortical Column Structure](https://neu-brains.co.jp/neuro-plus/glossary/ka/140/) — Biological background of column structure
 

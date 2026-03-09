@@ -17,6 +17,7 @@ layer_params:
     output_lr: 0.15  # 出力層学習率
     non_column_lr: [0.15]  # 非コラムニューロン学習率（層別）
     column_lr: [0.0015]  # コラムニューロン学習率（層別）
+    column_lr_factors: [0.01]  # column_lr / output_lr
     epochs: 10  # v044グリッドサーチ基準 (BestEpoch=10、学習曲線が単調増加)
     # v044グリッドサーチ最適化結果（2026-02-07）:
     #   Phase 1: init_scale_layer0 × init_scale_output × hidden_sparsity (27通り)
@@ -48,6 +49,7 @@ layer_params:
     output_lr: 0.15  # 出力層学習率
     non_column_lr: [0.15, 0.15]  # 非コラムニューロン学習率（層別）
     column_lr: [0.00075, 0.00045]  # コラムニューロン学習率（層別）
+    column_lr_factors: [0.005, 0.003]  # column_lr / output_lr
     epochs: 20  # v048 Gabor実験で20エポックでBest更新継続 (2026-02-21)
     # Gaborフィルタ推奨パラメータ (v048, 2026-02-21):
     gabor_orientations: 8  # 方位数（探索結果: 4/8/16で大差なし、8が安定）
@@ -97,6 +99,7 @@ layer_params:
     output_lr: 0.15  # 出力層学習率（実運用の再現性・安定性を優先し0.15を採用, 2026-03-08更新）
     non_column_lr: [0.15, 0.15, 0.15]  # 非コラムニューロン学習率（層別）
     column_lr: [0.00075, 0.0006, 0.0003]  # コラムニューロン学習率（層別, column_lr_factors=[0.005,0.004,0.002]相当）
+    column_lr_factors: [0.005, 0.004, 0.002]
     epochs: 30  # 30ep実験: Epoch 22でBest、過学習なし（Gap=0.59%安定）
     gabor_orientations: 8
     gabor_frequencies: 2
@@ -141,14 +144,15 @@ layer_params:
     weight_init_scales: [0.9, 0.9, 1.8, 1.6, 0.8]  # [L0, L1, L2, L3, 出力層]
     hidden_sparsity: [0.4, 0.4, 0.4, 0.4]  # 2層構成と同値(0.4)を全層に適用
     gradient_clip: 0.03  # 2層構成と同値
-    output_lr: 0.05  # H4グリッドサーチ最良値
-    non_column_lr: [0.05, 0.05, 0.05, 0.05]  # 非コラムニューロン学習率（層別）
-    column_lr: [0.00025, 0.00015, 0.0001, 0.0001]  # column_lr_factors=[0.005,0.003,0.002]相当
+    output_lr: 0.04  # H4再実験で更新（2026-03-09）
+    non_column_lr: [0.04, 0.04, 0.04, 0.04]  # 非コラムニューロン学習率（層別）
+    column_lr: [0.0002, 0.00016, 0.00012, 0.00008]  # column_lr_factors=[0.005,0.004,0.003,0.002]相当
+    column_lr_factors: [0.005, 0.004, 0.003, 0.002]
     epochs: 10  # H4探索条件に合わせる
     gabor_orientations: 8
     gabor_frequencies: 2
     gabor_kernel_size: 7
-    description: '4層最適構成（H4再実験で更新）、cn=20, h=[1024,1024,1024,1024], lr=0.05, gc=0.03, column_lr_factors=[0.005,0.003,0.002,0.002], is=[0.9,1.6,1.8,1.6,0.8]。Best=97.08%(Ep9)/Final=97.07%（2026-03-08更新）'
+    description: '4層最適構成（H4再実験で更新）、cn=20, h=[1024,1024,1024,1024], lr=0.04, gc=0.03, column_lr_factors=[0.005,0.004,0.003,0.002], is=[0.9,1.6,1.8,1.6,0.8]。Best=97.16%(Ep10)/Final=97.16%（2026-03-09更新）'
     
   5:  # 5層構成（H5局所探索T3M採用、2026-03-09）
     hidden: [1024, 1024, 1024, 1024, 1024]  # H5探索構成
@@ -165,6 +169,7 @@ layer_params:
     output_lr: 0.04  # H5局所探索T3M採用
     non_column_lr: [0.04, 0.04, 0.04, 0.04, 0.04]  # 非コラムニューロン学習率（層別）
     column_lr: [0.0002, 0.00016, 0.00012, 0.00008, 0.00006]  # column_lr_factors=[0.005,0.004,0.003,0.002,0.0015]相当
+    column_lr_factors: [0.005, 0.004, 0.003, 0.002, 0.0015]
     epochs: 10  # H5探索条件に合わせる
     gabor_orientations: 8
     gabor_frequencies: 2

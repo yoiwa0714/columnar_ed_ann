@@ -1,0 +1,190 @@
+[2026年3月8日]
+
+1.基準
+
+python columnar_ed_ann_v049.py --dataset mnist --hidden 1024,1024,1024,1024 --train 10000 --test 10000 --epochs 10 --seed 42 --column_neurons 20 --init_method he --gabor_features --lr 0.05 --column_lr_factors 0.005,0.004,0.003,0.002 --gradient_clip 0.03 --init_scales 0.9,1.6,1.8,1.6,0.8 --viz --heatmap 2>&1 | tee logs/v049_mnist_hid1024:1024:1024:1024_tr10000_te10000_epo10_seed42_cn20_im:he_gabor_lr0.05_clf0.005:0.004:0.003:0.002_gc0.03_is0.9:1.6:1.8:1.6:0.8.log
+
+最終精度: Train=0.9849, Test=0.9707
+ベスト精度: Test=0.9709 (Epoch 9)
+
+
+2.--column_lr_factors 0.007,0.004,0.003,0.002
+
+python columnar_ed_ann_v049.py --dataset mnist --hidden 1024,1024,1024,1024 --train 10000 --test 10000 --epochs 10 --seed 42 --column_neurons 20 --init_method he --gabor_features --lr 0.05 --column_lr_factors 0.007,0.004,0.003,0.002 --gradient_clip 0.03 --init_scales 0.9,1.6,1.8,1.6,0.8 --viz --heatmap 2>&1 | tee logs/v049_mnist_hid1024:1024:1024:1024_tr10000_te10000_epo10_seed42_cn20_im:he_gabor_lr0.05_clf0.007:0.004:0.003:0.002_gc0.03_is0.9:1.6:1.8:1.6:0.8.log
+
+最終精度: Train=0.9837, Test=0.9685
+ベスト精度: Test=0.9703 (Epoch 6)
+
+
+3.--lr 0.10 **学習曲線が荒れる(上下動する)
+
+python columnar_ed_ann_v049.py --dataset mnist --hidden 1024,1024,1024,1024 --train 10000 --test 10000 --epochs 10 --seed 42 --column_neurons 20 --init_method he --gabor_features --lr 0.1 --column_lr_factors 0.005,0.004,0.003,0.002 --gradient_clip 0.03 --init_scales 0.9,1.6,1.8,1.6,0.8 --viz 2 --heatmap 2>&1 | tee logs/v049_mnist_hid1024:1024:1024:1024_tr10000_te10000_epo10_seed42_cn20_im:he_gabor_lr0.1_clf0.005:0.004:0.003:0.002_gc0.03_is0.9:1.6:1.8:1.6:0.8.log
+
+最終精度: Train=0.9745, Test=0.9594
+ベスト精度: Test=0.9644 (Epoch 6)
+
+
+4.--lr 0.03
+
+python columnar_ed_ann_v049.py --dataset mnist --hidden 1024,1024,1024,1024 --train 10000 --test 10000 --epochs 10 --seed 42 --column_neurons 20 --init_method he --gabor_features --lr 0.03 --column_lr_factors 0.005,0.004,0.003,0.002 --gradient_clip 0.03 --init_scales 0.9,1.6,1.8,1.6,0.8 --viz 2 --heatmap 2>&1 | tee logs/v049_mnist_hid1024:1024:1024:1024_tr10000_te10000_epo10_seed42_cn20_im:he_gabor_lr0.03_clf0.005:0.004:0.003:0.002_gc0.03_is0.9:1.6:1.8:1.6:0.8.log
+
+最終精度: Train=0.9838, Test=0.9698
+ベスト精度: Test=0.9698 (Epoch 10)
+
+
+5.--lr 0.04
+
+python columnar_ed_ann_v049.py --dataset mnist --hidden 1024,1024,1024,1024 --train 10000 --test 10000 --epochs 10 --seed 42 --column_neurons 20 --init_method he --gabor_features --lr 0.04 --column_lr_factors 0.005,0.004,0.003,0.002 --gradient_clip 0.03 --init_scales 0.9,1.6,1.8,1.6,0.8 --viz 2 --heatmap 2>&1 | tee logs/v049_mnist_hid1024:1024:1024:1024_tr10000_te10000_epo10_seed42_cn20_im:he_gabor_lr0.04_clf0.005:0.004:0.003:0.002_gc0.03_is0.9:1.6:1.8:1.6:0.8.log
+
+最終精度: Train=0.9851, Test=0.9716
+ベスト精度: Test=0.9716 (Epoch 10)
+
+
+6.--init_scales 0.8,1.6,1.8,1.6,0.8
+
+python columnar_ed_ann_v049.py --dataset mnist --hidden 1024,1024,1024,1024 --train 10000 --test 10000 --epochs 10 --seed 42 --column_neurons 20 --init_method he --gabor_features --lr 0.04 --column_lr_factors 0.005,0.004,0.003,0.002 --gradient_clip 0.03 --init_scales 0.8,1.6,1.8,1.6,0.8 --viz 3 --heatmap 2>&1 | tee logs/v049_mnist_hid1024:1024:1024:1024_tr10000_te10000_epo10_seed42_cn20_im:he_gabor_lr0.04_clf0.005:0.004:0.003:0.002_gc0.03_is0.8:1.6:1.8:1.6:0.8.log
+
+最終精度: Train=0.9839, Test=0.9710
+ベスト精度: Test=0.9710 (Epoch 10)
+
+
+7.5層
+
+python columnar_ed_ann_v049.py --dataset mnist --hidden 1024,1024,1024,1024,1024 --train 10000 --test 10000 --epochs 10 --seed 42 --column_neurons 20 --init_method he --gabor_features --lr 0.04 --column_lr_factors 0.005,0.004,0.003,0.002,0.0015 --gradient_clip 0.03 --init_scales 0.9,1.6,1.8,1.2,1.4,0.8 --viz 2 --heatmap 2>&1 | tee logs/v049_mnist_hid1024:1024:1024:1024:1024_tr10000_te10000_epo10_seed42_cn20_im:he_gabor_lr0.04_clf0.005:0.004:0.003:0.002:0.0015_gc0.03_is0.9:1.6:1.8:1.2:1.4:0.8.log
+
+最終精度: Train=0.9814, Test=0.9678
+ベスト精度: Test=0.9678 (Epoch 10)
+
+
+8. fashion 5と同じパラメータ lr=0.04 ** 学習曲線が荒れる(上下動する)
+
+
+python columnar_ed_ann.py --dataset fashion --hidden 1024,1024,1024,1024 --train 10000 --test 10000 --epochs 10 --seed 42 --column_neurons 20 --init_method he --gabor_features --lr 0.04 --column_lr_factors 0.005,0.004,0.003,0.002 --gradient_clip 0.03 --init_scales 0.9,1.6,1.8,1.6,0.8 --viz 2 --heatmap 2>&1 | tee logs/v049_fashion_hid1024:1024:1024:1024_tr10000_te10000_epo10_seed42_cn20_im:he_gabor_lr0.04_clf0.005:0.004:0.003:0.002_gc0.03_is0.9:1.6:1.8:1.6:0.8.log
+
+最終精度: Train=0.8218, Test=0.7907
+ベスト精度: Test=0.8102 (Epoch 2)
+
+
+9. fashion 8のlrを0.02に変更
+
+python columnar_ed_ann.py --dataset fashion --hidden 1024,1024,1024,1024 --train 10000 --test 10000 --epochs 10 --seed 42 --column_neurons 20 --init_method he --gabor_features --lr 0.02 --column_lr_factors 0.005,0.004,0.003,0.002 --gradient_clip 0.03 --init_scales 0.9,1.6,1.8,1.6,0.8 --viz 2 --heatmap 2>&1 | tee logs/v049_fashion_hid1024:1024:1024:1024_tr10000_te10000_epo10_seed42_cn20_im:he_gabor_lr0.02_clf0.005:0.004:0.003:0.002_gc0.03_is0.9:1.6:1.8:1.6:0.8.log
+
+最終精度: Train=0.8402, Test=0.8071
+ベスト精度: Test=0.8096 (Epoch 6)
+
+
+10. fashion 8のlrを0.05に変更　** 4エポック目でピーク。その後下がる。
+
+python columnar_ed_ann.py --dataset fashion --hidden 1024,1024,1024,1024 --train 10000 --test 10000 --epochs 10 --seed 42 --column_neurons 20 --init_method he --gabor_features --lr 0.05 --column_lr_factors 0.005,0.004,0.003,0.002 --gradient_clip 0.03 --init_scales 0.9,1.6,1.8,1.6,0.8 --viz 2 --heatma
+p 2>&1 | tee logs/v049_fashion_hid1024:1024:1024:1024_tr10000_te10000_epo10_seed42_cn20_im:he_gabor_lr0.05_clf0.005:0.004:0.003:0.002_gc0.03_is0.9:1.6:1.8:1.6:0.8.log
+
+最終精度: Train=0.8037, Test=0.7782
+ベスト精度: Test=0.8163 (Epoch 4)
+
+
+11. fashion 9を隠れ層5層構成に　** lr=0.02、isの最後に0.8を追加
+
+python columnar_ed_ann.py --dataset fashion --hidden 1024,1024,1024,1024,1024 --train 10000 --test 10000 --epochs 10 --seed 42 --column_neurons 20 --init_method he --gabor_features --lr 0.02 --column_lr_factors 0.005,0.004,0.003,0.002 --gradient_clip 0.03 --init_scales 0.9,1.6,1.8,1.6,0.8,0.8 --viz 2 --heatmap 2>&1 | tee logs/v049_fashion_hid1024:1024:1024:1024:1024_tr10000_te10000_epo10_seed42_cn20_im:he_gabor_lr0.02_clf0.005:0.004:0.003:0.002_gc0.03_is0.9:1.6:1.8:1.6:0.8:0.8.log
+
+最終精度: Train=0.8318, Test=0.8046
+ベスト精度: Test=0.8092 (Epoch 4)
+
+
+12. fashion 5層 11のisの最後2つを0.8,0.8から1.6,0.8に変更
+
+python columnar_ed_ann.py --dataset fashion --hidden 1024,1024,1024,1024,1024 --train 10000 --test 10000 --epochs 10 --seed 42 --column_neurons 20 --init_method he --gabor_features --lr 0.02 --column_lr_factors 0.005,0.004,0.003,0.002 --gradient_clip 0.03 --init_scales 0.9,1.6,1.8,1.6,1.6,0.8 --viz 2 --heatmap 2>&1 | tee logs/v049_fashion_hid1024:1024:1024:1024:1024_tr10000_te10000_epo10_seed42_cn20_im:he_gabor_lr0.02_clf0.005:0.004:0.003:0.002_gc0.03_is0.9:1.6:1.8:1.6:1.6:0.8.log
+
+最終精度: Train=0.8363, Test=0.8091
+ベスト精度: Test=0.8099 (Epoch 9)
+
+
+13. fashion 5層 12のisの先頭を0.9から1.6に変更 clfの5番目には0.002が自動的用
+
+python columnar_ed_ann.py --dataset fashion --hidden 1024,1024,1024,1024,1024 --train 10000 --test 10000 --epochs 10 --seed 42 --column_neurons 20 --init_method he --gabor_features --lr 0.02 --column_lr_factors 0.005,0.004,0.003,0.002 --gradient_clip 0.03 --init_scales 1.6,1.6,1.8,1.6,1.6,0.8 --viz 2 --heatmap 2>&1 | tee logs/v049_fashion_hid1024:1024:1024:1024:1024_tr10000_te10000_epo10_seed42_cn20_im:he_gabor_lr0.02_clf0.005:0.004:0.003:0.002_gc0.03_is1.6:1.6:1.8:1.6:1.6:0.8.log
+
+最終精度: Train=0.8649, Test=0.8301
+ベスト精度: Test=0.8329 (Epoch 5)
+
+
+14. fashion 5層 13のclfを0.006,0.005,0.004,0.003,0.002に変更
+
+python columnar_ed_ann.py --dataset fashion --hidden 1024,1024,1024,1024,1024 --train 10000 --test 10000 --epochs 10 --seed 42 --column_neurons 20 --init_method he --gabor_features --lr 0.02 --column_lr_factors 0.006,0.005,0.004,0.003,0.002 --gradient_clip 0.03 --init_scales 1.6,1.6,1.8,1.6,1.6,0.8 --viz 2 --heatmap 2>&1 | tee logs/v049_fashion_hid1024:1024:1024:1024:1024_tr10000_te10000_epo10_seed42_cn20_im:he_gabor_lr0.02_clf0.006:0.005:0.004:0.003:0.002_gc0.03_is1.6:1.6:1.8:1.6:1.6:0.8.log
+
+最終精度: Train=0.8619, Test=0.8276
+ベスト精度: Test=0.8284 (Epoch 9)
+
+
+15. fashion 5層 13のclfを0.003,0.003,0.003,0.002,0.002に変更
+
+python columnar_ed_ann.py --dataset fashion --hidden 1024,1024,1024,1024,1024 --train 10000 --test 10000 --epochs 10 --seed 42 --column_neurons 20 --init_method he --gabor_features --lr 0.02 --column_lr_factors 0.003,0.003,0.003,0.002,0.002 --gradient_clip 0.03 --init_scales 1.6,1.6,1.8,1.6,1.6,0.8 --viz 2 --heatmap 2>&1 | tee logs/v049_fashion_hid1024:1024:1024:1024:1024_tr10000_te10000_epo10_seed42_cn20_im:he_gabor_lr0.02_clf0.003:0.003:0.003:0.002:0.002_gc0.03_is1.6:1.6:1.8:1.6:1.6:0.8.log
+
+最終精度: Train=0.8784, Test=0.8415
+ベスト精度: Test=0.8499 (Epoch 6)
+
+
+16. fashion 5層 13のclfを0.002,0.002,0.002,0.002,0.002に変更
+
+python columnar_ed_ann.py --dataset fashion --hidden 1024,1024,1024,1024,1024 --train 10000 --test 10000 --epochs 10 --seed 42 --column_neurons 20 --init_method he --gabor_features --lr 0.02 --column_lr_factors 0.002,0.002,0.002,0.002,0.002 --gradient_clip 0.03 --init_scales 1.6,1.6,1.8,1.6,1.6,0.8 --viz 2 --heatmap 2>&1 | tee logs/v049_fashion_hid1024:1024:1024:1024:1024_tr10000_te10000_epo10_seed42_cn20_im:he_gabor_lr0.02_clf0.002:0.002:0.002:0.002:0.002_gc0.03_is1.6:1.6:1.8:1.6:1.6:0.8.log
+
+最終精度: Train=0.8889, Test=0.8489
+ベスト精度: Test=0.8526 (Epoch 7)
+
+
+17.  fashion 5層 13のclfを0.002,0.002,0.003,0.003,0.003に変更
+
+python columnar_ed_ann.py --dataset fashion --hidden 1024,1024,1024,1024,1024 --train 10000 --test 10000 --epochs 10 --seed 42 --column_neurons 20 --init_method he --gabor_features --lr 0.02 --column_lr_factors 0.002,0.002,0.003,0.003,0.003 --gradient_clip 0.03 --init_scales 1.6,1.6,1.8,1.6,1.6,0.8 --viz 2 --heatmap 2>&1 | tee logs/v049_fashion_hid1024:1024:1024:1024:1024_tr10000_te10000_epo10_seed42_cn20_im:he_gabor_lr0.02_clf0.002:0.002:0.003:0.003:0.003_gc0.03_is1.6:1.6:1.8:1.6:1.6:0.8.log
+
+最終精度: Train=0.8880, Test=0.8483
+ベスト精度: Test=0.8518 (Epoch 6)
+
+
+18. mnist 5層 16の設定でMNIST学習
+
+python columnar_ed_ann.py --dataset mnist --hidden 1024,1024,1024,1024,1024 --train 10000 --test 10000 --epochs 10 --seed 42 --column_neurons 20 --init_method he --gabor_features --lr 0.02 --column_lr_factors 0.002,0.002,0.002,0.002,0.002 --gradient_clip 0.03 --init_scales 1.6,1.6,1.8,1.6,1.6,0.8 --viz 2 --heatmap 2>&1 | tee logs/v049_mnist_hid1024:1024:1024:1024:1024_tr10000_te10000_epo10_seed42_cn20_im:he_gabor_lr0.02_clf0.002:0.002:0.002:0.002:0.002_gc0.03_is1.6:1.6:1.8:1.6:1.6:0.8.log
+
+最終精度: Train=0.9852, Test=0.9654
+ベスト精度: Test=0.9659 (Epoch 9)
+
+
+19. fashion 4層 16のclfを0.002,0.002,0.002,0.002に設定
+
+python columnar_ed_ann.py --dataset fashion --hidden 1024,1024,1024,1024 --train 10000 --test 10000 --epochs 10 --seed 42 --column_neurons 20 --init_method he --gabor_features --lr 0.02 --column_lr_factors 0.002,0.002,0.002,0.002 --gradient_clip 0.03 --init_scales 1.6,1.8,1.6,1.6,0.8 --viz 2 --heatmap 2>&1 | tee logs/v049_fashion_hid1024:1024:1024:1024:1024_tr10000_te10000_epo10_seed42_cn20_im:he_gabor_lr0.02_clf0.002:0.002:0.002:0.002_gc0.03_is1.6:1.8:1.6:1.6:0.8.log
+
+最終精度: Train=0.8731, Test=0.8354
+ベスト精度: Test=0.8354 (Epoch 10)
+
+
+20. fashion 4層 19のclfを0.0015,0.0015,0.0015,0.0015に設定
+
+python columnar_ed_ann.py --dataset fashion --hidden 1024,1024,1024,1024 --train 10000 --test 10000 --epochs 10 --seed 42 --column_neurons 20 --init_method he --gabor_features --lr 0.02 --column_lr_factors 0.0015,0.0015,0.0015,0.0015 --gradient_clip 0.03 --init_scales 1.6,1.8,1.6,1.6,0.8 --viz 2 --heatmap 2>&1 | tee logs/v049_fashion_hid1024:1024:1024:1024:1024_tr10000_te10000_epo10_seed42_cn20_im:he_gabor_lr0.02_clf0.0015:0.0015:0.0015:0.0015_gc0.03_is1.6:1.8:1.6:1.6:0.8.log
+
+最終精度: Train=0.8743, Test=0.8362
+ベスト精度: Test=0.8362 (Epoch 10)
+
+
+21. fashion 4層 19のclfを0.001,0.001,0.001,0.001に設定
+
+python columnar_ed_ann.py --dataset fashion --hidden 1024,1024,1024,1024 --train 10000 --test 10000 --epochs 10 --seed 42 --column_neurons 20 --init_method he --gabor_features --lr 0.02 --column_lr_factors 0.001,0.001,0.001,0.001 --gradient_clip 0.03 --init_scales 1.6,1.8,1.6,1.6,0.8 --viz 2 --heatmap 2>&1 | tee logs/v049_fashion_hid1024:1024:1024:1024:1024_tr10000_te10000_epo10_seed42_cn20_im:he_gabor_lr0.02_clf0.001:0.001:0.001:0.001_gc0.03_is1.6:1.8:1.6:1.6:0.8.log
+
+最終精度: Train=0.8763, Test=0.8384
+ベスト精度: Test=0.8384 (Epoch 10)
+
+
+22. fashion 5層 16のLayer1のclfを0.0025に変更
+
+python columnar_ed_ann.py --dataset fashion --hidden 1024,1024,1024,1024,1024 --train 10000 --test 10000 --epochs 10 --seed 42 --column_neurons 20 --init_method he --gabor_features --lr 0.02 --column_lr_factors 0.0025,0.002,0.002,0.002,0.002 --gradient_clip 0.03 --init_scales 1.6,1.6,1.8,1.6,1.6,0.8 --viz 2 --heatmap 2>&1 | tee logs/v049/v049_fashion_hid1024:1024:1024:1024:1024_tr10000_te10000_epo10_seed42_cn20_im:he_gabor_lr0.02_clf0.0025:0.002:0.002:0.002:0.002_gc0.03_is1.6:1.6:1.8:1.6:1.6:0.8.log
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
