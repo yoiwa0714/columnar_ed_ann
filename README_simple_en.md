@@ -104,7 +104,7 @@ python columnar_ed_ann_simple.py --hidden 2048 --train 5000 --test 5000
 python columnar_ed_ann_simple.py --hidden 2048 --train 5000 --test 5000 --viz 2 --heatmap
 ```
 
-With seed=42 (default), you should get approximately 95% test accuracy.
+With seed=42 (default), you should get approximately 94% test accuracy.
 
 ### 3. Viewing Results
 
@@ -114,8 +114,8 @@ When execution completes, results like the following will be displayed:
 ======================================================================
 Training Complete
 ======================================================================
-Final Accuracy: Train=0.9722, Test=0.9500
-Best Accuracy: Test=0.9500 (Epoch 10)
+Final Accuracy: Train=0.9714, Test=0.9406
+Best Accuracy: Test=0.9406 (Epoch 10)
 ```
 
 ---
