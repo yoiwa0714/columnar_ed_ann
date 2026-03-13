@@ -136,15 +136,15 @@ Best Accuracy:  Test=0.9613 (Epoch 10)
 ```bash
 # 1-layer + Gabor features (~3 minutes)
 python columnar_ed_ann.py --hidden 2048 --train 10000 --test 10000 --gabor_features
-# → Test ≈ 96.13%
+# → Best ≈ 96.13% / Final ≈ 96.13%
 
 # 2-layer + Gabor features (~10 minutes)
 python columnar_ed_ann.py --hidden 2048,1024 --train 10000 --test 10000 --gabor_features
-# → Test ≈ 96.85%
+# → Best ≈ 96.85% / Final ≈ 96.84%
 
-# 3-layer + Gabor features (~20 minutes, best MNIST accuracy)
+# 3-layer + Gabor features (~30 minutes)
 python columnar_ed_ann.py --hidden 2048,1024,1024 --train 10000 --test 10000 --gabor_features
-# → Test ≈ 97.08%
+# → Best ≈ 97.11% / Final ≈ 96.78%
 
 # 4-layer + Gabor features (MNIST, cn=20 latest)
 python columnar_ed_ann.py --dataset mnist --hidden 1024,1024,1024,1024 --train 10000 --test 10000 --epochs 10 --seed 42 --column_neurons 20 --init_method he --gabor_features --lr 0.04 --column_lr_factors 0.005,0.004,0.003,0.002 --gradient_clip 0.03 --init_scales 0.9,1.6,1.8,1.6,0.8 --viz 2 --heatmap
@@ -156,7 +156,7 @@ python columnar_ed_ann.py --dataset mnist --hidden 1024,1024,1024,1024,1024 --tr
 
 # Without Gabor (to verify the pure learning capability of the original ED method)
 python columnar_ed_ann.py --hidden 2048 --train 10000 --test 10000
-# → Test ≈ 90.37%
+# → Best ≈ 90.37% / Final ≈ 90.37%
 ```
 
 ### Visualization
@@ -455,7 +455,7 @@ This configuration allows the Columnar ED Method to reconcile biological plausib
 
 For example, with `column_neurons=10` (default for 2+ layer configurations), 10 column neurons are assigned per class. In a 2048-neuron hidden layer, 100 neurons (about 4.9% of total) become training targets, while the remaining 1948 retain fixed random weights.
 
-Compared to cn=1, the increased number of learning neurons allows each class to be represented by more diverse features. While the reservoir computing-like structure (majority of weights remain fixed) is maintained, the increased column neurons improve classification performance. For 2-3 layer configurations, cn=10 is the default; for 4-5 layer configurations, cn=20 is the default. This achieves 97.08% for 3 layers, Best 97.16% (Final 97.16%) for 4 layers, and Best 96.78% (Final 96.78%) for 5 layers.
+Compared to cn=1, the increased number of learning neurons allows each class to be represented by more diverse features. While the reservoir computing-like structure (majority of weights remain fixed) is maintained, the increased column neurons improve classification performance. For 2-3 layer configurations, cn=10 is the default; for 4-5 layer configurations, cn=20 is the default. This achieves Best 97.11% (Final 96.78%) for 3 layers, Best 97.16% (Final 97.16%) for 4 layers, and Best 96.78% (Final 96.78%) for 5 layers.
 
 ---
 
@@ -467,9 +467,9 @@ Experimental results on MNIST handwritten digit recognition (seed=42, reproducib
 
 | Configuration | Hidden Layers | Test Accuracy | Runtime (*) |
 |------|--------|-----------|----------------|
-| 1-layer | [2048] | 96.13% | ~3 min |
-| 2-layer | [2048, 1024] | 96.85% | ~10 min |
-| 3-layer | [2048, 1024, 1024] | **97.08%** | ~20 min |
+| 1-layer | [2048] | Best 96.13% / Final 96.13% | ~3 min |
+| 2-layer | [2048, 1024] | Best 96.85% / Final 96.84% | ~10 min |
+| 3-layer | [2048, 1024, 1024] | **Best 97.11% / Final 96.78%** | ~30 min |
 
 ### With Gabor Features (Additional 4/5-layer results)
 
@@ -484,7 +484,7 @@ Experimental results on MNIST handwritten digit recognition (seed=42, reproducib
 
 | Configuration | Hidden Layers | Test Accuracy |
 |------|--------|-----------|
-| 1-layer | [2048] | 90.37% |
+| 1-layer | [2048] | Best 90.37% / Final 90.37% |
 | 2-layer | [2048, 1024] | 89.38% |
 | 3-layer | [2048, 1024, 1024] | 89.41% |
 
