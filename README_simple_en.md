@@ -8,9 +8,12 @@
 ## Table of Contents
 
 - [Overview](#overview)
+- [Target Reader and Fast Path](#target-reader-and-fast-path)
 - [Features](#features)
 - [Quick Start](#quick-start)
+- [Reproducibility Checklist](#reproducibility-checklist)
 - [Usage Examples](#usage-examples)
+- [Claims and Verifiability (FAQ)](#claims-and-verifiability-faq)
 - [How It Works](#how-it-works)
   - [What Is the Original ED Method?](#what-is-the-original-ed-method)
   - [Column Structure](#column-structure)
@@ -41,6 +44,17 @@ This repository provides two implementations:
 | Full version | `columnar_ed_ann.py` | Allows more parameter specifications than the simple version. See [README_en.md](README_en.md) for details |
 
 The **simple version** is a lightweight front-end that internally delegates training to the **full implementation (`columnar_ed_ann.py`)**. It exposes only a minimal CLI surface while relying on the latest full-version learning pipeline, balancing ease of use with implementation maintainability. GPU-related options are intentionally not exposed in the simple CLI, keeping CPU-first operation straightforward.
+
+## Target Reader and Fast Path
+
+This README targets readers who already have **basic Python and machine learning knowledge** but are new to the original ED method / Columnar ED method.
+
+Recommended reading order:
+
+1. Run the minimum Quick Start command once
+2. Compare your output with the Achieved Accuracy section at a high level
+3. Read Claims and Verifiability (FAQ) for the definition of "no backpropagation"
+4. Move on to How It Works
 
 ---
 
@@ -105,6 +119,18 @@ python columnar_ed_ann_simple.py --hidden 2048 --train 5000 --test 5000 --viz 2 
 ```
 
 With seed=42 (default), you should get approximately 94% test accuracy.
+
+> Runtime and accuracy are environment-dependent. Values in this README are representative benchmark values.
+
+## Reproducibility Checklist
+
+- Record OS / Python version / CPU-GPU environment
+- Fix `--seed` (default: 42)
+- Explicitly specify `--train`, `--test`, and `--epochs`
+- Record whether `config/hyperparameters.yaml` was modified
+- Record whether visualization options (`--viz`, `--heatmap`) were enabled
+
+Keeping these fixed makes it easier to explain differences from README values.
 
 ### 3. Viewing Results
 
@@ -232,6 +258,24 @@ python columnar_ed_ann_simple.py --list_hyperparams
 |------|-----------|------|
 | `--list_hyperparams` | - | Display YAML configuration (specify layers: `--list_hyperparams 2`) |
 | `--verbose` | OFF | Display initialization details (weight scales, column structure, sparsity rates, etc.) |
+
+## Claims and Verifiability (FAQ)
+
+### Q1. What exactly does "no backpropagation" mean here?
+
+In this project, it means **weight updates do not use error backpropagation based on the chain rule of derivatives**.
+Error signals are handled via amine diffusion and column-structured local updates.
+
+### Q2. Where can I verify this in code/docs?
+
+- Learning core: `modules/ed_network.py`
+- Activations and related helpers: `modules/activation_functions.py`
+- Operational explanation: `docs/en/Columnar_ED_Method_Flow.md`
+
+### Q3. Why might my reproduced accuracy differ?
+
+Typical causes are environment differences (CPU/GPU/library versions), sample counts, epoch counts, visualization settings, and YAML config differences.
+Start by checking the Reproducibility Checklist above.
 
 ---
 
@@ -387,6 +431,9 @@ Experimental results on MNIST handwritten digit recognition (seed=42, reproducib
 ---
 
 ## Directory Structure
+
+The following is a **summary of key files** for understanding and reproducing the method.
+If you are new to this repository, start with these files first.
 
 ```
 columnar_ed_ann/
