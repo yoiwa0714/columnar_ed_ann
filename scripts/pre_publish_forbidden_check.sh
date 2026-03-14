@@ -28,6 +28,7 @@ declare -a FORBIDDEN_PATHS=(
   ".gitignore"
   "columnar_ed_ann.code-workspace"
   "workspace.code-workspace"
+  "scripts"
 )
 
 echo "[check] reference: $REF"

@@ -20,6 +20,7 @@ viz_results/
 
 # Serena configuration
 .serena/
+.serena/cache/python/raw_document_symbols.pkl
 
 # Verification reports (internal documentation)
 CUSTOM_RECTANGLE_IMAGE_VERIFICATION_REPORT.md
@@ -51,3 +52,4 @@ chat_logs/*
 modules_backup/modules_v049_backup/
 columnar_ed_ann.code-workspace
 workspace.code-workspace
+scripts/
