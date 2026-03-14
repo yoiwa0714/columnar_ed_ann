@@ -1,8 +1,23 @@
 #!/usr/bin/env python3
 """
-Columnar ED-ANN 正式版（公開用）
+Columnar ED-ANN v050（開発版）
 
-columnar_ed_ann.py - バージョン 1.1
+columnar_ed_ann_v050.py - バージョン 1.1 相当
+
+本ファイルは今後の開発対象である。
+
+本ファイルは、2026年3月14日時点のリモートリポジトリにある
+columnar_ed_ann.py と columnar_ed_ann_simple.py の基になっている
+実装内容を保存するためのスナップショットである。
+
+docstring作成時点以降に反映済みの主な機能:
+- HyperParams(YAML)自動適用（1-5層最適化、6層以上は5層フォールバック）
+- 3系統学習率モード（output_lr / non_column_lr / column_lr）と旧互換変換
+- Gabor特徴抽出オプション群（方位数・周波数・カーネル・プーリング設定）
+- NC最近傍クラス帰属学習（--nc_nearest_learning, --nc_amine_strength）
+- 動的シナプス刈り込み（--dynamic_pruning_fs, 開始/終了epoch指定）
+- データ拡張（事前拡張/オンライン拡張）
+- 可視化/ヒートマップ保存、学習誤分類データの表示
 """
 
 import os
@@ -13,6 +28,8 @@ import argparse
 import numpy as np
 import time
 import sys
+import io
+from contextlib import redirect_stdout
 from sklearn.metrics import confusion_matrix
 
 # コマンドライン引数のコピー（HyperParams適用時に明示指定チェック用）
@@ -43,10 +60,10 @@ def parse_args():
     # 実行関連のパラメータ
     # ========================================
     exec_group = parser.add_argument_group('実行関連のパラメータ')
-    exec_group.add_argument('--train', type=int, default=3000,
-                           help='訓練サンプル数（デフォルト値: 3000）')
-    exec_group.add_argument('--test', type=int, default=1000,
-                           help='テストサンプル数（デフォルト値: 1000）')
+    exec_group.add_argument('--train', type=int, default=10000,
+                           help='訓練サンプル数（デフォルト値: 10000）')
+    exec_group.add_argument('--test', type=int, default=10000,
+                           help='テストサンプル数（デフォルト値: 10000）')
     exec_group.add_argument('--epochs', type=int, default=40,
                            help='エポック数（デフォルト値: 40）')
     exec_group.add_argument('--seed', type=int, default=42,
@@ -59,13 +76,20 @@ def parse_args():
                            help='ミニバッチサイズ（デフォルト: None=オンライン学習、例: 32, 128）')
     exec_group.add_argument('--use_cupy', action='store_true',
                            help='★CuPy版★ GPU最適化バッチ学習を使用（多層ネットワーク対応）')
+    exec_group.add_argument('--verbose', type=int, nargs='?', const=0, default=None,
+                           choices=[0, 1], metavar='LEVEL',
+                           help='詳細ログを有効化（デフォルト: 無効）\n'
+                                '引数なし/0: 詳細ログON（活性値統計はOFF）\n'
+                                '1: 詳細ログON + 活性値統計ON')
+    exec_group.add_argument('--activation-stats', action='store_true',
+                           help='活性値統計を表示（互換オプション: --verbose 1 と同等）')
     
     # ========================================
     # ED法関連のパラメータ
     # ========================================
     ed_group = parser.add_argument_group('ED法関連のパラメータ')
     ed_group.add_argument('--hidden', type=str, default='2048',
-                         help='隠れ層ニューロン数（例: 2048=1層, 256,128=2層）（デフォルト値: 2048、v044グリッドサーチPhase 3b最適値）')
+                         help='隠れ層ニューロン数（例: 2048=1層, 256,128=2層, 1024[5]=5層同一指定）（デフォルト値: 2048、v044グリッドサーチPhase 3b最適値）')
     ed_group.add_argument('--activation', type=str, default='tanh',
                          choices=['tanh', 'sigmoid', 'leaky_relu'],
                          help='活性化関数（デフォルト: tanh）※グリッドサーチ用、将来的に削除予定')
@@ -74,9 +98,9 @@ def parse_args():
     ed_group.add_argument('--output_lr', type=float, default=None,
                          help='【非推奨移行対応】出力層の学習率（指定時は3系統学習率モードを有効化）')
     ed_group.add_argument('--non_column_lr', type=str, default=None,
-                         help='【非推奨移行対応】非コラムニューロン層別学習率（カンマ区切り）')
+                         help='【非推奨移行対応】非コラムニューロン層別学習率（カンマ区切り、繰り返し記法対応: 0.04[5]）')
     ed_group.add_argument('--column_lr', type=str, default=None,
-                         help='【非推奨移行対応】コラムニューロン層別学習率（カンマ区切り）')
+                         help='【非推奨移行対応】コラムニューロン層別学習率（カンマ区切り、繰り返し記法対応: 0.0002[3],0.0001[2]）')
     ed_group.add_argument('--layer_learning_rates', type=str, default=None,
                          help='層別学習率（カンマ区切り、例: 0.05,0.1,0.15）\n'
                               '層数+1個の値が必要（隠れ層1用、...、出力層用）\n'
@@ -442,7 +466,7 @@ def _show_detailed_hyperparams(n_layers, hp, args):
     hidden_str = ','.join(str(h) for h in hidden_sizes)
     print(f"\n推奨実行コマンド:")
     print(f"  python columnar_ed_ann.py --hidden {hidden_str} \\")
-    print(f"      --train 5000 --test 5000 --column_neurons 1 \\")
+    print(f"      --train 10000 --test 10000 --column_neurons 1 \\")
     if 'gabor_orientations' in config:
         print(f"      --epochs {config['epochs']} --init_method he \\")
         print(f"      --gabor_features")
@@ -454,21 +478,36 @@ def _show_detailed_hyperparams(n_layers, hp, args):
 def main():
     """メイン処理"""
     args = parse_args()
+
+    # verboseの有効化判定（--verbose/--activation-stats の両対応）
+    verbose_enabled = (args.verbose is not None) or args.activation_stats
+    activation_stats_enabled = (args.verbose == 1) or args.activation_stats
+
+    def vprint(*pargs, **kwargs):
+        if verbose_enabled:
+            print(*pargs, **kwargs)
+
+    def run_with_log_control(func, *fargs, **fkwargs):
+        """verbose OFF時は内部ログを抑制して実行する。"""
+        if verbose_enabled:
+            return func(*fargs, **fkwargs)
+        with redirect_stdout(io.StringIO()):
+            return func(*fargs, **fkwargs)
     
     # 乱数シード設定（再現性確保）
     if args.seed is not None:
-        print(f"\n=== 乱数シード固定: {args.seed} ===")
+        vprint(f"\n=== 乱数シード固定: {args.seed} ===")
         import random
         random.seed(args.seed)
         np.random.seed(args.seed)
-        print("再現性モード: 有効（random, numpy固定）\n")
+        vprint("再現性モード: 有効（random, numpy固定）\n")
     else:
-        print("\n=== 乱数シード: ランダム ===")
-        print("再現性モード: 無効（毎回異なる結果）\n")
+        vprint("\n=== 乱数シード: ランダム ===")
+        vprint("再現性モード: 無効（毎回異なる結果）\n")
     
-    print("=" * 80)
-    print("Columnar ED-ANN")
-    print("=" * 80)
+    vprint("=" * 80)
+    vprint("Columnar ED-ANN")
+    vprint("=" * 80)
     
     # HyperParams設定一覧の表示
     if args.list_hyperparams is not None:
@@ -479,11 +518,51 @@ def main():
         else:
             # 層数指定: 詳細表示
             _show_detailed_hyperparams(args.list_hyperparams, hp, args)
-        import sys
         sys.exit(0)
     
     # ========================================
-    # 1. 隠れ層のパース（カンマ区切り対応、多層対応）
+    # 1. 値展開ヘルパ（繰り返し記法対応）
+    # ========================================
+    def expand_repeated_values(text, name, value_parser):
+        """カンマ区切り文字列を展開。token[k] 形式の繰り返し記法を許可する。"""
+        if text is None:
+            raise ValueError(f"--{name} が未指定です")
+
+        expanded = []
+        raw_tokens = [tok.strip() for tok in text.split(',')]
+        if not raw_tokens:
+            raise ValueError(f"--{name} の値が空です")
+
+        for idx, token in enumerate(raw_tokens):
+            if token == '':
+                raise ValueError(f"--{name} の第{idx+1}要素が空です")
+
+            repeat = 1
+            value_text = token
+            if token.endswith(']') and '[' in token:
+                value_text, repeat_text = token.rsplit('[', 1)
+                repeat_text = repeat_text[:-1].strip()  # remove trailing ']'
+                value_text = value_text.strip()
+                if value_text == '' or repeat_text == '':
+                    raise ValueError(f"--{name} の繰り返し記法が不正です: '{token}'")
+                try:
+                    repeat = int(repeat_text)
+                except ValueError as e:
+                    raise ValueError(f"--{name} の繰り返し回数は整数である必要があります: '{token}'") from e
+                if repeat <= 0:
+                    raise ValueError(f"--{name} の繰り返し回数は1以上である必要があります: '{token}'")
+
+            try:
+                value = value_parser(value_text)
+            except ValueError as e:
+                raise ValueError(f"--{name} の値を数値に変換できません: '{value_text}'") from e
+
+            expanded.extend([value] * repeat)
+
+        return expanded
+
+    # ========================================
+    # 1. 隠れ層のパース（カンマ区切り + 繰り返し記法対応）
     # ========================================
     # ドット区切りの誤使用をチェック
     if '.' in args.hidden and ',' not in args.hidden:
@@ -491,20 +570,19 @@ def main():
         print(f"  指定された値: {args.hidden}")
         print(f"  多層ネットワークを指定する場合は、ドット(.)ではなくカンマ(,)を使用してください")
         print(f"  例: --hidden 2048,1024")
-        import sys
         sys.exit(1)
     
     try:
-        if ',' in args.hidden:
-            hidden_sizes = [int(x.strip()) for x in args.hidden.split(',')]
-        else:
-            hidden_sizes = [int(args.hidden)]
+        hidden_sizes = expand_repeated_values(args.hidden, 'hidden', int)
+        for i, size in enumerate(hidden_sizes):
+            if size <= 0:
+                raise ValueError(f"--hidden の値は正の整数である必要があります: Layer {i}={size}")
     except ValueError as e:
         print(f"\nエラー: --hidden の値を整数に変換できません")
         print(f"  指定された値: {args.hidden}")
-        print(f"  各層のニューロン数は整数で指定してください")
-        print(f"  例: --hidden 1024 (1層) または --hidden 1024,512 (2層)")
-        import sys
+        print(f"  詳細: {e}")
+        print(f"  各層のニューロン数は正の整数で指定してください")
+        print(f"  例: --hidden 1024 (1層), --hidden 1024,512 (2層), --hidden 1024[5] (5層)")
         sys.exit(1)
     
     # ========================================
@@ -548,6 +626,10 @@ def main():
             args.participation_rate = config['participation_rate']
         if not is_arg_specified('epochs'):
             args.epochs = config['epochs']
+        if not is_arg_specified('train') and 'train_samples' in config:
+            args.train = config['train_samples']
+        if not is_arg_specified('test') and 'test_samples' in config:
+            args.test = config['test_samples']
         
         # Gaborフィルタパラメータの自動適用
         if not is_arg_specified('gabor_orientations') and 'gabor_orientations' in config:
@@ -575,10 +657,10 @@ def main():
         print("個別パラメータで継続します。\n")
 
     # ========================================
-    # 1.4.5 学習率リスト共通パーサ
+    # 1.4.5 学習率リスト共通パーサ（繰り返し記法対応）
     # ========================================
     def parse_lr_list(text, name, n_layers, allow_single_expand=True):
-        values = [float(x.strip()) for x in text.split(',')]
+        values = expand_repeated_values(text, name, float)
         if len(values) == 1 and n_layers > 1 and allow_single_expand:
             values = values * n_layers
         if len(values) != n_layers:
@@ -604,18 +686,16 @@ def main():
                 print(f"\nエラー: --layer_learning_rates には {expected_length} 個の値が必要です")
                 print(f"  （{n_layers}層ネットワーク: 入力層用×1 + 隠れ層用×{n_layers}）")
                 print(f"  指定された値: {len(layer_lrs)}個 {layer_lrs}")
-                import sys
                 sys.exit(1)
             
-            print(f"\n=== 層別学習率モード有効 ===")
+            vprint(f"\n=== 層別学習率モード有効 ===")
             for i, lr in enumerate(layer_lrs[:-1]):
-                print(f"  Layer {i}: learning_rate={lr:.4f}")
-            print(f"  Output Layer: learning_rate={layer_lrs[-1]:.4f}")
-            print()
+                vprint(f"  Layer {i}: learning_rate={lr:.4f}")
+            vprint(f"  Output Layer: learning_rate={layer_lrs[-1]:.4f}")
+            vprint()
         except ValueError as e:
             print(f"\nエラー: --layer_learning_rates のパースに失敗: {e}")
             print(f"  形式: カンマ区切りの数値（例: 0.05,0.1,0.15）")
-            import sys
             sys.exit(1)
     
     # ========================================
@@ -632,36 +712,33 @@ def main():
                 print(f"\nエラー: --init_scales には {expected_length} 個の値が必要です")
                 print(f"  （{n_layers}層ネットワーク: Layer 0用×1, ... Layer {n_layers-1}用×1, 出力層用×1）")
                 print(f"  指定された値: {len(init_scales)}個 {init_scales}")
-                import sys
                 sys.exit(1)
             
             # 妥当性チェック（正の数であること）
             for i, scale in enumerate(init_scales):
                 if scale <= 0:
                     print(f"\nエラー: --init_scales の値は正の数である必要があります: index={i}, value={scale}")
-                    import sys
                     sys.exit(1)
             
-            print(f"\n=== 層別初期化スケールモード有効 ===")
+            vprint(f"\n=== 層別初期化スケールモード有効 ===")
             for i, scale in enumerate(init_scales[:-1]):
-                print(f"  Layer {i}: init_scale={scale:.4f}")
-            print(f"  Output Layer: init_scale={init_scales[-1]:.4f}")
-            print()
+                vprint(f"  Layer {i}: init_scale={scale:.4f}")
+            vprint(f"  Output Layer: init_scale={init_scales[-1]:.4f}")
+            vprint()
         except ValueError as e:
             print(f"\nエラー: --init_scales のパースに失敗: {e}")
             print(f"  形式: カンマ区切りの数値（例: 0.3,0.5,1.0）")
-            import sys
             sys.exit(1)
     else:
         # YAMLから自動適用されなかった場合のフォールバック（段階的増加）
         n_layers = len(hidden_sizes)
         init_scales = [0.3 + (0.7 * i / n_layers) for i in range(n_layers)] + [1.0]
         
-        print(f"\n=== 層別初期化スケール（フォールバック、{n_layers}層） ===")
+        vprint(f"\n=== 層別初期化スケール（フォールバック、{n_layers}層） ===")
         for i, scale in enumerate(init_scales[:-1]):
-            print(f"  Layer {i}: init_scale={scale:.4f}")
-        print(f"  Output Layer: init_scale={init_scales[-1]:.4f}")
-        print()
+            vprint(f"  Layer {i}: init_scale={scale:.4f}")
+        vprint(f"  Output Layer: init_scale={init_scales[-1]:.4f}")
+        vprint()
     
     # ========================================
     # 1.7. 層別hidden_sparsityのパース（拡張機能）
@@ -679,7 +756,6 @@ def main():
                 print(f"\nエラー: --hidden_sparsity には {n_layers} 個の値が必要です")
                 print(f"  （{n_layers}層ネットワーク: Layer 0用, Layer 1用, ...）")
                 print(f"  指定された値: {len(hidden_sparsity_list)}個 {hidden_sparsity_list}")
-                import sys
                 sys.exit(1)
             
             # 値の範囲チェック（0.0-1.0）
@@ -687,17 +763,15 @@ def main():
                 if not (0.0 <= sparsity <= 1.0):
                     print(f"\nエラー: --hidden_sparsity の値は0.0-1.0の範囲である必要があります")
                     print(f"  Layer {i}: {sparsity} (範囲外)")
-                    import sys
                     sys.exit(1)
             
-            print(f"\n=== 層別隠れ層スパース化モード有効 ===")
+            vprint(f"\n=== 層別隠れ層スパース化モード有効 ===")
             for i, sparsity in enumerate(hidden_sparsity_list):
-                print(f"  Layer {i}: hidden_sparsity={sparsity:.2f} ({sparsity*100:.0f}%)")
-            print()
+                vprint(f"  Layer {i}: hidden_sparsity={sparsity:.2f} ({sparsity*100:.0f}%)")
+            vprint()
         except ValueError as e:
             print(f"\nエラー: --hidden_sparsity のパースに失敗: {e}")
             print(f"  形式: カンマ区切りの数値（例: 0.2,0.3）")
-            import sys
             sys.exit(1)
     
     # ========================================
@@ -723,17 +797,15 @@ def main():
                 if not (0.0 <= lr_factor <= 1.0):
                     print(f"\nエラー: --column_lr_factors の値は0.0-1.0の範囲である必要があります")
                     print(f"  Layer {i}: {lr_factor} (範囲外)")
-                    import sys
                     sys.exit(1)
             
-            print(f"\n=== 層別コラム学習率係数モード有効 ===")
+            vprint(f"\n=== 層別コラム学習率係数モード有効 ===")
             for i, lr_factor in enumerate(column_lr_factors_list):
-                print(f"  Layer {i}: column_lr_factor={lr_factor:.4f}")
-            print()
+                vprint(f"  Layer {i}: column_lr_factor={lr_factor:.4f}")
+            vprint()
         except ValueError as e:
             print(f"\nエラー: --column_lr_factors のパースに失敗: {e}")
             print(f"  形式: カンマ区切りの数値（例: 0.1,0.05）")
-            import sys
             sys.exit(1)
 
     # ========================================
@@ -802,18 +874,17 @@ def main():
             column_lr_factors_list = list(effective_column_lr_factors)
 
             if legacy_mode:
-                print("\n[注意] --lr/--column_lr_factors と 3系統学習率の両方が指定されています。")
-                print("  3系統学習率（--output_lr/--non_column_lr/--column_lr）を優先適用します。")
+                vprint("\n[注意] --lr/--column_lr_factors と 3系統学習率の両方が指定されています。")
+                vprint("  3系統学習率（--output_lr/--non_column_lr/--column_lr）を優先適用します。")
 
-            print("\n[3系統学習率モード]")
-            print("  output_lr      = {:.6f}".format(args.lr))
-            print("  non_column_lr  = {}".format(effective_non_column_lr))
-            print("  column_lr      = {}".format(effective_column_lr))
-            print("  column_lr_factors(内部計算) = {}".format(column_lr_factors_list))
-            print()
+            vprint("\n[3系統学習率モード]")
+            vprint("  output_lr      = {:.6f}".format(args.lr))
+            vprint("  non_column_lr  = {}".format(effective_non_column_lr))
+            vprint("  column_lr      = {}".format(effective_column_lr))
+            vprint("  column_lr_factors(内部計算) = {}".format(column_lr_factors_list))
+            vprint()
         except ValueError as e:
             print(f"\nエラー: 3系統学習率パラメータのパースに失敗: {e}")
-            import sys
             sys.exit(1)
     else:
         # 旧モード（lr + column_lr_factors）を内部3系統へ互換変換
@@ -834,11 +905,11 @@ def main():
 
         effective_column_lr = [effective_non_column_lr[i] * column_lr_factors_list[i] for i in range(n_layers)]
         if legacy_mode:
-            print("\n[互換モード] lr/column_lr_factors 指定を、内部的に output_lr/non_column_lr/column_lr に変換して適用しました")
-            print("  output_lr      = {:.6f}".format(effective_output_lr))
-            print("  non_column_lr  = {}".format(effective_non_column_lr))
-            print("  column_lr      = {}".format(effective_column_lr))
-            print()
+            vprint("\n[互換モード] lr/column_lr_factors 指定を、内部的に output_lr/non_column_lr/column_lr に変換して適用しました")
+            vprint("  output_lr      = {:.6f}".format(effective_output_lr))
+            vprint("  non_column_lr  = {}".format(effective_non_column_lr))
+            vprint("  column_lr      = {}".format(effective_column_lr))
+            vprint()
     
     # ========================================
     # 1.9. エポック依存学習率スケジューリングのパース（v039.2新機能）
@@ -851,30 +922,32 @@ def main():
             # 妥当性チェック
             if len(epoch_lr_schedule) == 0:
                 print(f"\nエラー: --epoch_lr_schedule には少なくとも1個の値が必要です")
-                import sys
                 sys.exit(1)
             
             for scale in epoch_lr_schedule:
                 if scale <= 0:
                     print(f"\nエラー: --epoch_lr_schedule の値は正の数である必要があります: {scale}")
-                    import sys
                     sys.exit(1)
             
-            print(f"\n=== エポック依存学習率スケジューリング有効 ===")
-            print(f"  スケジュール: {epoch_lr_schedule}")
+            vprint(f"\n=== エポック依存学習率スケジューリング有効 ===")
+            vprint(f"  スケジュール: {epoch_lr_schedule}")
             for i, scale in enumerate(epoch_lr_schedule):
                 next_epoch = i + 1 if i < len(epoch_lr_schedule) - 1 else f"{i}+"
-                print(f"    Epoch {i}: {scale:.2f}倍 (~ Epoch {next_epoch})")
-            print()
+                vprint(f"    Epoch {i}: {scale:.2f}倍 (~ Epoch {next_epoch})")
+            vprint()
         except ValueError as e:
             print(f"\nエラー: --epoch_lr_schedule のパースに失敗: {e}")
             print(f"  形式: カンマ区切りの数値（例: 0.7,0.9,1.0）")
-            import sys
             sys.exit(1)
     
     # ========================================
     # パラメータ設定の表示（グループ別）
     # ========================================
+    _suppressed_stdout = None
+    if not verbose_enabled:
+        _suppressed_stdout = sys.stdout
+        sys.stdout = io.StringIO()
+
     def format_param(name, value, specified):
         """パラメータを表示形式にフォーマット"""
         mark = " (*)" if specified else ""
@@ -1004,6 +1077,9 @@ def main():
     
     print("\n(*)が表示されている項目はコマンドラインオプションで指定された値が適用されています。")
     print("=" * 70 + "\n")
+
+    if _suppressed_stdout is not None:
+        sys.stdout = _suppressed_stdout
     
     # ========================================
     # 3. データ読み込み
@@ -1071,8 +1147,8 @@ def main():
                 img_shape = None
     
     if args.gabor_features:
-        print(f"\nGaborフィルタ特徴抽出中... (方位:{args.gabor_orientations}, 周波数:{args.gabor_frequencies}, "
-              f"カーネル:{args.gabor_kernel_size}, プール:{args.gabor_pool_size})")
+        vprint(f"\nGaborフィルタ特徴抽出中... (方位:{args.gabor_orientations}, 周波数:{args.gabor_frequencies}, "
+               f"カーネル:{args.gabor_kernel_size}, プール:{args.gabor_pool_size})")
         
         extractor = GaborFeatureExtractor(
             image_shape=img_shape,
@@ -1085,9 +1161,9 @@ def main():
         )
         
         info = extractor.get_info()
-        print(f"  フィルタ数: {info['n_filters']} (Gabor:{info['n_gabor_filters']}, エッジ:{info['n_edge_filters']})")
-        print(f"  プーリング後空間サイズ: {info['pool_output_shape']}")
-        print(f"  特徴次元: {info['feature_dim']} (元の入力: {n_input})")
+        vprint(f"  フィルタ数: {info['n_filters']} (Gabor:{info['n_gabor_filters']}, エッジ:{info['n_edge_filters']})")
+        vprint(f"  プーリング後空間サイズ: {info['pool_output_shape']}")
+        vprint(f"  特徴次元: {info['feature_dim']} (元の入力: {n_input})")
         
         # ヒートマップ表示用にGabor変換前のデータを保存
         x_train_raw = x_train.copy()
@@ -1099,13 +1175,13 @@ def main():
         x_test = extractor.transform_test(x_test)
         
         n_input = x_train.shape[1]  # 更新された入力次元
-        print(f"  特徴抽出完了: 入力次元 {info['image_shape'][0]*info['image_shape'][1]} → {n_input}")
+        vprint(f"  特徴抽出完了: 入力次元 {info['image_shape'][0]*info['image_shape'][1]} → {n_input}")
     
     # ========================================
     # 3.5 データ拡張（事前拡張モード）(v046)
     # ========================================
     if args.augment and not args.aug_online:
-        print(f"\nデータ拡張中... (コピー数:{args.aug_copies}, シフト:{args.aug_shift}px, 回転:±{args.aug_rotation}°, ノイズ:{args.aug_noise})")
+        vprint(f"\nデータ拡張中... (コピー数:{args.aug_copies}, シフト:{args.aug_shift}px, 回転:±{args.aug_rotation}°, ノイズ:{args.aug_noise})")
         # MNISTの画像形状を自動推定
         if n_input == 784:
             image_shape = (28, 28)
@@ -1126,21 +1202,22 @@ def main():
                 noise_std=args.aug_noise,
                 seed=args.seed
             )
-            print(f"データ拡張完了: {original_size} → {len(x_train)} サンプル ({len(x_train)/original_size:.1f}倍)")
+            vprint(f"データ拡張完了: {original_size} → {len(x_train)} サンプル ({len(x_train)/original_size:.1f}倍)")
         else:
             print(f"警告: 入力次元{n_input}から画像形状を推定できません。データ拡張をスキップします。")
     
     # クラス名の取得（標準データセット or カスタムデータセット）
     class_names = get_class_names(dataset, custom_class_names=custom_class_names)
     if class_names:
-        print(f"クラス名: {class_names}")
+        vprint(f"クラス名: {class_names}")
     
     # ========================================
     # 4. ネットワークの構築
     # ========================================
-    print("\nネットワーク初期化中...")
+    vprint("\nネットワーク初期化中...")
     
-    network = RefinedDistributionEDNetwork(
+    network = run_with_log_control(
+        RefinedDistributionEDNetwork,
         n_input=n_input,
         n_hidden=hidden_sizes,
         n_output=n_classes,
@@ -1198,29 +1275,27 @@ def main():
     # デバッグモード設定（v036.1で追加）
     if args.debug_lc:
         network.debug_lateral_cooperation = True
-        print(f"\n[lateral_cooperation デバッグモード: 有効]")
-        print(f"  - 影響度の詳細統計を収集します")
+        vprint(f"\n[lateral_cooperation デバッグモード: 有効]")
+        vprint(f"  - 影響度の詳細統計を収集します")
     
     # コラム構造の診断（オプション）
     if args.diagnose_column:
         network.diagnose_column_structure()
         print("\n診断完了。学習はスキップします。")
-        import sys
         sys.exit(0)
     
     # 隠れ層の重み診断（オプション）- 学習前に実行して終了
     if args.diagnose_hidden_weights and args.epochs == 0:
         network.diagnose_hidden_weights()
         print("\n診断完了。学習はスキップします。")
-        import sys
         sys.exit(0)
     
     # 初期重みを保存（重み診断用）
     initial_weights = None
     if args.diagnose_hidden_weights:
         initial_weights = [w.copy() for w in network.w_hidden]
-        print("\n[重み診断モード: 有効]")
-        print("  - 学習終了後に隠れ層の重み状態を診断します")
+        vprint("\n[重み診断モード: 有効]")
+        vprint("  - 学習終了後に隠れ層の重み状態を診断します")
     
     # ========================================
     # 5. 可視化マネージャーの初期化
@@ -1235,14 +1310,14 @@ def main():
                 enable_heatmap=args.heatmap,
                 save_path=args.save_viz,
                 total_epochs=args.epochs,
-                verbose=getattr(args, 'verbose', False),
+                verbose=activation_stats_enabled,
                 window_scale=viz_scale
             )
-            print(f"\n可視化機能: 有効 (サイズレベル{args.viz}, 倍率x{viz_scale:.1f})")
+            vprint(f"\n可視化機能: 有効 (サイズレベル{args.viz}, 倍率x{viz_scale:.1f})")
             if args.heatmap:
-                print("  - ヒートマップ表示: 有効")
+                vprint("  - ヒートマップ表示: 有効")
             if args.save_viz:
-                print(f"  - 保存先: {args.save_viz}")
+                vprint(f"  - 保存先: {args.save_viz}")
             # Gabor特徴情報をヒートマップ表示用に設定
             if args.gabor_features:
                 viz_manager.set_gabor_info(info)
@@ -1392,7 +1467,8 @@ def main():
         if args.batch_size is not None:
             if args.use_cupy:
                 # ★CuPy版★ GPU最適化バッチ学習（期待: 2-3倍高速化）
-                train_acc, train_loss = network.train_epoch_cupy_batch(
+                train_acc, train_loss = run_with_log_control(
+                    network.train_epoch_cupy_batch,
                     x_train, y_train, batch_size=args.batch_size,
                     progress_callback=_heatmap_callback
                 )
@@ -1405,24 +1481,34 @@ def main():
                     shuffle=True,
                     seed=args.seed + epoch  # エポックごとに異なるシャッフル
                 )
-                train_acc, train_loss = network.train_epoch_minibatch_tf(train_dataset, progress_callback=_heatmap_callback)
+                train_acc, train_loss = run_with_log_control(
+                    network.train_epoch_minibatch_tf,
+                    train_dataset, progress_callback=_heatmap_callback
+                )
             # ミニバッチ/CuPy モード: 最終エポックのみ別途エラー収集（1回の評価パスが追加される）
             if collect_errors:
-                _, _, train_errors = network.evaluate_with_errors(x_train, y_train)
+                _, _, train_errors = run_with_log_control(network.evaluate_with_errors, x_train, y_train)
         else:
             # オンライン学習（従来方式）
             if collect_errors:
-                train_acc, train_loss, train_errors = network.train_epoch(
+                train_acc, train_loss, train_errors = run_with_log_control(
+                    network.train_epoch,
                     x_train, y_train, collect_errors=True, progress_callback=_heatmap_callback
                 )
             else:
-                train_acc, train_loss = network.train_epoch(x_train, y_train, progress_callback=_heatmap_callback)
+                train_acc, train_loss = run_with_log_control(
+                    network.train_epoch,
+                    x_train, y_train, progress_callback=_heatmap_callback
+                )
         
         # ★v039.3新機能★ エポック終了後に勝者選択統計を取得
         winner_stats = network.get_winner_selection_stats()
         
         # テスト（クラス別精度も取得）★P2最適化★ 並列評価で高速化
-        test_acc, test_loss, class_accs = network.evaluate_parallel(x_test, y_test, return_per_class=True)
+        test_acc, test_loss, class_accs = run_with_log_control(
+            network.evaluate_parallel,
+            x_test, y_test, return_per_class=True
+        )
         
         # 履歴記録
         train_acc_history.append(train_acc)
@@ -1451,7 +1537,7 @@ def main():
               f"Time={epoch_time:.2f}s")
         
         # ★v039.3新機能★ 最初の5エポックは勝者選択統計を詳細出力（デバッグ用）
-        if epoch <= 5:
+        if verbose_enabled and epoch <= 5:
             print(f"\n[勝者選択頻度 - Epoch {epoch}]")
             print(f"  総学習サンプル数: {winner_stats['total_samples']}")
             print(f"  期待値（均等分布）: {winner_stats['expected_percentage']:.1f}%")
@@ -1508,10 +1594,11 @@ def main():
                     total_pruned = sum(pruning_stats['total_pruned'])
                     total_conn = sum(network.pruning_stats['initial_connections'])
                     sparsity = total_pruned / total_conn if total_conn > 0 else 0
-                    print(f"  [刈り込み] {total_pruned:,d}/{total_conn:,d} 刈り込み済み ({sparsity*100:.1f}%)")
+                    if verbose_enabled:
+                        print(f"  [刈り込み] {total_pruned:,d}/{total_conn:,d} 刈り込み済み ({sparsity*100:.1f}%)")
         
         # ★Idea A★ Hebbian Weight Alignment（エポック後に実行）
-        if args.hebbian_alignment > 0.0:
+        if verbose_enabled and args.hebbian_alignment > 0.0:
             hebb_stats = network.apply_hebbian_alignment()
             if hebb_stats:
                 for lidx, st in hebb_stats.items():
@@ -1519,7 +1606,7 @@ def main():
                           f"mean_drift={st['mean_drift']:.6f}")
         
         # ★Step 2★ 非コラムニューロン学習動態デバッグ出力
-        if args.enable_non_column_learning:
+        if verbose_enabled and args.enable_non_column_learning:
             debug_info = network.get_non_column_debug_info()
             for layer_key, stats in debug_info.items():
                 print(f"  [{layer_key}] "
@@ -1636,25 +1723,28 @@ def main():
                       f"刈り込み済み ({layer_stat['current_sparsity']*100:.1f}%)")
     
     # エポック毎のクラス別精度を表示
-    print("\n" + "=" * 70)
-    print("エポック毎のクラス別テスト正解率")
-    print("=" * 70)
+    if verbose_enabled:
+        print("\n" + "=" * 70)
+        print("エポック毎のクラス別テスト正解率")
+        print("=" * 70)
     
     # ヘッダー
-    print(f"{'Epoch':>5}", end="")
-    for c in range(n_classes):
-        print(f"  Class{c:1d}", end="")
-    print(f"  {'Average':>7}")
-    print("-" * (5 + n_classes * 9 + 10))
+    if verbose_enabled:
+        print(f"{'Epoch':>5}", end="")
+        for c in range(n_classes):
+            print(f"  Class{c:1d}", end="")
+        print(f"  {'Average':>7}")
+        print("-" * (5 + n_classes * 9 + 10))
     
     # 各エポックの結果
-    for epoch_idx, class_accs in enumerate(class_acc_history):
-        epoch_num = epoch_idx + 1
-        print(f"{epoch_num:>5}", end="")
-        for acc in class_accs:
-            print(f"  {acc*100:>6.2f}%", end="")
-        avg_acc = np.mean(class_accs)
-        print(f"  {avg_acc*100:>6.2f}%")
+    if verbose_enabled:
+        for epoch_idx, class_accs in enumerate(class_acc_history):
+            epoch_num = epoch_idx + 1
+            print(f"{epoch_num:>5}", end="")
+            for acc in class_accs:
+                print(f"  {acc*100:>6.2f}%", end="")
+            avg_acc = np.mean(class_accs)
+            print(f"  {avg_acc*100:>6.2f}%")
     
     # 混同行列の計算と表示（v037追加）
     if args.heatmap:
