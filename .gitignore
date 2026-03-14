@@ -39,3 +39,6 @@ uv.lock
 BACKUP_POLICY.md
 columnar_ed_ann_v???.py
 columnar_ed_ann_v049_gabor_experiment.py
+
+# Local operation memo (do not track)
+SAFETY_OPERATION_RULES.md
