@@ -138,11 +138,11 @@ python columnar_ed_ann_simple.py --hidden 2048,1024,1024 --train 10000 --test 10
 # → Best ≈ 97.11% / Final ≈ 96.78%
 
 # 4-layer + Gabor features (MNIST, cn=20 latest)
-python columnar_ed_ann_simple.py --hidden 1024,1024,1024,1024 --train 10000 --test 10000
+python columnar_ed_ann_simple.py --hidden 1024[4] --train 10000 --test 10000
 # → Best ≈ 97.16% (Epoch 10), Final ≈ 97.16%
 
 # 5-layer + Gabor features (MNIST, T3M adopted)
-python columnar_ed_ann_simple.py --hidden 1024,1024,1024,1024,1024 --train 10000 --test 10000 --dataset mnist --epochs 10 --seed 42 --column_neurons 20 --init_scales 0.9,1.6,1.8,1.2,1.4,0.8
+python columnar_ed_ann_simple.py --hidden 1024[5] --train 10000 --test 10000 --dataset mnist --epochs 10 --seed 42 --column_neurons 20 --init_scales 0.9,1.6,1.8,1.2,1.4,0.8
 # → Best ≈ 96.78% (Epoch 10), Final ≈ 96.78%
 
 # Without Gabor (to verify the pure learning capability of the original ED method)
@@ -196,7 +196,7 @@ python columnar_ed_ann_simple.py --list_hyperparams
 
 | Argument | Default | Description |
 |------|-----------|------|
-| `--hidden` | `2048` | Number of hidden layer neurons (e.g., `2048`=1 layer, `2048,1024`=2 layers) |
+| `--hidden` | `2048` | Number of hidden layer neurons (e.g., `2048`=1 layer, `2048,1024`=2 layers, `1024[5]`=five identical layers) |
 | `--train` | `5000` | Number of training samples |
 | `--test` | `5000` | Number of test samples |
 | `--epochs` | YAML auto | Number of epochs |

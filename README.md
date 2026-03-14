@@ -148,11 +148,11 @@ python columnar_ed_ann.py --hidden 2048,1024,1024 --train 10000 --test 10000 --g
 # → Best ≈ 97.11% / Final ≈ 96.78%
 
 # 4層 + Gabor特徴（MNIST, cn=20 最新）
-python columnar_ed_ann.py --dataset mnist --hidden 1024,1024,1024,1024 --train 10000 --test 10000 --epochs 10 --seed 42 --column_neurons 20 --init_method he --gabor_features --lr 0.04 --column_lr_factors 0.005,0.004,0.003,0.002 --gradient_clip 0.03 --init_scales 0.9,1.6,1.8,1.6,0.8 --viz 2 --heatmap
+python columnar_ed_ann.py --dataset mnist --hidden 1024[4] --train 10000 --test 10000 --epochs 10 --seed 42 --column_neurons 20 --init_method he --gabor_features --lr 0.04 --column_lr_factors 0.005,0.004,0.003,0.002 --gradient_clip 0.03 --init_scales 0.9,1.6,1.8,1.6,0.8 --viz 2 --heatmap
 # → Best = 97.16% (Epoch 10), Final = 97.16%
 
 # 5層 + Gabor特徴（MNIST, T3M採用）
-python columnar_ed_ann.py --dataset mnist --hidden 1024,1024,1024,1024,1024 --train 10000 --test 10000 --epochs 10 --seed 42 --column_neurons 20 --init_method he --gabor_features --lr 0.04 --column_lr_factors 0.005,0.004,0.003,0.002,0.0015 --gradient_clip 0.03 --init_scales 0.9,1.6,1.8,1.2,1.4,0.8 --viz 2 --heatmap
+python columnar_ed_ann.py --dataset mnist --hidden 1024[5] --train 10000 --test 10000 --epochs 10 --seed 42 --column_neurons 20 --init_method he --gabor_features --lr 0.04 --column_lr_factors 0.005,0.004,0.003,0.002,0.0015 --gradient_clip 0.03 --init_scales 0.9,1.6,1.8,1.2,1.4,0.8 --viz 2 --heatmap
 # → Best = 96.78% (Epoch 10), Final = 96.78%
 
 # Gabor無し（オリジナルED法の純粋な学習力を確認）
@@ -189,6 +189,10 @@ python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_feature
 # 学習率を手動指定
 python columnar_ed_ann.py --hidden 2048 --train 10000 --test 10000 --gabor_features \
     --output_lr 0.15 --column_lr 0.0015
+
+# 繰り返し記法を使って層別学習率を簡潔に指定（5層）
+python columnar_ed_ann.py --hidden 1024[5] --train 10000 --test 10000 --gabor_features \
+    --output_lr 0.04 --non_column_lr 0.04[5] --column_lr 0.0002,0.00016,0.00012,8e-05,6e-05
 
 # アミン拡散係数を調整
 python columnar_ed_ann.py --hidden 2048 --train 10000 --test 10000 --gabor_features \
@@ -250,7 +254,7 @@ python columnar_ed_ann.py --hidden 2048 --diagnose_column
 
 | 引数 | デフォルト | 説明 |
 |------|-----------|------|
-| `--hidden` | `2048` | 隠れ層ニューロン数（例: `2048`=1層, `2048,1024`=2層） |
+| `--hidden` | `2048` | 隠れ層ニューロン数（例: `2048`=1層, `2048,1024`=2層, `1024[5]`=5層同一指定） |
 | `--train` | `3000` | 訓練サンプル数 |
 | `--test` | `1000` | テストサンプル数 |
 | `--epochs` | YAML自動 | エポック数 |
@@ -264,8 +268,8 @@ python columnar_ed_ann.py --hidden 2048 --diagnose_column
 | 引数 | デフォルト | 説明 |
 |------|-----------|------|
 | `--output_lr` | YAML自動 | 出力層学習率 |
-| `--non_column_lr` | YAML自動 | 非コラムニューロン層別学習率（カンマ区切り） |
-| `--column_lr` | YAML自動 | コラムニューロン層別学習率（カンマ区切り） |
+| `--non_column_lr` | YAML自動 | 非コラムニューロン層別学習率（カンマ区切り、繰り返し記法対応: `0.04[5]`） |
+| `--column_lr` | YAML自動 | コラムニューロン層別学習率（カンマ区切り、繰り返し記法対応: `0.0002[3],0.0001[2]`） |
 | `--column_lr_factors` | YAML自動 | コラム行の層別抑制係数（カンマ区切り） |
 | `--u1` | YAML自動 | アミン拡散係数 u1 |
 | `--u2` | YAML自動 | アミン拡散係数 u2 |

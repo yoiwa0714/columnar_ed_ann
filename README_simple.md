@@ -138,11 +138,11 @@ python columnar_ed_ann_simple.py --hidden 2048,1024,1024 --train 10000 --test 10
 # → Best ≈ 97.11% / Final ≈ 96.78%
 
 # 4層 + Gabor特徴（MNIST, cn=20 最新）
-python columnar_ed_ann_simple.py --hidden 1024,1024,1024,1024 --train 10000 --test 10000
+python columnar_ed_ann_simple.py --hidden 1024[4] --train 10000 --test 10000
 # → Best ≈ 97.16% (Epoch 10), Final ≈ 97.16%
 
 # 5層 + Gabor特徴（MNIST, T3M採用）
-python columnar_ed_ann_simple.py --hidden 1024,1024,1024,1024,1024 --train 10000 --test 10000 --dataset mnist --epochs 10 --seed 42 --column_neurons 20 --init_scales 0.9,1.6,1.8,1.2,1.4,0.8
+python columnar_ed_ann_simple.py --hidden 1024[5] --train 10000 --test 10000 --dataset mnist --epochs 10 --seed 42 --column_neurons 20 --init_scales 0.9,1.6,1.8,1.2,1.4,0.8
 # → Best ≈ 96.78% (Epoch 10), Final ≈ 96.78%
 
 # Gabor無し（オリジナルED法の純粋な学習力を確認）
@@ -196,7 +196,7 @@ python columnar_ed_ann_simple.py --list_hyperparams
 
 | 引数 | デフォルト | 説明 |
 |------|-----------|------|
-| `--hidden` | `2048` | 隠れ層ニューロン数（例: `2048`=1層, `2048,1024`=2層） |
+| `--hidden` | `2048` | 隠れ層ニューロン数（例: `2048`=1層, `2048,1024`=2層, `1024[5]`=5層同一指定） |
 | `--train` | `5000` | 訓練サンプル数 |
 | `--test` | `5000` | テストサンプル数 |
 | `--epochs` | YAML自動 | エポック数 |

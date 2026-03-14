@@ -147,11 +147,11 @@ python columnar_ed_ann.py --hidden 2048,1024,1024 --train 10000 --test 10000 --g
 # → Best ≈ 97.11% / Final ≈ 96.78%
 
 # 4-layer + Gabor features (MNIST, cn=20 latest)
-python columnar_ed_ann.py --dataset mnist --hidden 1024,1024,1024,1024 --train 10000 --test 10000 --epochs 10 --seed 42 --column_neurons 20 --init_method he --gabor_features --lr 0.04 --column_lr_factors 0.005,0.004,0.003,0.002 --gradient_clip 0.03 --init_scales 0.9,1.6,1.8,1.6,0.8 --viz 2 --heatmap
+python columnar_ed_ann.py --dataset mnist --hidden 1024[4] --train 10000 --test 10000 --epochs 10 --seed 42 --column_neurons 20 --init_method he --gabor_features --lr 0.04 --column_lr_factors 0.005,0.004,0.003,0.002 --gradient_clip 0.03 --init_scales 0.9,1.6,1.8,1.6,0.8 --viz 2 --heatmap
 # → Best = 97.16% (Epoch 10), Final = 97.16%
 
 # 5-layer + Gabor features (MNIST, T3M adopted)
-python columnar_ed_ann.py --dataset mnist --hidden 1024,1024,1024,1024,1024 --train 10000 --test 10000 --epochs 10 --seed 42 --column_neurons 20 --init_method he --gabor_features --lr 0.04 --column_lr_factors 0.005,0.004,0.003,0.002,0.0015 --gradient_clip 0.03 --init_scales 0.9,1.6,1.8,1.2,1.4,0.8 --viz 2 --heatmap
+python columnar_ed_ann.py --dataset mnist --hidden 1024[5] --train 10000 --test 10000 --epochs 10 --seed 42 --column_neurons 20 --init_method he --gabor_features --lr 0.04 --column_lr_factors 0.005,0.004,0.003,0.002,0.0015 --gradient_clip 0.03 --init_scales 0.9,1.6,1.8,1.2,1.4,0.8 --viz 2 --heatmap
 # → Best = 96.78% (Epoch 10), Final = 96.78%
 
 # Without Gabor (to verify the pure learning capability of the original ED method)
@@ -188,6 +188,10 @@ python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_feature
 # Manually specify learning rates
 python columnar_ed_ann.py --hidden 2048 --train 10000 --test 10000 --gabor_features \
     --output_lr 0.15 --column_lr 0.0015
+
+# Use repeat notation for concise per-layer learning-rate specification (5 layers)
+python columnar_ed_ann.py --hidden 1024[5] --train 10000 --test 10000 --gabor_features \
+    --output_lr 0.04 --non_column_lr 0.04[5] --column_lr 0.0002,0.00016,0.00012,8e-05,6e-05
 
 # Adjust amine diffusion coefficients
 python columnar_ed_ann.py --hidden 2048 --train 10000 --test 10000 --gabor_features \
@@ -249,7 +253,7 @@ python columnar_ed_ann.py --hidden 2048 --diagnose_column
 
 | Argument | Default | Description |
 |----------|---------|-------------|
-| `--hidden` | `2048` | Hidden layer neuron count (e.g., `2048`=1 layer, `2048,1024`=2 layers) |
+| `--hidden` | `2048` | Hidden layer neuron count (e.g., `2048`=1 layer, `2048,1024`=2 layers, `1024[5]`=five identical layers) |
 | `--train` | `3000` | Number of training samples |
 | `--test` | `1000` | Number of test samples |
 | `--epochs` | Auto (YAML) | Number of epochs |
@@ -263,8 +267,8 @@ python columnar_ed_ann.py --hidden 2048 --diagnose_column
 | Argument | Default | Description |
 |----------|---------|-------------|
 | `--output_lr` | Auto (YAML) | Output layer learning rate |
-| `--non_column_lr` | Auto (YAML) | Non-column neuron learning rate per layer (comma-separated) |
-| `--column_lr` | Auto (YAML) | Column neuron learning rate per layer (comma-separated) |
+| `--non_column_lr` | Auto (YAML) | Non-column neuron learning rate per layer (comma-separated, repeat notation supported: `0.04[5]`) |
+| `--column_lr` | Auto (YAML) | Column neuron learning rate per layer (comma-separated, repeat notation supported: `0.0002[3],0.0001[2]`) |
 | `--column_lr_factors` | Auto (YAML) | Per-layer suppression factors applied to column rows (comma-separated) |
 | `--u1` | Auto (YAML) | Amine diffusion coefficient u1 |
 | `--u2` | Auto (YAML) | Amine diffusion coefficient u2 |
