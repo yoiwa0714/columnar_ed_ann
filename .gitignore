@@ -42,3 +42,6 @@ columnar_ed_ann_v049_gabor_experiment.py
 
 # Local operation memo (do not track)
 SAFETY_OPERATION_RULES.md
+
+# Local chat logs (do not track dated logs)
+chat_logs/chat_log*.txt
