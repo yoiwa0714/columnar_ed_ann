@@ -40,7 +40,7 @@
 | **簡易版** | `columnar_ed_ann_simple.py` | 最小限の引数で高精度を実現。本ドキュメントの対象 |
 | フルバージョン | `columnar_ed_ann.py` | 簡易版よりも多くのパラメータを指定可能。詳細は [README.md](README.md) 参照 |
 
-**簡易版**は、**フルバージョン**から一部の付加的な機能を削除してオリジナルED法とコラム構造、およびGabor特徴関連の基本的な実装のみにすることで、ED法とGabor特徴関連の理解が得られ易くなるようにしたものです。このためGPU機能も省略し、CPUのみで実行されるようにしています。
+**簡易版**は、**フルバージョン（columnar_ed_ann.py）を内部で利用する軽量フロントエンド**です。ユーザーには最小限の引数のみを公開し、学習処理本体はフル版の最新実装に委譲することで、運用の簡潔さと実装の更新追従性を両立しています。このためGPU関連オプションは簡易版CLIでは公開せず、CPU前提で実行できる形にしています。
 
 ---
 
@@ -400,17 +400,8 @@ columnar_ed_ann/
 ├── requirements.txt                # 依存パッケージ
 ├── CUSTOM_DATASET_GUIDE.md         # カスタムデータセット利用ガイド
 │
-├── modules_simple/                 # ★ 簡易版モジュール
-│   ├── ed_network.py               #   EDネットワーク本体（学習・評価）
-│   ├── column_structure.py         #   コラム構造生成（ハニカム配置）
-│   ├── gabor_features.py           #   Gabor特徴抽出（V1単純型細胞モデル）
-│   ├── activation_functions.py     #   活性化関数（tanh、softmax）
-│   ├── neuron_structure.py         #   E/Iペア構造（Dale's Principle）
-│   ├── hyperparameters.py          #   YAMLパラメータ読み込み
-│   ├── data_loader.py              #   データセット読み込み
-│   └── visualization_manager.py    #   可視化（学習曲線、ヒートマップ）
-│
-├── modules/                        # フルバージョン用モジュール
+├── modules/                        # 学習処理本体モジュール（簡易版・フル版で共通利用）
+├── modules_simple/                 # 旧簡易版モジュール群（互換・参照用）
 ├── config/                         # パラメータ設定ファイル
 │   ├── hyperparameters.yaml        #   層数別最適パラメータ（編集可能）
 │   └── hyperparameters_initial.yaml#   初期状態（復元用）

@@ -40,7 +40,7 @@ This repository provides two implementations:
 | **Simple version** | `columnar_ed_ann_simple.py` | Achieves high accuracy with minimal arguments. Subject of this document |
 | Full version | `columnar_ed_ann.py` | Allows more parameter specifications than the simple version. See [README_en.md](README_en.md) for details |
 
-The **simple version** removes some supplementary features from the full version, retaining only the core ED method and Gabor feature-related implementations, making it easier to understand how the ED method and Gabor features work.
+The **simple version** is a lightweight front-end that internally delegates training to the **full implementation (`columnar_ed_ann.py`)**. It exposes only a minimal CLI surface while relying on the latest full-version learning pipeline, balancing ease of use with implementation maintainability. GPU-related options are intentionally not exposed in the simple CLI, keeping CPU-first operation straightforward.
 
 ---
 
@@ -399,17 +399,8 @@ columnar_ed_ann/
 ├── requirements.txt                # Dependencies
 ├── CUSTOM_DATASET_GUIDE.md         # Custom dataset guide
 │
-├── modules_simple/                 # ★ Simple version modules
-│   ├── ed_network.py               #   ED network core (training & evaluation)
-│   ├── column_structure.py         #   Column structure generation (honeycomb layout)
-│   ├── gabor_features.py           #   Gabor feature extraction (V1 simple cell model)
-│   ├── activation_functions.py     #   Activation functions (tanh, softmax)
-│   ├── neuron_structure.py         #   E/I pair structure (Dale's Principle)
-│   ├── hyperparameters.py          #   YAML parameter loading
-│   ├── data_loader.py              #   Dataset loading
-│   └── visualization_manager.py    #   Visualization (learning curves, heatmaps)
-│
-├── modules/                        # Full version modules
+├── modules/                        # Core learning modules (shared by simple/full flows)
+├── modules_simple/                 # Legacy simple modules (compatibility/reference)
 ├── config/                         # Parameter configuration files
 │   ├── hyperparameters.yaml        #   Per-layer optimal parameters (editable)
 │   └── hyperparameters_initial.yaml#   Initial state (for restoration)
