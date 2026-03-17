@@ -551,7 +551,8 @@ class RefinedDistributionEDNetwork:
 
         return loss, correct
 
-    def train_epoch(self, x_train, y_train, return_true_accuracy=True, progress_callback=None):
+    def train_epoch(self, x_train, y_train, return_true_accuracy=True,
+                    collect_errors=False, progress_callback=None):
         """
         1エポックの学習
 
@@ -559,11 +560,13 @@ class RefinedDistributionEDNetwork:
             x_train: 訓練データ
             y_train: 訓練ラベル
             return_true_accuracy: True=学習後再評価で真の訓練精度を返す（推奨）
+            collect_errors: True=不正解サンプル情報を収集して返す
             progress_callback: callback(network, i, n_samples) 形式
 
         Returns:
             accuracy: 訓練精度
             loss: 平均損失
+            errors: collect_errors=Trueの場合のみ、(index, true_label, pred_label)のリスト
         """
         import time as _time
         n_samples = len(x_train)
@@ -589,8 +592,12 @@ class RefinedDistributionEDNetwork:
 
         if return_true_accuracy:
             # 学習後の最終重みで再評価（テスト精度と公平な比較が可能）
-            true_accuracy, true_loss = self.evaluate_parallel(x_train, y_train)
-            return true_accuracy, true_loss
+            if collect_errors:
+                true_accuracy, true_loss, errors = self.evaluate_with_errors(x_train, y_train)
+                return true_accuracy, true_loss, errors
+            else:
+                true_accuracy, true_loss = self.evaluate_parallel(x_train, y_train)
+                return true_accuracy, true_loss
         else:
             return training_accuracy, avg_loss
 
@@ -694,3 +701,50 @@ class RefinedDistributionEDNetwork:
         z_output_batch = softmax_batch(a_output_batch)
 
         return z_hiddens_batch, z_output_batch, x_paired_batch
+
+    def evaluate_with_errors(self, x_data, y_data, batch_size=256):
+        """
+        評価と不正解サンプル情報の収集
+
+        Args:
+            x_data: 入力データ
+            y_data: ラベル
+            batch_size: バッチサイズ
+
+        Returns:
+            accuracy: 精度
+            avg_loss: 平均損失
+            errors: (index, true_label, pred_label)のリスト
+        """
+        n_samples = len(x_data)
+        n_batches = (n_samples + batch_size - 1) // batch_size
+
+        all_predictions = []
+        all_losses = []
+
+        for batch_idx in range(n_batches):
+            start_idx = batch_idx * batch_size
+            end_idx = min((batch_idx + 1) * batch_size, n_samples)
+            x_batch = x_data[start_idx:end_idx]
+            y_batch = y_data[start_idx:end_idx]
+
+            _, z_output_batch, _ = self.forward_batch(x_batch)
+            y_pred_batch = np.argmax(z_output_batch, axis=1)
+            all_predictions.extend(y_pred_batch)
+
+            batch_losses = -np.log(
+                z_output_batch[np.arange(len(y_batch)), y_batch] + 1e-10
+            )
+            all_losses.extend(batch_losses)
+
+        all_predictions = np.array(all_predictions)
+        n_correct = np.sum(all_predictions == y_data)
+        accuracy = n_correct / n_samples
+        avg_loss = np.mean(all_losses)
+
+        errors = []
+        for i in range(n_samples):
+            if all_predictions[i] != y_data[i]:
+                errors.append((i, int(y_data[i]), int(all_predictions[i])))
+
+        return accuracy, avg_loss, errors

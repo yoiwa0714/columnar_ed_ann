@@ -681,3 +681,210 @@ class VisualizationManager:
             plt.close(self.fig_viz)
         if self.fig_heatmap is not None:
             plt.close(self.fig_heatmap)
+
+
+def show_train_errors(error_list, x_display, y_train, class_names, img_shape, max_per_class=20):
+    """
+    最終エポックの不正解学習データを一覧表示する（スクロール可能ウィンドウ）
+
+    Parameters:
+    -----------
+    error_list : list of (int, int, int)
+        (sample_idx, true_label, pred_label) のリスト
+    x_display : np.ndarray
+        表示用画像データ。Gabor使用時は変換前の生データを渡すこと
+    y_train : np.ndarray
+        訓練ラベル（クラス別サンプル数の計算用）
+    class_names : list[str] or None
+        クラス名のリスト（Noneの場合は番号表示）
+    img_shape : tuple
+        1枚の画像形状 (H, W) or (H, W, C)
+    max_per_class : int
+        クラスごとの表示上限数（デフォルト: 20）
+    """
+    from matplotlib.figure import Figure
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+
+    setup_japanese_font()
+
+    IMAGES_PER_ROW = 10
+    VISIBLE_ROWS = 4
+    FIG_SIZE = (15, 5)
+
+    if not error_list:
+        print("不正解サンプルはありませんでした。")
+        return
+
+    # クラス別集計
+    unique_vals, counts = np.unique(y_train, return_counts=True)
+    class_total = {int(c): int(n) for c, n in zip(unique_vals, counts)}
+
+    class_errors = {}
+    class_n_errors_full = {}
+    for idx, true_label, pred_label in error_list:
+        cls = int(true_label)
+        class_n_errors_full[cls] = class_n_errors_full.get(cls, 0) + 1
+        if cls not in class_errors:
+            class_errors[cls] = []
+        if len(class_errors[cls]) < max_per_class:
+            class_errors[cls].append((int(idx), int(pred_label)))
+
+    sorted_classes = sorted(class_errors.keys())
+    total_errors = len(error_list)
+    total_samples = len(y_train)
+    train_acc = (total_samples - total_errors) / total_samples
+
+    # 画像データを事前処理
+    _img_cache = {}
+    _is_gray = (len(img_shape) == 2 or (len(img_shape) == 3 and img_shape[2] == 1))
+    for cls in sorted_classes:
+        for sample_idx, pred in class_errors[cls]:
+            if sample_idx not in _img_cache:
+                img = x_display[sample_idx].reshape(img_shape)
+                if _is_gray:
+                    _img_cache[sample_idx] = img.squeeze()
+                else:
+                    _img_cache[sample_idx] = np.clip(img, 0, 1)
+
+    # 仮想行リストを構築
+    row_list = []
+    for cls in sorted_classes:
+        n_errors = class_n_errors_full[cls]
+        n_total = class_total.get(cls, 0)
+        cls_acc = (n_total - n_errors) / n_total if n_total > 0 else 0.0
+        cls_name = class_names[cls] if class_names else str(cls)
+        capped = f"  (上位{max_per_class}件を表示)" if n_errors > max_per_class else ""
+        label = (f"クラス {cls}  ({cls_name}):  {n_errors} 誤答 / {n_total} サンプル"
+                 f"  (正解率 {cls_acc*100:.1f}%){capped}")
+        row_list.append({'type': 'header', 'label': label})
+
+        items = class_errors[cls]
+        for i in range(0, len(items), IMAGES_PER_ROW):
+            chunk = items[i:i + IMAGES_PER_ROW]
+            row_list.append({
+                'type': 'images',
+                'items': [(idx, cls, pred) for idx, pred in chunk]
+            })
+
+    n_rows = len(row_list)
+    scroll_state = [0]
+    max_offset = max(0, n_rows - VISIBLE_ROWS)
+
+    title_base = (
+        f"学習データ不正解分析  全 {total_errors} 件 / {total_samples} サンプル"
+        f"  (訓練正解率 {train_acc*100:.1f}%)"
+        f"  [↑↓ or マウスホイールでスクロール]"
+    )
+
+    plt.ioff()
+    fig = plt.figure(figsize=FIG_SIZE)
+    fig.canvas.manager.set_window_title('学習データ不正解分析')
+    ax_display = fig.add_subplot(111)
+    ax_display.axis('off')
+    ax_display.set_position([0, 0, 1, 1])
+    fig_dpi = fig.dpi
+    _im_artist = [None]
+
+    _page_cache = {}
+
+    def _render_page(offset):
+        if offset in _page_cache:
+            return _page_cache[offset]
+
+        visible = row_list[offset:offset + VISIBLE_ROWS]
+        if not visible:
+            return None
+
+        temp_fig = Figure(figsize=FIG_SIZE, dpi=fig_dpi)
+        FigureCanvasAgg(temp_fig)
+        gs = temp_fig.add_gridspec(VISIBLE_ROWS, 1, height_ratios=[1] * VISIBLE_ROWS, hspace=0.5)
+
+        for ridx in range(VISIBLE_ROWS):
+            ax = temp_fig.add_subplot(gs[ridx, 0])
+            ax.axis('off')
+            if ridx >= len(visible):
+                continue
+
+            row = visible[ridx]
+            if row['type'] == 'header':
+                ax.text(0.01, 0.5, row['label'], fontsize=11, ha='left', va='center')
+                continue
+
+            items = row['items']
+            subgs = gs[ridx, 0].subgridspec(1, IMAGES_PER_ROW, wspace=0.15)
+            for c in range(IMAGES_PER_ROW):
+                subax = temp_fig.add_subplot(subgs[0, c])
+                subax.axis('off')
+                if c >= len(items):
+                    continue
+
+                sample_idx, true_label, pred_label = items[c]
+                img = _img_cache[sample_idx]
+                if _is_gray:
+                    subax.imshow(img, cmap='gray', vmin=0, vmax=1)
+                else:
+                    subax.imshow(img)
+
+                true_name = class_names[true_label] if class_names else str(true_label)
+                pred_name = class_names[pred_label] if class_names else str(pred_label)
+                subax.set_title(
+                    f"idx={sample_idx}\n{true_name}→{pred_name}",
+                    fontsize=8,
+                    color=('blue' if true_label == pred_label else 'red')
+                )
+
+        temp_fig.suptitle(title_base, fontsize=12, y=0.995)
+        temp_fig.subplots_adjust(left=0.02, right=0.98, top=0.93, bottom=0.03)
+
+        canvas = temp_fig.canvas
+        canvas.draw()
+        w, h = canvas.get_width_height()
+        buf = np.frombuffer(canvas.buffer_rgba(), dtype=np.uint8).reshape(h, w, 4)
+        rgb = buf[:, :, :3].copy()
+        _page_cache[offset] = rgb
+        return rgb
+
+    def _draw(offset):
+        offset = int(np.clip(offset, 0, max_offset))
+        rgb = _render_page(offset)
+        if rgb is None:
+            return
+        if _im_artist[0] is None:
+            _im_artist[0] = ax_display.imshow(rgb)
+        else:
+            _im_artist[0].set_data(rgb)
+        fig.canvas.draw_idle()
+
+    def _scroll(delta):
+        new_offset = np.clip(scroll_state[0] + delta, 0, max_offset)
+        if new_offset != scroll_state[0]:
+            scroll_state[0] = int(new_offset)
+            _draw(scroll_state[0])
+
+    def _on_key(event):
+        if event.key in ['down', 'j']:
+            _scroll(+1)
+        elif event.key in ['up', 'k']:
+            _scroll(-1)
+        elif event.key in ['pagedown']:
+            _scroll(+VISIBLE_ROWS)
+        elif event.key in ['pageup']:
+            _scroll(-VISIBLE_ROWS)
+        elif event.key in ['home']:
+            scroll_state[0] = 0
+            _draw(scroll_state[0])
+        elif event.key in ['end']:
+            scroll_state[0] = max_offset
+            _draw(scroll_state[0])
+
+    def _on_scroll(event):
+        if event.button == 'down':
+            _scroll(+1)
+        elif event.button == 'up':
+            _scroll(-1)
+
+    fig.canvas.mpl_connect('key_press_event', _on_key)
+    fig.canvas.mpl_connect('scroll_event', _on_scroll)
+
+    _draw(0)
+    plt.show(block=True)

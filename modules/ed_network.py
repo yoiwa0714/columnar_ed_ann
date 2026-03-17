@@ -1293,7 +1293,7 @@ class RefinedDistributionEDNetwork:
         # 全層の学習率にスケーリング係数を適用
         self.layer_lrs = [base_lr * scale_factor for base_lr in self.base_layer_lrs]
     
-    def _compute_gradients(self, x_paired, z_hiddens, z_output, y_true):
+    def _compute_gradients(self, x_paired, z_hiddens, z_output, y_true, collect_diagnostics=False):
         """
         勾配の計算（ED法準拠、微分の連鎖律不使用）
         
@@ -1302,6 +1302,7 @@ class RefinedDistributionEDNetwork:
             z_hiddens: 各隠れ層の出力のリスト
             z_output: 出力層の確率分布（SoftMax）
             y_true: 正解クラス
+            collect_diagnostics: Trueの場合、学習ダイナミクス診断用のデータを収集
             
         Returns:
             gradients: {
@@ -1311,12 +1312,24 @@ class RefinedDistributionEDNetwork:
                     または active_neurons が空の場合は None,
                 'lateral_weights': 側方抑制の勾配
             }
+            diagnostics (collect_diagnostics=True時のみ): dict
         """
         gradients = {
             'w_output': None,
             'w_hidden': [None] * self.n_layers,
             'lateral_weights': np.zeros_like(self.lateral_weights)
         }
+        
+        # 診断データ収集用
+        if collect_diagnostics:
+            diag = {
+                'error_magnitude': 0.0,
+                'output_confidence': 0.0,
+                'saturation_per_layer': [],
+                'activation_abs_per_layer': [],
+                'weight_delta_norm_per_layer': [],
+                'top_k_indices_per_layer': [],  # カラムTop-Kランキング安定性用
+            }
         
         # ============================================
         # 1. 出力層の勾配計算
@@ -1326,6 +1339,11 @@ class RefinedDistributionEDNetwork:
         error_output = target_probs - z_output
         
         saturation_output = np.abs(z_output) * (1.0 - np.abs(z_output))
+        
+        # 診断: 誤差信号の大きさと出力信頼度
+        if collect_diagnostics:
+            diag['error_magnitude'] = float(np.abs(error_output[y_true]))
+            diag['output_confidence'] = float(z_output[y_true])
         # ★v039変更★ 出力層にも層別学習率を適用（layer_lrs[-1]）
         # ★HTM空間プーリング★ 出力層勾配もゲート適用
         # 抑制されたNCの活性値をゼロにして出力層重み更新から除外
@@ -1412,6 +1430,16 @@ class RefinedDistributionEDNetwork:
                     clamped_ranks = np.minimum(ranks, len(self._learning_weight_lut) - 1)
                     learning_weights = self._learning_weight_lut[clamped_ranks]  # [n_active, n_neurons]
                     
+                    # 診断: 正解クラスのTop-Kニューロンインデックスを記録
+                    if collect_diagnostics:
+                        ytrue_pos = np.where(active_classes == y_true)[0]
+                        if len(ytrue_pos) > 0:
+                            yi = ytrue_pos[0]
+                            top3 = sorted_indices[yi, :3].tolist()
+                            diag['top_k_indices_per_layer'].append(top3)
+                        else:
+                            diag['top_k_indices_per_layer'].append(None)
+                    
                     # 5. 非メンバーの学習率を設定
                     # ★NC最近傍クラス帰属学習★
                     # 各NCが最近傍マイクロコラムに帰属し、そのクラスからのみ学習信号を受け取る
@@ -1496,6 +1524,11 @@ class RefinedDistributionEDNetwork:
             
             if len(active_neurons) == 0:
                 gradients['w_hidden'][layer_idx] = None  # ★P1最適化★ ゼロ配列生成を省略
+                if collect_diagnostics:
+                    diag['saturation_per_layer'].append(0.0)
+                    diag['activation_abs_per_layer'].append(0.0)
+                    diag['weight_delta_norm_per_layer'].append(0.0)
+                    diag['top_k_indices_per_layer'].append(None)
                 continue
             
             # 活性化関数の勾配
@@ -1505,6 +1538,11 @@ class RefinedDistributionEDNetwork:
             else:
                 saturation_term_raw = np.abs(z_active) * (1.0 - np.abs(z_active))
             saturation_term = np.maximum(saturation_term_raw, 1e-3)
+            
+            # 診断: 飽和レベルと活性化分布
+            if collect_diagnostics:
+                diag['saturation_per_layer'].append(float(np.mean(saturation_term_raw)))
+                diag['activation_abs_per_layer'].append(float(np.mean(np.abs(z_hiddens[layer_idx]))))
             
             # 学習信号強度の計算
             # ★v039変更★ 層別学習率を使用（layer_lrs[layer_idx]）
@@ -1564,10 +1602,16 @@ class RefinedDistributionEDNetwork:
             
             # ★P1最適化★ スパース形式で保存（full_gradient展開を省略）
             gradients['w_hidden'][layer_idx] = (active_neurons, delta_w_batch)
+            
+            # 診断: 重み更新量のノルム
+            if collect_diagnostics:
+                diag['weight_delta_norm_per_layer'].append(float(np.linalg.norm(delta_w_batch)))
         
+        if collect_diagnostics:
+            return gradients, diag
         return gradients
     
-    def update_weights(self, x_paired, z_hiddens, z_output, y_true):
+    def update_weights(self, x_paired, z_hiddens, z_output, y_true, collect_diagnostics=False):
         """
         重みの更新（多層多クラス分類版 + ED法、微分の連鎖律不使用）
         
@@ -1581,9 +1625,17 @@ class RefinedDistributionEDNetwork:
             z_hiddens: 各隠れ層の出力のリスト
             z_output: 出力層の確率分布（SoftMax）
             y_true: 正解クラス
+            collect_diagnostics: Trueの場合、診断データを収集して返す
+        
+        Returns:
+            collect_diagnostics=True時: diagnostics dict
+            それ以外: None
         """
         # 勾配計算
-        gradients = self._compute_gradients(x_paired, z_hiddens, z_output, y_true)
+        if collect_diagnostics:
+            gradients, diag = self._compute_gradients(x_paired, z_hiddens, z_output, y_true, collect_diagnostics=True)
+        else:
+            gradients = self._compute_gradients(x_paired, z_hiddens, z_output, y_true)
         
         # ★新機能★ コラムニューロンの重み肥大化抑制
         # 出力層のコラムニューロンへの勾配を抑制（最終隠れ層の係数を使用）
@@ -1640,6 +1692,14 @@ class RefinedDistributionEDNetwork:
         
         # 出力重みの正則化（★P0最適化★ 1演算に統合）
         self.w_output *= (1.0 - 0.00001)
+        
+        if collect_diagnostics:
+            # 重みノルムを記録
+            diag['weight_norm_per_layer'] = [
+                float(np.linalg.norm(self.w_hidden[i])) for i in range(self.n_layers)
+            ]
+            diag['weight_norm_output'] = float(np.linalg.norm(self.w_output))
+            return diag
     
     def _apply_column_decorrelation(self):
         """
@@ -1737,17 +1797,19 @@ class RefinedDistributionEDNetwork:
                 y_batch[i]
             )
     
-    def train_one_sample(self, x, y_true):
+    def train_one_sample(self, x, y_true, collect_diagnostics=False):
         """
         1サンプルの学習（オンライン学習）
         
         Args:
             x: 入力データ
             y_true: 正解クラス
+            collect_diagnostics: Trueの場合、学習ダイナミクス診断データを返す
         
         Returns:
             loss: 損失
             correct: 正解か否か
+            diagnostics (collect_diagnostics=True時のみ): dict
         """
         # 順伝播
         z_hiddens, z_output, x_paired = self.forward(x)
@@ -1764,7 +1826,10 @@ class RefinedDistributionEDNetwork:
         loss = cross_entropy_loss(z_output, y_true)
         
         # 純粋ED法: 正解クラスのみ学習（不正解クラスは何もしない）
-        self.update_weights(x_paired, z_hiddens, z_output, y_true)
+        if collect_diagnostics:
+            diag = self.update_weights(x_paired, z_hiddens, z_output, y_true, collect_diagnostics=True)
+        else:
+            self.update_weights(x_paired, z_hiddens, z_output, y_true)
         self.class_training_counts[y_true] += 1
         
         # ★v047新機能★ 競合コラム間選択的抑制
@@ -1775,6 +1840,8 @@ class RefinedDistributionEDNetwork:
                 x_paired, z_hiddens, z_output, y_true
             )
         
+        if collect_diagnostics:
+            return loss, correct, diag
         return loss, correct
     
     def _apply_competitive_inhibition(self, x_paired, z_hiddens, z_output, y_true):

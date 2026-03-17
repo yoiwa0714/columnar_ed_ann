@@ -46,6 +46,7 @@ from modules.data_augmentation import augment_batch, create_augmented_dataset
 def parse_args():
     """コマンドライン引数の解析"""
     parser = argparse.ArgumentParser(
+        prog='columnar_ed_ann.py',
         description='コラムED法 多層ニューラルネットワーク実装 (モジュール化版)\n'
                     '\n'
                     '【重要】層数に基づく自動パラメータ設定:\n'
@@ -89,28 +90,32 @@ def parse_args():
     # ========================================
     ed_group = parser.add_argument_group('ED法関連のパラメータ')
     ed_group.add_argument('--hidden', type=str, default='2048',
-                         help='隠れ層ニューロン数（例: 2048=1層, 256,128=2層, 1024[5]=5層同一指定）（デフォルト値: 2048、v044グリッドサーチPhase 3b最適値）')
+                         help='隠れ層ニューロン数（例: 2048=1層, 256,128=2層, 1024[5]=5層同一指定）（デフォルト値: 2048）')
     ed_group.add_argument('--activation', type=str, default='tanh',
                          choices=['tanh', 'sigmoid', 'leaky_relu'],
                          help='活性化関数（デフォルト: tanh）※グリッドサーチ用、将来的に削除予定')
     ed_group.add_argument('--lr', type=float, default=0.15,
-                         help='学習率（デフォルト値: 0.15。層別最適値: 3層=0.15, 4層=0.05, 5層=0.04）')
+                        help='【互換】学習率（デフォルト値: 0.15。3系統学習率未指定時に使用）\n'
+                            '互換モード例: --lr 0.15 --column_lr_factors 0.005,0.003')
+    ed_group.add_argument('--column_lr_factors', type=str, default=None,
+                        help='【互換】層別コラム学習率係数（実効column_lrは lr×factor、カンマ区切り）\n'
+                             '互換モード例: --lr 0.15 --column_lr_factors 0.005,0.003')
     ed_group.add_argument('--output_lr', type=float, default=None,
-                         help='【非推奨移行対応】出力層の学習率（指定時は3系統学習率モードを有効化）')
+                         help='【推奨】出力層の学習率（指定時は3系統学習率モードを有効化）')
     ed_group.add_argument('--non_column_lr', type=str, default=None,
-                         help='【非推奨移行対応】非コラムニューロン層別学習率（カンマ区切り、繰り返し記法対応: 0.04[5]）')
+                         help='【推奨】非コラムニューロン層別学習率（カンマ区切り、繰り返し記法対応: 0.04[5]）')
     ed_group.add_argument('--column_lr', type=str, default=None,
-                         help='【非推奨移行対応】コラムニューロン層別学習率（カンマ区切り、繰り返し記法対応: 0.0002[3],0.0001[2]）')
+                         help='【推奨】コラムニューロン層別学習率（カンマ区切り、繰り返し記法対応: 0.0002[3],0.0001[2]）')
     ed_group.add_argument('--layer_learning_rates', type=str, default=None,
                          help='層別学習率（カンマ区切り、例: 0.05,0.1,0.15）\n'
                               '層数+1個の値が必要（隠れ層1用、...、出力層用）\n'
-                              '未指定時: 全層で--lrの値を使用（v044 Phase 5で未指定が最適と確認）\n'
+                            '未指定時: 全層で--lrの値を使用\n'
                               '例: 1層=0.10,0.15、2層=0.05,0.1,0.15')
     ed_group.add_argument('--epoch_lr_schedule', type=str, default=None,
                          help='エポック依存学習率スケジューリング（カンマ区切り、例: 0.7,0.9,1.0）\n'
                               'Epoch 0から順に各係数を適用、最後の値を維持\n'
                               '例: 0.7,0.9,1.0 → Epoch 0-1: 0.7倍, Epoch 2: 0.9倍, Epoch 3+: 1.0倍\n'
-                              '未指定時: 全エポックで1.0倍（通常動作、v044 Phase 5で未指定が最適と確認）')
+                            '未指定時: 全エポックで1.0倍（通常動作）')
     ed_group.add_argument('--u1', type=float, default=0.5,
                          help='アミン拡散係数u1（層数により自動設定: 1層=0.5, 2層=0.5）')
     ed_group.add_argument('--u2', type=float, default=0.8,
@@ -141,7 +146,7 @@ def parse_args():
     column_group.add_argument('--participation_rate', type=float, default=0.1,
                              help='コラム参加率（デフォルト値: 0.1、スパース表現、優先度：最高）')
     column_group.add_argument('--column_neurons', type=int, default=1,
-                             help='各クラスの明示的ニューロン数（デフォルト値: 1、リザバー構成、v044グリッドサーチ最適値）')
+                             help='各クラスの明示的ニューロン数（デフォルト値: 1、リザバー構成）')
     column_group.add_argument('--use_circular', action='store_true',
                              help='旧円環構造を使用（デフォルトはハニカム）')
     column_group.add_argument('--overlap', type=float, default=0.0,
@@ -151,13 +156,11 @@ def parse_args():
     column_group.add_argument('--diagnose_hidden_weights', action='store_true',
                              help='隠れ層の重み状態を詳細診断（飽和度分析等）')
     column_group.add_argument('--lateral_cooperation', type=float, default=0.0,
-                             help='側方協調学習の強度（0.0-1.0、デフォルト: 0.0=無効、Phase A実証: 0.3で最適）')
+                             help='側方協調学習の強度（0.0-1.0、デフォルト: 0.0=無効）')
     column_group.add_argument('--top_k_winners', type=int, default=None,
-                             help='学習参加ニューロン数の上限（デフォルト: None=全員参加、Phase C実証: 1で最適）')
+                             help='学習参加ニューロン数の上限（デフォルト: None=全員参加）')
     column_group.add_argument('--debug_lc', action='store_true',
                              help='lateral_cooperationデバッグモードを有効化（影響度の詳細分析）')
-    column_group.add_argument('--column_lr_factors', type=str, default=None,
-                             help='層別コラム学習率係数（未指定時はYAML自動: 2層=0.005,0.003 / 3層=0.005,0.004,0.002 / 4層=0.005,0.004,0.003,0.002 / 5層=0.005,0.004,0.003,0.002,0.0015）')
     column_group.add_argument('--use_affinity', action='store_true',
                              help='Affinity方式を使用（デフォルト: False=Membership方式、実験用）')
     column_group.add_argument('--affinity_max', type=float, default=1.0,
@@ -171,7 +174,7 @@ def parse_args():
                              help='受容野分割モード（デフォルト: random）')
     column_group.add_argument('--rank_lut_mode', type=str, default='default',
                              choices=['default', 'equal', 'gradual', 'classic'],
-                             help='ランクベース学習率LUTモード（default: cn依存線形減衰, equal: 均等, gradual: 緩やか減衰, classic: v045以前の急減衰）')
+                             help='ランクベース学習率LUTモード（default: cn依存線形減衰, equal: 均等, gradual: 緩やか減衰, classic: 従来の急減衰）')
     column_group.add_argument('--column_decorrelation', type=float, default=0.0,
                              help='コラム内重みベクトル脱相関強度 (0.0=無効, 0.001-0.1でコラム内ニューロン分化促進)')
     column_group.add_argument('--amine_base_level', type=float, default=0.0,
@@ -233,7 +236,7 @@ def parse_args():
     init_group = parser.add_argument_group('初期化関連のパラメータ')
     init_group.add_argument('--init_method', type=str, default='he',
                            choices=['uniform', 'xavier', 'he', 'flat'],
-                           help='出力層重み初期化手法（デフォルト: he、v044グリッドサーチ最適値）\n'
+                          help='出力層重み初期化手法（デフォルト: he）\n'
                                 'uniform: Simple Uniform (生物学的妥当性重視)\n'
                                 'xavier: Xavier/Glorot初期化 (tanh/sigmoid最適)\n'
                                 'he: He/Kaiming初期化 (ReLU最適、tanh/sigmoidでも有効)\n'
@@ -247,13 +250,13 @@ def parse_args():
     init_group.add_argument('--sparsity', type=float, default=0.0,
                            help='出力層の初期化時スパース率（0.0-1.0、デフォルト: 0.0、例: 0.2=20%%を0に）')
     init_group.add_argument('--hidden_sparsity', type=str, default='0.4',
-                           help='★拡張★ 隠れ層（非コラムニューロン）のスパース率（デフォルト: 0.4、v044グリッドサーチ最適値、層別指定対応）\n'
+                          help='隠れ層（非コラムニューロン）のスパース率（デフォルト: 0.4、層別指定対応）\n'
                                 '形式: カンマ区切りで層数分の値を指定\n'
                                 '例: --hidden_sparsity 0.2,0.3 for 2-layer network (Layer0=0.2, Layer1=0.3)\n'
                                 'コラム内ニューロンは密結合を維持、非コラムニューロンのみにスパース化を適用\n'
                                 '生物学的背景: 脳内コラム構造は密結合、コラム外は疎結合')
     init_group.add_argument('--init_scales', type=str, default=None,
-                           help='★v040新機能★ 層別初期化スケール係数（カンマ区切り、例: 0.3,0.5,1.0）\n'
+                          help='層別初期化スケール係数（カンマ区切り、例: 0.3,0.5,1.0）\n'
                                 '層数+1個の値が必要（Layer 0用、Layer 1用、...、出力層用）\n'
                                 '未指定時: 層数依存デフォルト値を使用\n'
                                 '  1層: [0.4, 1.0]\n'
@@ -263,11 +266,11 @@ def parse_args():
                                 '  5層: [0.9, 1.6, 1.8, 1.2, 1.4, 0.8]\n'
                                 '例: --init_method he --init_scales 0.2,0.8,1.2')
     init_group.add_argument('--normalize_output_weights', action='store_true',
-                           help='★v039.4新機能★ 出力層重みをクラス別に正規化（公平な初期活性化を保証）\n'
+                          help='出力層重みをクラス別に正規化（公平な初期活性化を保証）\n'
                                 '各クラスの重み絶対値平均を強制的に同一に設定\n'
                                 '目的: ランダム初期化による勝者選択の偏りを排除')
     init_group.add_argument('--balance_output_weights', action='store_true',
-                           help='★v043.1新機能★ 出力層重みの正負バランスを揃える\n'
+                          help='出力層重みの正負バランスを揃える\n'
                                 '各クラスの重みを正50%%:負50%%に調整\n'
                                 '目的: 隠れ層活性化との内積を公平化し、勝者選択の偏りを防止\n'
                                 'Class 5問題の解決策として有効（勝者分布の標準偏差: 10.5%%→5.8%%）')
@@ -288,11 +291,10 @@ def parse_args():
     pruning_group.add_argument('--dynamic_pruning_final_sparsity', '--dynamic_pruning_fs', 
                               type=float, default=None, dest='dynamic_pruning_final_sparsity',
                               help='動的刈り込みの目標スパース率（例: 0.4=40%%刈り込み、指定で刈り込み有効化）\n'
-                                   'v044 Phase 6: fs=0.4が安定的に+0.04%%改善、fs=0.5+ep5で最良(+0.06%%)\n'
                                    '生物学的妥当性: 脳の発達的プルーニングで約40-50%%が刈り込まれる')
     pruning_group.add_argument('--pruning_start_epoch', type=int, default=None,
                               help='刈り込み開始エポック（デフォルト: None=安定期検出による自動開始）\n'
-                                   'v044 Phase 6: 自動検出(Epoch 2で安定期検出)が適切に機能')
+                                '自動検出により学習安定後に開始')
     pruning_group.add_argument('--pruning_end_epoch', type=int, default=None,
                               help='刈り込み終了エポック（デフォルト: None=最終エポックまで）\n'
                                    '指定時: start_epoch〜end_epoch間で目標スパース率を100%%達成\n'
@@ -300,15 +302,15 @@ def parse_args():
                                    '  視覚野: 約6歳で終了、前頭前野: 20代後半で終了')
     pruning_group.add_argument('--stability_threshold', type=float, default=0.01,
                               help='安定期検出の閾値（Test精度変化率、デフォルト: 0.01=1%%）\n'
-                                   'v044 Phase 6: デフォルト値0.01で適切に安定期検出')
+                                '通常はデフォルト値のまま使用')
     pruning_group.add_argument('--pruning_verbose', action='store_true',
                               help='刈り込み詳細ログを出力（デフォルト: 無効）')
     
     # ========================================
-    # データ拡張関連のパラメータ (v046)
+    # データ拡張関連のパラメータ
     # ========================================
     aug_group = parser.add_argument_group('データ拡張関連のパラメータ',
-                                         'v046: 訓練データの水増しによる汎化性能向上')
+                                         '訓練データの水増しによる汎化性能向上')
     aug_group.add_argument('--augment', action='store_true',
                           help='データ拡張を有効化（デフォルト: 無効）\n'
                                '有効時: 訓練データにシフト・回転・ノイズを適用して水増し')
@@ -371,7 +373,9 @@ def _show_detailed_hyperparams(n_layers, hp, args):
     hidden_sizes = config['hidden']
     
     # YAMLの値を使用（フォールバック付き）
-    default_init_scales = config.get('weight_init_scales')
+    default_init_scales = config.get('init_scales')
+    if default_init_scales is None:
+        default_init_scales = config.get('weight_init_scales')
     if default_init_scales is None:
         default_init_scales = [0.3 + (0.7 * i / n_layers) for i in range(n_layers)] + [1.0]
     

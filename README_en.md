@@ -292,13 +292,19 @@ python columnar_ed_ann.py --hidden 2048 --diagnose_column
 
 | Argument | Default | Description |
 |----------|---------|-------------|
-| `--output_lr` | Auto (YAML) | Output layer learning rate |
-| `--non_column_lr` | Auto (YAML) | Non-column neuron learning rate per layer (comma-separated, repeat notation supported: `0.04[5]`) |
-| `--column_lr` | Auto (YAML) | Column neuron learning rate per layer (comma-separated, repeat notation supported: `0.0002[3],0.0001[2]`) |
-| `--column_lr_factors` | Auto (YAML) | Per-layer suppression factors applied to column rows (comma-separated) |
+| `--output_lr` | Auto (YAML) | [Recommended] Output layer learning rate |
+| `--non_column_lr` | Auto (YAML) | [Recommended] Non-column neuron learning rate per layer (comma-separated, repeat notation supported: `0.04[5]`) |
+| `--column_lr` | Auto (YAML) | [Recommended] Column neuron learning rate per layer (comma-separated, repeat notation supported: `0.0002[3],0.0001[2]`) |
+| `--lr` | `0.15` | [Compatibility] Learning rate (used when 3-system learning rates are not specified) |
+| `--column_lr_factors` | Auto (YAML) | [Compatibility] Per-layer suppression factors for column rows (effective `column_lr = lr × factor`, comma-separated) |
 | `--u1` | Auto (YAML) | Amine diffusion coefficient u1 |
 | `--u2` | Auto (YAML) | Amine diffusion coefficient u2 |
 | `--gradient_clip` | `0.03` | Gradient clipping value |
+
+One-line compatibility mode example:
+```bash
+python columnar_ed_ann.py --dataset mnist --hidden 2048,1024 --train 10000 --test 10000 --epochs 20 --lr 0.15 --column_lr_factors 0.005,0.003
+```
 
 ### Column Structure
 
@@ -600,6 +606,7 @@ Even in the Full Version, optimal parameters are automatically loaded from `conf
 | output_lr | 0.15 | 0.15 | 0.15 | 0.04 | 0.04 | Output layer learning rate |
 | non_column_lr | [0.15] | [0.15, 0.15] | [0.15, 0.15, 0.15] | [0.04, 0.04, 0.04, 0.04] | [0.04, 0.04, 0.04, 0.04, 0.04] | Hidden layer base learning rate (per layer) *1 |
 | column_lr | [0.0015] | [0.00075, 0.00045] | [0.00075, 0.0006, 0.0003] | [0.0002, 0.00016, 0.00012, 0.00008] | [0.0002, 0.00016, 0.00012, 0.00008, 0.00006] | Column neuron learning rate (per layer) |
+| lr | 0.15 | 0.15 | 0.15 | 0.04 | 0.04 | [Compatibility] Base learning rate (used when 3-system learning rates are not specified) |
 | column_lr_factors (clf) | [0.01] | [0.005, 0.003] | [0.005, 0.004, 0.002] | [0.005, 0.004, 0.003, 0.002] | [0.005, 0.004, 0.003, 0.002, 0.0015] | Per-layer suppression factors for column rows |
 | column_neurons | 1 | 10 | 10 | 20 | 20 | Number of column neurons |
 | init_scales | [0.4, 1.0] | [0.7, 1.8, 0.8] | [0.7, 1.8, 1.8, 0.8] | [0.9, 0.9, 1.8, 1.6, 0.8] | [0.9, 1.6, 1.8, 1.2, 1.4, 0.8] | Per-layer initialization scales |
