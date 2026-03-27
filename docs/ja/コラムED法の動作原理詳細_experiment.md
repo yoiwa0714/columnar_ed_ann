@@ -230,27 +230,29 @@ membership、ランクLUT、コラム係数 $\beta_\ell$ は、
 
 | 式・概念 | 数学表現（要約） | 実装箇所（関数/行） | 実装上の要点 | 検証ログとの対応（式→観測指標） |
 |---|---|---|---|---|
-| 順伝播（隠れ層） | $\mathbf{a}^{(\ell)}=W^{(\ell)}\mathbf{z}^{(\ell-1)},\ \mathbf{z}^{(\ell)}=\phi(\mathbf{a}^{(\ell)})$ | [modules/ed_network.py](../../modules/ed_network.py#L226), [modules/ed_network.py](../../modules/ed_network.py#L248) | `forward()` 内で `np.dot` 後に `tanh_activation` を適用 | エポック別ヒートマップの層活性分布、活性値レンジ（飽和/非飽和の比率） |
-| 順伝播（出力層） | $\mathbf{p}=\mathrm{softmax}(W^{(o)}\mathbf{z}^{(L)})$ | [modules/ed_network.py](../../modules/ed_network.py#L254), [modules/activation_functions.py](../../modules/activation_functions.py#L24) | 最終隠れ層から出力層へ線形写像し `softmax` で確率化 | クラス別テスト正解率表、予測確率分布、勝者選択頻度 |
-| 出力誤差 | $\mathbf{e}^{(o)}=\mathbf{t}-\mathbf{p}$ | [modules/ed_network.py](../../modules/ed_network.py#L331) | one-hot `target_probs` と `z_output` の差分で定義 | 学習初期の誤分類率、クラス別誤差推移（正解クラスの取りこぼし） |
-| 出力飽和項 | $\mathbf{s}^{(o)}=|\mathbf{p}|\odot(1-|\mathbf{p}|)$ | [modules/ed_network.py](../../modules/ed_network.py#L334) | ED法の飽和抑制項を出力層にも適用 | 出力確率が0/1近傍に張り付く割合、学習後半の更新量減衰 |
-| 出力更新 | $\Delta W^{(o)}=\eta_o(\mathbf{e}^{(o)}\odot\mathbf{s}^{(o)})\mathbf{z}^{(L)\top}$ | [modules/ed_network.py](../../modules/ed_network.py#L337) | `np.outer` で直接更新量を計算（連鎖律なし） | Train/Test曲線の立ち上がり速度、クラス別最終精度の収束速度 |
-| 正解クラスのみアミン生成 | $A_{c,+}^{(o)}=\alpha_0(1-p_y)\mathbf{1}[c=y],\ A_{c,-}^{(o)}=0$ | [modules/ed_network.py](../../modules/ed_network.py#L346), [modules/ed_network.py](../../modules/ed_network.py#L349) | `error_correct = 1 - z_output[y_true]` を正解クラスにのみ注入 | 「純粋ED」設定時の全体精度、誤差拡散方式比較（有/無） |
-| 層別拡散係数 | $d_\ell\in\{u_1,u_2\}$ | [modules/ed_network.py](../../modules/ed_network.py#L359) | 最終隠れ層とそれ以前で拡散係数を切替 | 層別活性ヒートマップの変化、u1/u2スイープ時のbest/final精度差 |
-| コラムmembership | $M_{c,j}^{(\ell)}\in\{0,1\}$ | [modules/column_structure.py](../../modules/column_structure.py#L16), [modules/ed_network.py](../../modules/ed_network.py#L366) | `create_column_membership()` で生成し、層ごとの学習マスクとして利用 | コラム診断ログ（クラスごとの割当数）、クラス別精度の偏り |
-| ランクLUT重み | $\lambda_{c,j}^{(\ell)}=g(r_{c,j}^{(\ell)})$（コラム内） | [modules/ed_network.py](../../modules/ed_network.py#L386) | クラス内活性ランクを計算し `_learning_weight_lut` で重み付け | top-k設定やLUTモード変更時のbest精度、早期エポックの安定性 |
-| 非コラム不学習 | $\lambda^{NC}_{c,j,\ell} = 0$ | [modules/ed_network.py](../../modules/ed_network.py#L389) | メイン版では非コラムニューロンは常に学習しない（固定ランダム重み） | — |
-| 隠れ層飽和項 | $q_j^{(\ell)}=\max(|z_j^{(\ell)}|(1-|z_j^{(\ell)}|),\varepsilon)$ | [modules/ed_network.py](../../modules/ed_network.py#L414) | 数値安定のため下限 `1e-3` を付与 | 更新停滞の有無、活性値飽和率と精度低下の相関 |
-| 隠れ層局所信号 | $u_j^{(\ell)}=\eta_\ell\sum_{c,\sigma}H_{c,\sigma,j}^{(\ell)}q_j^{(\ell)}$ | [modules/ed_network.py](../../modules/ed_network.py#L414), [modules/ed_network.py](../../modules/ed_network.py#L424) | 3D信号をクラス・符号で総和し、入力との外積で更新量を形成 | エポックごとのTrain改善量、層別更新強度（デバッグ統計） |
-| 勾配クリップ | $\Delta W\leftarrow\mathrm{Clip}(\Delta W)$ | [modules/ed_network.py](../../modules/ed_network.py#L433) | 行ノルム単位で `gradient_clip` 上限を適用 | `gradient_clip` 値ごとの収束安定性、best-finalギャップ |
-| コラム学習率係数 | $\Delta W_{j,:}\leftarrow\beta_\ell\Delta W_{j,:}\ (j\in\mathcal{C}_\ell)$ | [modules/ed_network.py](../../modules/ed_network.py#L443) | コラム行のみ `column_lr_factors` で抑制 | `column_lr_factors` スイープ時の過学習抑制効果、クラス間バランス |
-| 重み適用 | $W^{(\ell)}\leftarrow W^{(\ell)}+\Delta W^{(\ell)}$ | [modules/ed_network.py](../../modules/ed_network.py#L459), [modules/ed_network.py](../../modules/ed_network.py#L466) | 出力層・隠れ層を順次加算更新 | 各エポックのTrain/Test推移、最終精度・ベスト到達エポック |
+| 順伝播（隠れ層） | $\mathbf{a}^{(\ell)}=W^{(\ell)}\mathbf{z}^{(\ell-1)},\ \mathbf{z}^{(\ell)}=\phi(\mathbf{a}^{(\ell)})$ | [modules_experiment/ed_network.py](../../modules_experiment/ed_network.py#L927), [modules_experiment/activation_functions.py](../../modules_experiment/activation_functions.py#L46) | `forward()` 内で `np.dot` 後に `tanh_activation`（またはleaky_relu）を適用 | エポック別ヒートマップの層活性分布、活性値レンジ（飽和/非飽和の比率） |
+| 順伝播（出力層） | $\mathbf{p}=\mathrm{softmax}(W^{(o)}\mathbf{z}^{(L)})$ | [modules_experiment/ed_network.py](../../modules_experiment/ed_network.py#L927), [modules_experiment/activation_functions.py](../../modules_experiment/activation_functions.py#L63) | 最終隠れ層から出力層へ線形写像し `softmax` で確率化 | クラス別テスト正解率表、予測確率分布、勝者選択頻度 |
+| E/Iペア化 | $\tilde{\mathbf{x}} = [\mathbf{x}, \mathbf{x}]$ | [modules_experiment/ed_network.py](../../modules_experiment/ed_network.py#L944), [modules_experiment/neuron_structure.py](../../modules_experiment/neuron_structure.py#L32) | `create_ei_pairs(x)` で入力を興奮/抑制ペアに変換 | — |
+| 出力誤差 | $\mathbf{e}^{(o)}=\mathbf{t}-\mathbf{p}$ | [modules_experiment/ed_network.py](../../modules_experiment/ed_network.py#L1286) | one-hot `target_probs` と `z_output` の差分で定義 | 学習初期の誤分類率、クラス別誤差推移（正解クラスの取りこぼし） |
+| 出力飽和項 | $\mathbf{s}^{(o)}=|\mathbf{p}|\odot(1-|\mathbf{p}|)$ | [modules_experiment/ed_network.py](../../modules_experiment/ed_network.py#L1288) | ED法の飽和抑制項を出力層にも適用 | 出力確率が0/1近傍に張り付く割合、学習後半の更新量減衰 |
+| 出力更新 | $\Delta W^{(o)}=\eta_o(\mathbf{e}^{(o)}\odot\mathbf{s}^{(o)})\mathbf{z}^{(L)\top}$ | [modules_experiment/ed_network.py](../../modules_experiment/ed_network.py#L1296) | `np.outer` で直接更新量を計算（連鎖律なし） | Train/Test曲線の立ち上がり速度、クラス別最終精度の収束速度 |
+| 正解クラスのみアミン生成 | $A_{c,+}^{(o)}=\alpha_0(1-p_y)\mathbf{1}[c=y],\ A_{c,-}^{(o)}=0$ | [modules_experiment/ed_network.py](../../modules_experiment/ed_network.py#L1305), [modules_experiment/ed_network.py](../../modules_experiment/ed_network.py#L1311) | `error_correct = 1 - z_output[y_true]` を正解クラスの正チャネルにのみ注入 | 「純粋ED」設定時の全体精度、誤差拡散方式比較（有/無） |
+| 層別拡散係数 | $d_\ell\in\{u_1,u_2\}$（uniform時は全層$u_1$） | [modules_experiment/ed_network.py](../../modules_experiment/ed_network.py#L1326) | 最終隠れ層とそれ以前で拡散係数を切替 | 層別活性ヒートマップの変化、u1/u2スイープ時のbest/final精度差 |
+| コラムmembership | $M_{c,j}^{(\ell)}\in\{0,1\}$ | [modules_experiment/column_structure.py](../../modules_experiment/column_structure.py#L44), [modules_experiment/ed_network.py](../../modules_experiment/ed_network.py#L1348) | `create_column_membership()` で生成し、層ごとの学習マスクとして利用 | コラム診断ログ（クラスごとの割当数）、クラス別精度の偏り |
+| ランクLUT重み | $\lambda_{c,j}^{(\ell)}=g(r_{c,j}^{(\ell)})$（コラム内） | [modules_experiment/ed_network.py](../../modules_experiment/ed_network.py#L1373) | クラス内活性ランクを計算し `_learning_weight_lut` で重み付け | top-k設定やLUTモード変更時のbest精度、早期エポックの安定性 |
+| NC分岐（非コラム） | $\lambda^{NC}_{c,j,\ell}$ | [modules_experiment/ed_network.py](../../modules_experiment/ed_network.py#L1383), [modules_experiment/ed_network.py](../../modules_experiment/ed_network.py#L1407) | 最近傍帰属・空間拡散・均一微小値など設定に応じて切替 | NC学習ON/OFF比較、`nc_amine_strength` スイープの山型応答 |
+| 隠れ層飽和項 | $q_j^{(\ell)}=\max(|z_j^{(\ell)}|(1-|z_j^{(\ell)}|),\varepsilon)$ | [modules_experiment/ed_network.py](../../modules_experiment/ed_network.py#L1466) | 数値安定のため下限 `1e-3` を付与 | 更新停滞の有無、活性値飽和率と精度低下の相関 |
+| 隠れ層局所信号 | $u_j^{(\ell)}=\eta_\ell\sum_{c,\sigma}H_{c,\sigma,j}^{(\ell)}q_j^{(\ell)}$ | [modules_experiment/ed_network.py](../../modules_experiment/ed_network.py#L1492), [modules_experiment/ed_network.py](../../modules_experiment/ed_network.py#L1493) | 3D信号をクラス・符号で総和し、入力との外積で更新量を形成 | エポックごとのTrain改善量、層別更新強度（デバッグ統計） |
+| 勾配クリップ | $\Delta W\leftarrow\mathrm{Clip}(\Delta W)$ | [modules_experiment/ed_network.py](../../modules_experiment/ed_network.py#L1502) | 行ノルム単位で `gradient_clip` 上限を適用 | `gradient_clip` 値ごとの収束安定性、best-finalギャップ |
+| コラム学習率係数 | $\Delta W_{j,:}\leftarrow\beta_\ell\Delta W_{j,:}\ (j\in\mathcal{C}_\ell)$ | [modules_experiment/ed_network.py](../../modules_experiment/ed_network.py#L1514) | コラム行のみ `column_lr_factors` で抑制 | `column_lr_factors` スイープ時の過学習抑制効果、クラス間バランス |
+| 重み適用 | $W^{(\ell)}\leftarrow W^{(\ell)}+\Delta W^{(\ell)}$ | [modules_experiment/ed_network.py](../../modules_experiment/ed_network.py#L1530), [modules_experiment/ed_network.py](../../modules_experiment/ed_network.py#L1572) | 出力層・隠れ層を順次加算更新 | 各エポックのTrain/Test推移、最終精度・ベスト到達エポック |
+| 可視化 | — | [modules_experiment/visualization_manager.py](../../modules_experiment/visualization_manager.py#L158) | `VisualizationManager` によるリアルタイム学習曲線・ヒートマップ | 可視化出力 |
 
-> **注記**: 実験版（`modules_experiment/`）の対応表は、[コラムED法の動作原理詳細_experiment.md](コラムED法の動作原理詳細_experiment.md) を参照してください。
+> **注記**: メイン版（`modules/`）の対応表は、[コラムED法の動作原理詳細.md](コラムED法の動作原理詳細.md) を参照してください。
 
 注記:
 
-- 行番号は現時点のメイン版実装に基づく対応であり、コード更新により変動する可能性がある。
+- 行番号は現時点の実験版実装に基づく対応であり、コード更新により変動する可能性がある。
 - 上表は「連鎖律不使用」の実装上の局所更新構造を明示することを目的としている。
 
 ---

@@ -1,8 +1,10 @@
-# コラムED法 — 動作の流れとコード解説
+# コラムED法 — 動作の流れとコード解説（実験版）
 
 本ドキュメントでは、コラムED法の動作の流れをブロックダイアグラムで示し、ED法の核となる関数のコードを注釈付きで解説します。
 
-> **対象ファイル:** `columnar_ed_ann.py`（メイン版）、`modules/ed_network.py`（EDネットワーク）、`modules/column_structure.py`（コラム構造）
+> **対象ファイル:** `columnar_ed_ann_experiment.py`（実験版メインスクリプト）、`modules_experiment/ed_network.py`（EDネットワーク）、`modules_experiment/column_structure.py`（コラム構造）、`modules_experiment/neuron_structure.py`（E/Iペア生成）
+
+> **注記**: メイン版（`columnar_ed_ann.py` + `modules/`）のドキュメントは [コラムED法_動作の流れ.md](コラムED法_動作の流れ.md) を参照してください。
 
 ---
 
@@ -17,13 +19,13 @@
   - [4.3 アミン濃度計算と拡散](#43-アミン濃度計算と拡散)
   - [4.4 隠れ層の重み更新](#44-隠れ層の重み更新)
   - [4.5 create_column_membership() — コラム構造](#45-create_column_membership--コラム構造)
-- [5. 実装アンカー付き学習メカニズム（メイン版）](#5-実装アンカー付き学習メカニズムメイン版)
+- [5. 実装アンカー付き学習メカニズム（実験版）](#5-実装アンカー付き学習メカニズム実験版)
 
 ---
 
 ## 1. 全体フロー
 
-メインスクリプト `columnar_ed_ann.py` の処理の流れです。
+メインスクリプト `columnar_ed_ann_experiment.py` の処理の流れです。
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -42,7 +44,7 @@
 └──────────────────────┬──────────────────────────┘
                        ▼
 ┌─────────────────────────────────────────────────┐
-│       Gabor特徴抽出（デフォルトON、省略可能）       │
+│       Gabor特徴抽出（--gabor_features で有効化）   │
 │  (V1野単純型細胞モデル、入力品質向上)               │
 └──────────────────────┬──────────────────────────┘
                        ▼
@@ -176,7 +178,7 @@
 
 ### 4.1 forward() — 順伝播
 
-**ファイル:** `modules/ed_network.py`
+**ファイル:** `modules_experiment/ed_network.py`
 
 順伝播は比較的シンプルです。入力をE/Iペアに変換した後、各隠れ層ではtanh活性化、出力層ではsoftmaxで確率分布に変換します。
 
@@ -184,7 +186,7 @@
 def forward(self, x):
     # ★ Dale's Principle: 入力を [x, x] に複製
     # 重み行列の符号制約（興奮性/抑制性）と組み合わせて生物学的制約を実現
-    x_paired = np.concatenate([x, x])
+    x_paired = create_ei_pairs(x)
 
     z_hiddens = []
     z_current = x_paired
@@ -204,7 +206,8 @@ def forward(self, x):
 ```
 
 **ポイント:**
-- `np.concatenate([x, x])` は入力を `[x, x]` に連結するだけの単純な処理ですが、第1層の重み行列に適用される符号制約（Dale's Principle）と組み合わさることで、前半が興奮性入力、後半が抑制性入力として機能します
+- `create_ei_pairs(x)` は入力を `[x, x]` に連結するだけの単純な処理ですが、第1層の重み行列に適用される符号制約（Dale's Principle）と組み合わさることで、前半が興奮性入力、後半が抑制性入力として機能します
+- `create_ei_pairs()` は `modules_experiment/neuron_structure.py` で定義されています
 - 各隠れ層のtanhは飽和特性（±1に近づくと変化しにくくなる）を持ち、これがED法の飽和抑制項と連携します
 - softmaxは出力を確率として解釈するために使用されますが、BP法のようにsoftmaxの微分を逆伝播に使用することはありません
 
@@ -228,7 +231,7 @@ def forward(self, x):
         x_paired: 入力ペア（興奮性+抑制性）
     """
     # 入力ペア構造: x → [x, x]（Dale's Principleの符号行列で興奮性・抑制性を実現）
-    x_paired = np.concatenate([x, x])
+    x_paired = create_ei_pairs(x)
 
     z_hiddens = []
     z_current = x_paired
@@ -252,7 +255,7 @@ def forward(self, x):
 
 ### 4.2 出力層の勾配計算 — 飽和抑制項
 
-**ファイル:** `modules/ed_network.py` — `_compute_gradients()` の前半部分
+**ファイル:** `modules_experiment/ed_network.py` — `_compute_gradients()` の前半部分
 
 出力層の重み更新は、ED法の飽和抑制項を使います。これはBP法のsoftmax微分（クロスエントロピー微分）とは本質的に異なります。
 
@@ -286,7 +289,7 @@ gradients['w_output'] = output_lr * np.outer(
 
 ### 4.3 アミン濃度計算と拡散
 
-**ファイル:** `modules/ed_network.py` — `_compute_gradients()` の中間部分
+**ファイル:** `modules_experiment/ed_network.py` — `_compute_gradients()` の中間部分
 
 出力層の誤差からアミン濃度を生成し、コラム構造に沿って隠れ層に拡散させます。これがBP法の「微分の連鎖律による逆伝播」を代替する機構です。
 
@@ -347,7 +350,7 @@ for layer_idx in range(self.n_layers - 1, -1, -1):
 
 ### 4.4 隠れ層の重み更新
 
-**ファイル:** `modules/ed_network.py` — `_compute_gradients()` の後半部分
+**ファイル:** `modules_experiment/ed_network.py` — `_compute_gradients()` の後半部分
 
 アミン拡散量と飽和抑制項を使って、各隠れ層が**独立に**重みを更新します。
 
@@ -387,208 +390,11 @@ if self.gradient_clip > 0:
 - **飽和抑制項**が出力層と同じ式であることに注目してください。これは「すべての層が同じ原理で動作する」というED法の統一性を示しています
 - **第2層以降の符号制約**: 重みの正負が反転しないように制約をかけます（Dale's Principleの一般化）
 
-<details>
-<summary>📄 _compute_gradients() の全コード</summary>
-
-```python
-def _compute_gradients(self, x_paired, z_hiddens, z_output, y_true):
-    """
-    ED法による勾配計算
-
-    ★核心★ 微分の連鎖律を使わない。代わりに:
-    1. 出力層の誤差からアミン濃度を生成
-    2. アミンがコラム構造に沿って隠れ層に拡散
-    3. 各層は独立に飽和抑制項 abs(z)*(1-abs(z)) で学習
-
-    Args:
-        x_paired: 入力ペア
-        z_hiddens: 各隠れ層の出力
-        z_output: 出力層の確率分布
-        y_true: 正解クラス
-
-    Returns:
-        gradients: 各層の勾配辞書
-    """
-    gradients = {
-        'w_output': None,
-        'w_hidden': [None] * self.n_layers,
-    }
-
-    # ============================================
-    # 1. 出力層の勾配計算
-    # ============================================
-    target_probs = np.zeros(self.n_output)
-    target_probs[y_true] = 1.0
-    error_output = target_probs - z_output
-
-    # ★飽和抑制項★ ED法の核心 ─ シグモイド微分ではない
-    saturation_output = np.abs(z_output) * (1.0 - np.abs(z_output))
-
-    output_lr = self.layer_lrs[-1]
-    gradients['w_output'] = output_lr * np.outer(
-        error_output * saturation_output,
-        z_hiddens[-1]
-    )
-
-    # ============================================
-    # 2. 出力層のアミン濃度計算
-    # ============================================
-    # 純粋ED法: 正解クラスのみ学習
-    amine_concentration = np.zeros(self.n_output)
-    error_correct = 1.0 - z_output[y_true]
-    if error_correct > 0:
-        amine_concentration[y_true] = error_correct * self.initial_amine
-
-    # ============================================
-    # 3. 多層アミン拡散と勾配計算（逆順、微分の連鎖律不使用）
-    # ============================================
-    for layer_idx in range(self.n_layers - 1, -1, -1):
-        if layer_idx == 0:
-            z_input = x_paired
-        else:
-            z_input = z_hiddens[layer_idx - 1]
-
-        # 拡散係数の選択（最終隠れ層=u1、それ以外=u2）
-        if layer_idx == self.n_layers - 1:
-            diffusion_coef = self.u1
-        else:
-            diffusion_coef = self.u2
-
-        # アミン拡散（コラム構造に沿って選択的に拡散）
-        amine_mask = amine_concentration >= 1e-8
-        amine_diffused = amine_concentration * diffusion_coef
-
-        # Membership方式: 活性値ランクベースTop-K学習
-        membership = self.column_membership_all_layers[layer_idx]
-        z_current = z_hiddens[layer_idx]
-        n_neurons = self.n_hidden[layer_idx]
-
-        active_classes = np.where(amine_diffused >= 1e-8)[0]
-        n_active = len(active_classes)
-
-        if n_active == 0:
-            amine_hidden = np.zeros((self.n_output, n_neurons))
-        else:
-            # コラムメンバーの活性値でランク計算
-            active_membership = membership[active_classes]
-            masked_activations = np.where(active_membership, z_current, -np.inf)
-            sorted_indices = np.argsort(-masked_activations, axis=1)
-            ranks = np.argsort(sorted_indices, axis=1)
-
-            # ランクからLUT参照で学習率を取得
-            clamped_ranks = np.minimum(ranks, len(self._learning_weight_lut) - 1)
-            learning_weights = self._learning_weight_lut[clamped_ranks]
-
-            # 非コラムニューロンはamine=0（学習しない）
-            learning_weights = np.where(active_membership, learning_weights, 0.0)
-
-            # アミン拡散値に学習率を適用
-            amine_hidden = np.zeros((self.n_output, n_neurons))
-            amine_hidden[active_classes] = (
-                amine_diffused[active_classes, np.newaxis] *
-                learning_weights
-            )
-
-        amine_hidden = amine_hidden * amine_mask[:, np.newaxis]
-
-        # 活性ニューロンの特定（アミン非ゼロの行のみ更新）
-        neuron_mask = np.any(amine_hidden >= 1e-8, axis=0)
-        active_neurons = np.where(neuron_mask)[0]
-
-        if len(active_neurons) == 0:
-            gradients['w_hidden'][layer_idx] = None
-            continue
-
-        # ★飽和抑制項★ abs(z)*(1-abs(z)) ─ 微分の連鎖律ではない
-        z_active = z_hiddens[layer_idx][active_neurons]
-        saturation_term_raw = np.abs(z_active) * (1.0 - np.abs(z_active))
-        saturation_term = np.maximum(saturation_term_raw, 1e-3)
-
-        # 学習信号 = 学習率 × アミン拡散量 × 飽和抑制項
-        layer_lr = self.layer_lrs[layer_idx]
-        learning_signals = (
-            layer_lr *
-            amine_hidden[:, active_neurons] *
-            saturation_term[np.newaxis, :]
-        )
-
-        # 勾配計算（全クラスの信号を合計 × 入力でouter product）
-        signal_sum = learning_signals.sum(axis=0)
-        delta_w_batch = signal_sum[:, np.newaxis] * z_input[np.newaxis, :]
-
-        # 第2層以降の符号制約
-        if layer_idx > 0:
-            w_sign = np.sign(self.w_hidden[layer_idx][active_neurons, :])
-            w_sign[w_sign == 0] = 1
-            delta_w_batch *= w_sign
-
-        # 勾配クリッピング
-        if self.gradient_clip > 0:
-            delta_w_norms = np.linalg.norm(delta_w_batch, axis=1, keepdims=True)
-            clip_mask = delta_w_norms > self.gradient_clip
-            delta_w_batch = np.where(
-                clip_mask,
-                delta_w_batch * (self.gradient_clip / delta_w_norms),
-                delta_w_batch
-            )
-
-        # コラムニューロンの学習率抑制（重み飽和防止）
-        layer_lr_factor = self.column_lr_factors[layer_idx]
-        if layer_lr_factor < 1.0 and layer_idx < len(self.column_membership_all_layers):
-            membership = self.column_membership_all_layers[layer_idx]
-            is_column_neuron = np.any(membership, axis=0)
-            active_is_column = is_column_neuron[active_neurons]
-            if np.any(active_is_column):
-                delta_w_batch[active_is_column, :] *= layer_lr_factor
-
-        # スパース形式で保存（active行のみ更新）
-        gradients['w_hidden'][layer_idx] = (active_neurons, delta_w_batch)
-
-    return gradients
-```
-
-</details>
-
-<details>
-<summary>📄 update_weights() の全コード</summary>
-
-```python
-def update_weights(self, x_paired, z_hiddens, z_output, y_true):
-    """
-    重みの更新（ED法準拠、微分の連鎖律不使用）
-
-    各層が独立にアミン拡散信号に基づいて重み更新を行う。
-    第1層にはDale's Principleの符号制約を適用。
-    """
-    gradients = self._compute_gradients(x_paired, z_hiddens, z_output, y_true)
-
-    # 勾配適用
-    self.w_output += gradients['w_output']
-
-    for layer_idx in range(self.n_layers):
-        sparse_grad = gradients['w_hidden'][layer_idx]
-        if sparse_grad is not None:
-            active_neurons, delta_w_batch = sparse_grad
-            self.w_hidden[layer_idx][active_neurons] += delta_w_batch
-
-            # 第1層のDale's Principle強制（active行のみ）
-            if layer_idx == 0:
-                self.w_hidden[0][active_neurons] = (
-                    np.abs(self.w_hidden[0][active_neurons]) *
-                    self._sign_matrix_layer0[active_neurons]
-                )
-
-    # 出力重みの微弱正則化
-    self.w_output *= (1.0 - 0.00001)
-```
-
-</details>
-
 ---
 
 ### 4.5 create_column_membership() — コラム構造
 
-**ファイル:** `modules/column_structure.py`
+**ファイル:** `modules_experiment/column_structure.py`
 
 コラム構造は、隠れ層のニューロンを2次元空間に配置し、各クラスに最も近いニューロンを割り当てる仕組みです。
 
@@ -607,14 +413,7 @@ def create_column_membership(n_hidden, n_classes, ..., column_neurons=None):
     class_coords = {
         0: (center + scale*(-1), center + scale*(-1)),  # 上段左
         1: (center + scale*(+1), center + scale*(-1)),  # 上段右
-        2: (center + scale*(-2), center + scale*(0)),   # 中段左
-        3: (center + scale*(0),  center + scale*(0)),   # 中段中
-        4: (center + scale*(+2), center + scale*(0)),   # 中段右
-        5: (center + scale*(-2), center + scale*(+1)),  # 中下段左
-        6: (center + scale*(0),  center + scale*(+1)),  # 中下段中
-        7: (center + scale*(+2), center + scale*(+1)),  # 中下段右
-        8: (center + scale*(-1), center + scale*(+2)),  # 下段左
-        9: (center + scale*(+1), center + scale*(+2)),  # 下段右
+        ...
     }
 
     # ★ 各クラスの中心に最も近い neurons_per_class 個のニューロンを割り当て
@@ -636,98 +435,6 @@ def create_column_membership(n_hidden, n_classes, ..., column_neurons=None):
 - **`column_neurons=1`** の場合、各クラスたった1個のニューロンだけが学習対象になり、リザバーコンピューティングと同等の動作になります（2048個中10個のみ学習、99.5%は固定重み）
 - `membership` は `[n_classes, n_hidden]` のブール配列で、これが学習時の「アミン信号がどのニューロンに届くか」を決定します
 
-<details>
-<summary>📄 create_column_membership() の全コード</summary>
-
-```python
-def create_column_membership(n_hidden, n_classes, participation_rate=1.0,
-                             use_hexagonal=True, column_radius=0.4, column_neurons=None):
-    """
-    コラムメンバーシップフラグを作成
-
-    各ニューロンがどのクラスのコラムに所属するかをブールフラグで管理。
-    コラム構造を維持しつつ、重みは学習で獲得される。
-
-    Args:
-        n_hidden: 隠れ層のニューロン総数
-        n_classes: 出力クラス数
-        participation_rate: 各クラスに割り当てるニューロンの割合（0.0-1.0）
-        use_hexagonal: Trueならハニカム配置、Falseなら順次割り当て
-        column_radius: コラム半径（ハニカム配置時の参考値）
-        column_neurons: 各クラスに割り当てるニューロン数（明示指定、優先度最高）
-
-    Returns:
-        membership: shape [n_classes, n_hidden] のブール配列
-        neuron_positions: shape [n_hidden, 2] の2D座標配列
-        class_coords: 各クラスのコラム中心座標辞書
-    """
-    membership = np.zeros((n_classes, n_hidden), dtype=bool)
-    neuron_positions = None
-    class_coords = None
-
-    # 各クラスに割り当てるニューロン数（優先順位: column_neurons > participation_rate）
-    if column_neurons is not None:
-        neurons_per_class = column_neurons
-    else:
-        neurons_per_class = int(n_hidden * participation_rate / n_classes)
-
-    if neurons_per_class == 0:
-        neurons_per_class = 1
-
-    if use_hexagonal:
-        # ハニカム配置（2-3-3-2パターンで10クラスを中心化配置）
-        grid_size = int(np.ceil(np.sqrt(n_hidden)))
-        grid_center = grid_size / 2.0
-
-        # スケール係数: コラムを隠れ層全体の約4/5の範囲に分散
-        scale_factor = (grid_size * 0.8) / 4.0
-
-        # 2-3-3-2配置の10クラス座標
-        class_coords = {
-            0: (grid_center + scale_factor * (-1), grid_center + scale_factor * (-1)),
-            1: (grid_center + scale_factor * (+1), grid_center + scale_factor * (-1)),
-            2: (grid_center + scale_factor * (-2), grid_center + scale_factor * (0)),
-            3: (grid_center + scale_factor * (0),  grid_center + scale_factor * (0)),
-            4: (grid_center + scale_factor * (+2), grid_center + scale_factor * (0)),
-            5: (grid_center + scale_factor * (-2), grid_center + scale_factor * (+1)),
-            6: (grid_center + scale_factor * (0),  grid_center + scale_factor * (+1)),
-            7: (grid_center + scale_factor * (+2), grid_center + scale_factor * (+1)),
-            8: (grid_center + scale_factor * (-1), grid_center + scale_factor * (+2)),
-            9: (grid_center + scale_factor * (+1), grid_center + scale_factor * (+2))
-        }
-
-        neuron_positions = np.array([
-            [i // grid_size, i % grid_size] for i in range(n_hidden)
-        ])
-
-        for class_idx in range(min(n_classes, len(class_coords))):
-            center_row, center_col = class_coords[class_idx]
-
-            distances = np.sqrt(
-                (neuron_positions[:, 0] - center_row) ** 2 +
-                (neuron_positions[:, 1] - center_col) ** 2
-            )
-
-            closest_indices = np.argsort(distances)[:neurons_per_class]
-            membership[class_idx, closest_indices] = True
-    else:
-        # 順次割り当て
-        grid_size = int(np.ceil(np.sqrt(n_hidden)))
-        neuron_positions = np.array([
-            [i // grid_size, i % grid_size] for i in range(n_hidden)
-        ])
-        class_coords = None
-
-        for class_idx in range(n_classes):
-            start_idx = class_idx * neurons_per_class
-            end_idx = min(start_idx + neurons_per_class, n_hidden)
-            membership[class_idx, start_idx:end_idx] = True
-
-    return membership, neuron_positions, class_coords
-```
-
-</details>
-
 ---
 
 ## まとめ
@@ -742,79 +449,89 @@ def create_column_membership(n_hidden, n_classes, participation_rate=1.0,
 
 ---
 
-## 5. 実装アンカー付き学習メカニズム（メイン版）
+## 5. 実装アンカー付き学習メカニズム（実験版）
 
-本章は、上記の概念説明を**メイン版実装**に1対1対応させるためのアンカー集です。
+本章は、上記の概念説明を**実験版実装**に1対1対応させるためのアンカー集です。
 
-- 対象ファイル: `columnar_ed_ann.py`（メイン版）, `modules/ed_network.py`
+- 対象ファイル: `columnar_ed_ann_experiment.py`（実験版）, `modules_experiment/ed_network.py`
 - 目的: 理論要素を「どの行で実装しているか」を即確認できるようにする
 
-> **注記**: 実験版（`columnar_ed_ann_experiment.py` + `modules_experiment/`）のアンカーは、[コラムED法_動作の流れ_experiment.md](コラムED法_動作の流れ_experiment.md) を参照してください。
+> **注記**: メイン版（`columnar_ed_ann.py` + `modules/`）のアンカーは、[コラムED法_動作の流れ.md](コラムED法_動作の流れ.md) を参照してください。
 
 ### 5.1 実行フロー（mainから学習まで）
 
-1. CLI引数の受け取り
-`columnar_ed_ann.py:47` — `def parse_args()`
-`columnar_ed_ann.py:58` — `--hidden`
-`columnar_ed_ann.py:66` — `--epochs`
-`columnar_ed_ann.py:72` — `--no_gabor`
+1. CLI引数の受け取り（学習率、コラム関連、初期化、Gabor）
+`columnar_ed_ann_experiment.py:48` — `def parse_args()`
+`columnar_ed_ann_experiment.py:99` — `--lr`
+`columnar_ed_ann_experiment.py:102` — `--column_lr_factors`
+`columnar_ed_ann_experiment.py:150` — `--column_neurons`
+`columnar_ed_ann_experiment.py:258` — `--init_scales`
+`columnar_ed_ann_experiment.py:339` — `--gabor_features`
 
-2. YAML自動パラメータ適用
-`columnar_ed_ann.py:113` — `hp = HyperParams()`
+2. 層数に応じたYAML自動パラメータ適用
+`columnar_ed_ann_experiment.py:598` — `HyperParams()`
 
-3. Gabor特徴抽出
-`columnar_ed_ann.py:159` — `from modules.gabor_features import GaborFeatureExtractor`
-`columnar_ed_ann.py:177` — `extractor = GaborFeatureExtractor(...)`
+3. ネットワーク生成（ED学習則パラメータ注入）
+`columnar_ed_ann_experiment.py:1223` — `RefinedDistributionEDNetwork(...)`
 
-4. ネットワーク生成
-`columnar_ed_ann.py:204` — `network = SimpleColumnEDNetwork(...)`
+4. 学習実行（オンラインED）
+`modules_experiment/ed_network.py:1885` — `train_epoch()`
 
-5. 学習実行（オンラインED）
-`columnar_ed_ann.py` — エポックループ内で `network.train_epoch()` を呼び出し
-`modules/ed_network.py:506` — `train_epoch()`
-
-6. 評価実行
-`modules/ed_network.py:549` — `evaluate_parallel()`
+5. 評価実行（学習後の性能計測）
+`modules_experiment/ed_network.py:2305` — `evaluate_parallel()`
 
 ### 5.2 理論要素とコード対応（1:1）
 
 1. 連鎖律を使わないED勾配計算
-`modules/ed_network.py:289` — `_compute_gradients()`
+`modules_experiment/ed_network.py:1256` — `_compute_gradients()`
 各層を独立更新し、BPの連鎖微分を使わない。
 
 2. 出力誤差の正解クラス基準化
-`modules/ed_network.py:346` — `amine_concentration[y_true] = error_correct * self.initial_amine`
+`modules_experiment/ed_network.py:1305` — `amine_concentration[y_true] = error_correct * self.initial_amine`
 正解クラスの予測不足分からアミンを生成。
 
 3. 飽和抑制項 `abs(z) * (1 - abs(z))`
-`modules/ed_network.py:334` — 出力層
-`modules/ed_network.py:414` — 隠れ層（learning_signals計算内）
+`modules_experiment/ed_network.py:1288` — 出力層
+`modules_experiment/ed_network.py:1471` — 隠れ層（learning_signals計算内）
 出力層と隠れ層で同一原理を適用。
 
 4. アミン拡散（u1/u2）
-`modules/ed_network.py:359` — `diffusion_coef = self.u1 / self.u2`
-`modules/ed_network.py:363` — `amine_diffused = amine_concentration * diffusion_coef`
+`modules_experiment/ed_network.py:1362` — `amine_diffused = amine_concentration * diffusion_coef`
 
 5. コラムmembershipに基づく選択的学習
-`modules/ed_network.py:366` — `membership = self.column_membership_all_layers[layer_idx]`
-`modules/ed_network.py:389` — `learning_weights = np.where(active_membership, learning_weights, 0.0)`
+`modules_experiment/ed_network.py:1362` — `membership = self.column_membership_all_layers[layer_idx]`
+`modules_experiment/ed_network.py:1362` — `learning_weights = np.where(active_membership, learning_weights, 0.0)`
 
 6. 層別学習率
-`modules/ed_network.py:92` — `self.layer_lrs` の初期化
+`modules_experiment/ed_network.py:1471` — `layer_lr = self.layer_lrs[layer_idx]`
 
 7. コラム学習率抑制（層別）
-`modules/ed_network.py:443` — `lr_factor = self.column_lr_factors[layer_idx]`
+`modules_experiment/ed_network.py:1514` — `self.column_lr_factors[layer_idx]`
 
 8. 勾配クリッピング
-`modules/ed_network.py:434` — `delta_w_norms > self.gradient_clip`
+`modules_experiment/ed_network.py:1507` — 勾配ノルムの検査とクリッピング
 
 9. 順伝播（E/Iペア化 + tanh + softmax）
-`modules/ed_network.py:226` — `forward()`
-`modules/ed_network.py:241` — `x_paired = np.concatenate([x, x])`（E/Iペア化）
-`modules/ed_network.py:248` — `tanh_activation(a_hidden)`
-`modules/ed_network.py:254` — `softmax(a_output)`
+`modules_experiment/ed_network.py:927` — `forward()`
+`modules_experiment/ed_network.py:944` — `x_paired = create_ei_pairs(x)`（E/Iペア化）
+`modules_experiment/neuron_structure.py:32` — `def create_ei_pairs()`（E/Iペア生成関数）
+`modules_experiment/activation_functions.py:46` — `tanh_activation()`
+`modules_experiment/activation_functions.py:63` — `softmax()`
 
 10. オンライン逐次更新（EDの時間順更新）
-`modules/ed_network.py:489` — `train_one_sample()`
-`modules/ed_network.py:506` — `train_epoch()`
+`modules_experiment/ed_network.py:1700` — `train_one_sample()`
+`modules_experiment/ed_network.py:1885` — `train_epoch()`
 各サンプルで即時に重み更新を行う。
+
+### 5.3 実行モードごとの注意
+
+1. 通常実行（`--batch_size` なし）
+NumPyオンライン経路（本章のアンカー対象）が使われる。
+
+2. `--batch_size` または `--use_cupy` 指定時
+ミニバッチ/GPU高速化経路に分岐するため、内部実装アンカーは別系統も確認が必要。
+
+3. 可視化（`--viz`）
+`modules_experiment/visualization_manager.py:158` — `VisualizationManager` クラス
+`modules_experiment/visualization_manager.py:476` — `update_heatmap()`
+`modules_experiment/visualization_manager.py:851` — `show_train_errors()`
