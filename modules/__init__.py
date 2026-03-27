@@ -1,1 +1,1 @@
-# modules_simple: コラムED法の教育用簡潔モジュール群
+# modules: コラムED法のコアモジュール群

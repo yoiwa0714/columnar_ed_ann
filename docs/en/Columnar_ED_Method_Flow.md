@@ -2,7 +2,7 @@
 
 This document illustrates the operational flow of the Columnar ED method using block diagrams and provides annotated explanations of the core ED method functions.
 
-> **Target files:** `columnar_ed_ann_simple.py` (main script), `modules_simple/ed_network.py` (ED network), `modules_simple/column_structure.py` (column structure)
+> **Target files:** `columnar_ed_ann.py` (main script), `modules/ed_network.py` (ED network), `modules/column_structure.py` (column structure)
 
 ---
 
@@ -22,7 +22,7 @@ This document illustrates the operational flow of the Columnar ED method using b
 
 ## 1. Overall Flow
 
-The processing flow of the main script `columnar_ed_ann_simple.py`.
+The processing flow of the main script `columnar_ed_ann.py`.
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -178,7 +178,7 @@ Input x
 
 ### 4.1 forward() — Forward Propagation
 
-**File:** `modules_simple/ed_network.py`
+**File:** `modules/ed_network.py`
 
 Forward propagation is relatively straightforward. After converting the input to E/I pairs, each hidden layer applies tanh activation, and the output layer converts to a probability distribution via softmax.
 
@@ -257,7 +257,7 @@ def forward(self, x):
 
 ### 4.2 Output Layer Gradient — Saturation Suppression Term
 
-**File:** `modules_simple/ed_network.py` — first part of `_compute_gradients()`
+**File:** `modules/ed_network.py` — first part of `_compute_gradients()`
 
 The output layer weight update uses the ED method's saturation suppression term. This is fundamentally different from BP's softmax derivative (cross-entropy derivative).
 
@@ -291,7 +291,7 @@ gradients['w_output'] = output_lr * np.outer(
 
 ### 4.3 Amine Concentration and Diffusion
 
-**File:** `modules_simple/ed_network.py` — middle part of `_compute_gradients()`
+**File:** `modules/ed_network.py` — middle part of `_compute_gradients()`
 
 Amine concentration is generated from the output layer error and diffused to hidden layers along the column structure. This is the mechanism that replaces BP's "chain rule backpropagation."
 
@@ -353,7 +353,7 @@ for layer_idx in range(self.n_layers - 1, -1, -1):
 
 ### 4.4 Hidden Layer Weight Update
 
-**File:** `modules_simple/ed_network.py` — latter part of `_compute_gradients()`
+**File:** `modules/ed_network.py` — latter part of `_compute_gradients()`
 
 Using amine diffusion amounts and the saturation suppression term, each hidden layer updates its weights **independently**.
 
@@ -595,7 +595,7 @@ def update_weights(self, x_paired, z_hiddens, z_output, y_true):
 
 ### 4.5 create_column_membership() — Column Structure
 
-**File:** `modules_simple/column_structure.py`
+**File:** `modules/column_structure.py`
 
 The column structure places hidden layer neurons in a 2D space and assigns the nearest neurons to each class.
 

@@ -2,7 +2,7 @@
 
 本ドキュメントでは、コラムED法の動作の流れをブロックダイアグラムで示し、ED法の核となる関数のコードを注釈付きで解説します。
 
-> **対象ファイル:** `columnar_ed_ann_simple.py`（メインスクリプト）、`modules_simple/ed_network.py`（EDネットワーク）、`modules_simple/column_structure.py`（コラム構造）
+> **対象ファイル:** `columnar_ed_ann.py`（メインスクリプト）、`modules/ed_network.py`（EDネットワーク）、`modules/column_structure.py`（コラム構造）
 
 ---
 
@@ -23,7 +23,7 @@
 
 ## 1. 全体フロー
 
-メインスクリプト `columnar_ed_ann_simple.py` の処理の流れです。
+メインスクリプト `columnar_ed_ann.py` の処理の流れです。
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -176,7 +176,7 @@
 
 ### 4.1 forward() — 順伝播
 
-**ファイル:** `modules_simple/ed_network.py`
+**ファイル:** `modules/ed_network.py`
 
 順伝播は比較的シンプルです。入力をE/Iペアに変換した後、各隠れ層ではtanh活性化、出力層ではsoftmaxで確率分布に変換します。
 
@@ -252,7 +252,7 @@ def forward(self, x):
 
 ### 4.2 出力層の勾配計算 — 飽和抑制項
 
-**ファイル:** `modules_simple/ed_network.py` — `_compute_gradients()` の前半部分
+**ファイル:** `modules/ed_network.py` — `_compute_gradients()` の前半部分
 
 出力層の重み更新は、ED法の飽和抑制項を使います。これはBP法のsoftmax微分（クロスエントロピー微分）とは本質的に異なります。
 
@@ -286,7 +286,7 @@ gradients['w_output'] = output_lr * np.outer(
 
 ### 4.3 アミン濃度計算と拡散
 
-**ファイル:** `modules_simple/ed_network.py` — `_compute_gradients()` の中間部分
+**ファイル:** `modules/ed_network.py` — `_compute_gradients()` の中間部分
 
 出力層の誤差からアミン濃度を生成し、コラム構造に沿って隠れ層に拡散させます。これがBP法の「微分の連鎖律による逆伝播」を代替する機構です。
 
@@ -347,7 +347,7 @@ for layer_idx in range(self.n_layers - 1, -1, -1):
 
 ### 4.4 隠れ層の重み更新
 
-**ファイル:** `modules_simple/ed_network.py` — `_compute_gradients()` の後半部分
+**ファイル:** `modules/ed_network.py` — `_compute_gradients()` の後半部分
 
 アミン拡散量と飽和抑制項を使って、各隠れ層が**独立に**重みを更新します。
 
@@ -588,7 +588,7 @@ def update_weights(self, x_paired, z_hiddens, z_output, y_true):
 
 ### 4.5 create_column_membership() — コラム構造
 
-**ファイル:** `modules_simple/column_structure.py`
+**ファイル:** `modules/column_structure.py`
 
 コラム構造は、隠れ層のニューロンを2次元空間に配置し、各クラスに最も近いニューロンを割り当てる仕組みです。
 
