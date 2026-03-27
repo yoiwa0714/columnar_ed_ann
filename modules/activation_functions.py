@@ -1,113 +1,61 @@
 #!/usr/bin/env python3
 """
-活性化関数・損失関数モジュール
+活性化関数モジュール（教育用シンプル版）
 
-★ED法準拠★
-役割:
-  - ED法準拠の活性化関数（飽和特性あり）
-  - SoftMax・Cross-Entropy（多クラス分類）
-  - 数値安定性確保（overflow回避）
-
-重要: このモジュールの関数は微分の連鎖律を使用しません
-
-関数:
-  - sigmoid: シグモイド関数
-  - tanh_activation: tanh活性化
-  - softmax: SoftMax確率分布
-  - cross_entropy_loss: Cross-Entropy損失
-
-使用例:
-    from modules.activation_functions import sigmoid, tanh_activation, softmax
-    import numpy as np
-    
-    # 隠れ層
-    z_hidden = tanh_activation(np.dot(w, x))
-    
-    # 出力層
-    z_output = softmax(np.dot(w_output, z_hidden))
+ED法で使用する活性化関数:
+  - tanh_activation: 隠れ層の活性化（tanhのスケール版）
+  - softmax / softmax_batch: 出力層の確率分布
+  - cross_entropy_loss: 損失計算
 """
 
 import numpy as np
 
 
-def sigmoid(x):
-    """
-    シグモイド関数（overflow回避）
-    
-    Args:
-        x: 入力値または配列
-    
-    Returns:
-        シグモイド変換後の値（0-1の範囲）
-    """
-    return 1.0 / (1.0 + np.exp(-np.clip(x, -500, 500)))
-
-
 def tanh_activation(x):
     """
-    tanh活性化関数（双方向性、飽和特性あり）
-    
-    ★ED法準拠★
-    - 飽和特性を持つため、ED法の飽和項と相性が良い
-    - 双方向性（-1〜+1）で多クラス分類に適している
-    
-    Args:
-        x: 入力値または配列
-    
-    Returns:
-        tanh変換後の値（-1〜+1の範囲）
+    隠れ層の活性化関数（tanh scaled）
+
+    通常のtanhと同じだが、将来のスケーリング変更に対応するため関数として独立。
+    出力範囲: [-1, 1]
     """
-    return np.tanh(np.clip(x, -500, 500))
+    return np.tanh(x)
 
 
 def softmax(x):
     """
-    SoftMax関数（多クラス分類用）
-    
-    確率分布を生成：
-    - 各要素が [0, 1]
-    - 全要素の合計が 1.0
-    - クラス間の相対的な強弱が明確
-    
-    Args:
-        x: 出力層の活性値（logits）
-    
-    Returns:
-        確率分布（合計=1.0）
+    出力層のSoftMax関数（単一サンプル）
+
+    数値安定性のためmax減算を行う。
     """
-    # 数値安定性のため最大値を引く
     x_shifted = x - np.max(x)
-    exp_x = np.exp(np.clip(x_shifted, -500, 500))
+    exp_x = np.exp(x_shifted)
     return exp_x / np.sum(exp_x)
 
 
 def softmax_batch(x_batch):
     """
-    バッチ対応SoftMax関数
-    
+    出力層のSoftMax関数（バッチ版）
+
     Args:
-        x_batch: 出力層の活性値バッチ shape: [batch_size, n_output]
-    
+        x_batch: shape [batch_size, n_classes]
+
     Returns:
-        確率分布バッチ shape: [batch_size, n_output] (各行の合計=1.0)
+        shape [batch_size, n_classes] の確率分布
     """
-    # 各行の最大値を引く（数値安定性）
     x_shifted = x_batch - np.max(x_batch, axis=1, keepdims=True)
-    exp_x = np.exp(np.clip(x_shifted, -500, 500))
+    exp_x = np.exp(x_shifted)
     return exp_x / np.sum(exp_x, axis=1, keepdims=True)
 
 
-def cross_entropy_loss(probs, target_class):
+def cross_entropy_loss(y_pred, y_true):
     """
-    Cross-Entropy損失関数
-    
+    Cross-Entropy損失（単一サンプル）
+
     Args:
-        probs: SoftMax確率分布
-        target_class: 正解クラスのインデックス
-    
+        y_pred: SoftMax出力（確率分布）
+        y_true: 正解クラスインデックス（整数）
+
     Returns:
-        損失値
+        損失値（スカラー）
     """
-    # 数値安定性のため小さな値でクリップ
-    prob_true = np.clip(probs[target_class], 1e-10, 1.0)
-    return -np.log(prob_true)
+    return -np.log(y_pred[y_true] + 1e-10)

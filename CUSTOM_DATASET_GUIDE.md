@@ -1,8 +1,10 @@
 # カスタムデータセット対応ガイド
 
+> **注意**: 本ガイドは**実験版**（`columnar_ed_ann_experiment.py`）を対象としています。メイン版（`columnar_ed_ann.py`）は標準データセット（MNIST, Fashion-MNIST, CIFAR-10）のみに対応しています。
+
 ## 概要
 
-カスタムデータセットに対応しています。任意の画像データセット（または数値データセット）を使って、コラムED法で学習を実行できます。
+実験版はカスタムデータセットに対応しています。任意の画像データセット（または数値データセット）を使って、コラムED法で学習を実行できます。
 
 ## カスタムデータセットの準備
 
@@ -74,7 +76,7 @@ my_custom_data/
 この場合、データセット名だけで指定できます：
 
 ```bash
-python columnar_ed_ann_simple.py --dataset my_custom_data
+python columnar_ed_ann_experiment.py --dataset my_custom_data
 ```
 
 ### オプション2: 任意のパスに配置
@@ -82,7 +84,7 @@ python columnar_ed_ann_simple.py --dataset my_custom_data
 任意の場所に配置し、フルパスで指定：
 
 ```bash
-python columnar_ed_ann_simple.py --dataset /path/to/my_custom_data
+python columnar_ed_ann_experiment.py --dataset /path/to/my_custom_data
 ```
 
 ### オプション3: カレントディレクトリに配置
@@ -96,7 +98,7 @@ python columnar_ed_ann_simple.py --dataset /path/to/my_custom_data
 データセット名で指定可能：
 
 ```bash
-python columnar_ed_ann_simple.py --dataset my_custom_data
+python columnar_ed_ann_experiment.py --dataset my_custom_data
 ```
 
 ## カスタムデータセットの検証機能
@@ -167,13 +169,13 @@ python create_test_dataset.py
 **名前指定（標準ディレクトリから自動検索）:**
 
 ```bash
-python columnar_ed_ann_simple.py --dataset test_custom_mnist --hidden 64 --epochs 10 --seed 42
+python columnar_ed_ann_experiment.py --dataset test_custom_mnist --hidden 64 --epochs 10 --seed 42
 ```
 
 **パス指定:**
 
 ```bash
-python columnar_ed_ann_simple.py --dataset ~/.keras/datasets/test_custom_mnist --hidden 64 --epochs 10 --seed 42
+python columnar_ed_ann_experiment.py --dataset ~/.keras/datasets/test_custom_mnist --hidden 64 --epochs 10 --seed 42
 ```
 
 ### 3. データセット自動検出の動作確認
@@ -544,7 +546,7 @@ x_test = x_test.reshape(x_test.shape[0], -1)
 **さらに高速化したい場合:**
 1. サンプル数を制限して使用：
    ```bash
-   python columnar_ed_ann_simple.py --dataset my_data --train 10000 --test 2000
+   python columnar_ed_ann_experiment.py --dataset my_data --train 10000 --test 2000
    ```
 
 2. データを圧縮形式ではなく.npy形式で保存（既に最適）
@@ -556,7 +558,7 @@ x_test = x_test.reshape(x_test.shape[0], -1)
 **解決策:**
 1. サンプル数を制限：
    ```bash
-   python columnar_ed_ann_simple.py --dataset my_data --train 5000 --test 1000
+   python columnar_ed_ann_experiment.py --dataset my_data --train 5000 --test 1000
    ```
 
 2. メモリマップモードが有効か確認（自動適用）

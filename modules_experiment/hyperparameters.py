@@ -7,11 +7,18 @@
   - 層数に基づく自動パラメータ選択
   - 6層以上のフォールバック処理
 
+関数:
+  - load_hyperparameters: YAMLファイルからパラメータを読み込む
+
+クラス:
+  - HyperParams: パラメータテーブル管理クラス
+
 使用例:
-    from modules_simple.hyperparameters import HyperParams
+    from modules.hyperparameters import HyperParams
     
     hp = HyperParams()
     config = hp.get_config(n_layers=2)
+    # → 2層構成の最適化済みパラメータを取得
 """
 
 import yaml
@@ -27,17 +34,38 @@ def load_hyperparameters(config_path=None):
     
     Returns:
         dict: YAMLファイルから読み込んだパラメータ辞書
+    
+    Raises:
+        FileNotFoundError: YAMLファイルが見つからない場合
+        yaml.YAMLError: YAMLの解析エラー
+    
+    Notes:
+        - デフォルトパス: config/hyperparameters.yaml
+        - エラー時はconfig/hyperparameters_initial.yamlを参照してください
     """
+    searched_paths = []
     if config_path is None:
-        # columnar_ed_ann/config/ のhyperparameters.yamlを参照
-        project_root = Path(__file__).parent.parent
-        config_path = project_root / 'config' / 'hyperparameters.yaml'
+        # 新規クローン直後でも確実に見つけられるよう、
+        # まずこのモジュール基準のリポジトリ直下configを最優先に探索する。
+        module_dir = Path(__file__).resolve().parent
+        project_root = module_dir.parent
+        candidate_paths = [
+            project_root / 'config' / 'hyperparameters.yaml',
+            Path.cwd() / 'config' / 'hyperparameters.yaml',
+            project_root.parent / 'config' / 'hyperparameters.yaml',
+        ]
+        searched_paths = candidate_paths
+        config_path = next((p for p in candidate_paths if p.exists()), candidate_paths[0])
+    else:
+        searched_paths = [Path(config_path)]
     
     config_path = Path(config_path)
     
     if not config_path.exists():
+        searched = '\n'.join(f"- {p}" for p in searched_paths)
         raise FileNotFoundError(
             f"設定ファイルが見つかりません: {config_path}\n"
+            f"探索したパス:\n{searched}\n"
             f"config/hyperparameters_initial.yaml を参照して作成してください。"
         )
     
@@ -67,22 +95,42 @@ class HyperParams:
     """
     層数依存パラメータをテーブル管理するクラス
     
-    config/hyperparameters.yaml から設定を読み込み、
-    層数ごとに最適化されたパラメータセットを提供する。
+    設計方針:
+      - config/hyperparameters.yaml から設定を読み込み
+      - 層数ごとに最適化されたパラメータセットを提供
+      - column_radius等の層数依存パラメータを一元管理
+      - コマンドライン引数でオーバーライド可能
+    
+    使用例:
+      hp = HyperParams()
+      config = hp.get_config(n_layers=2)
+      network = RefinedDistributionEDNetwork(
+          input_dim=784,
+          hidden_layers=config['hidden'],
+          base_column_radius=config['base_column_radius'],
+          ...
+      )
     """
     
     def __init__(self, config_path=None):
         """
+        YAMLファイルから設定を読み込んで初期化
+        
         Args:
             config_path: YAMLファイルのパス（Noneの場合はデフォルトパスを使用）
         """
         config = load_hyperparameters(config_path)
         
+        # 層数別設定テーブル
         self.layer_configs = {}
         for layer_num, params in config['layer_params'].items():
             self.layer_configs[int(layer_num)] = params
         
+        # 共通パラメータ（層数非依存）
         self.common_params = config.get('common_params', {})
+        
+        # Gabor特徴抽出パラメータ
+        self.gabor_params = config.get('gabor_params', {})
     
     def get_config(self, n_layers):
         """
@@ -93,13 +141,19 @@ class HyperParams:
         
         Returns:
             dict: 層数に対応した設定辞書
+        
+        Notes:
+            6層以上の場合は5層のパラメータをフォールバックとして使用
         """
+        # 共通パラメータをベースに、層別パラメータで上書き
+        # （層別の値が共通値より優先される）
+        config = dict(self.common_params)
         if n_layers in self.layer_configs:
-            config = self.layer_configs[n_layers].copy()
+            config.update(self.layer_configs[n_layers])
         elif n_layers >= 6:
-            config = self.layer_configs[5].copy()
-            config['description'] = f'{n_layers}層構成（5層パラメータを使用）'
-            print(f"\n*** 注意: {n_layers}層構成は未最適化です。5層のパラメータをフォールバックとして使用します ***\n")
+            config.update(self.layer_configs[max(self.layer_configs.keys())])
+            config['description'] = f'{n_layers}層構成（{max(self.layer_configs.keys())}層パラメータを使用）'
+            print(f"\n*** 注意: {n_layers}層構成は未最適化です。{max(self.layer_configs.keys())}層のパラメータをフォールバックとして使用します ***\n")
         else:
             supported = list(self.layer_configs.keys())
             raise ValueError(
@@ -107,7 +161,6 @@ class HyperParams:
                 f"サポート層数: {supported} (6層以上は5層のパラメータを使用)"
             )
         
-        config.update(self.common_params)
         return config
     
     def list_configs(self):
@@ -116,9 +169,13 @@ class HyperParams:
         for n_layers, config in sorted(self.layer_configs.items()):
             print(f"\n[{n_layers}層] {config.get('description', '説明なし')}")
             print(f"  hidden: {config['hidden']}")
-            print(f"  output_lr: {config.get('output_lr', 'N/A')}")
-            print(f"  non_column_lr: {config.get('non_column_lr', 'N/A')}")
-            print(f"  column_lr: {config.get('column_lr', 'N/A')}")
+            # 旧キー learning_rate との後方互換を保ちつつ、現行3系統学習率を優先表示
+            if 'output_lr' in config:
+                print(f"  output_lr: {config.get('output_lr', 'N/A')}")
+                print(f"  non_column_lr: {config.get('non_column_lr', 'N/A')}")
+                print(f"  column_lr: {config.get('column_lr', 'N/A')}")
+            else:
+                print(f"  learning_rate: {config.get('learning_rate', 'N/A')}")
             print(f"  u1: {config.get('u1', 'N/A')}")
             print(f"  u2: {config.get('u2', 'N/A')}")
             print(f"  lateral_lr: {config.get('lateral_lr', 'N/A')}")
@@ -130,7 +187,9 @@ class HyperParams:
             print(f"  init_scales: {init_scales}")
             print(f"  hidden_sparsity: {config.get('hidden_sparsity', 'N/A')}")
             print(f"  gradient_clip: {config.get('gradient_clip', 'N/A')}")
-            print(f"  epochs: {config['epochs']}")
+            print(f"  column_lr_factors: {config.get('column_lr_factors', 'N/A')}")
+            print(f"  epochs: {config.get('epochs', 'N/A')}")
+            # Gabor関連（定義されている場合のみ表示）
             if 'gabor_orientations' in config:
                 print(f"  gabor_orientations: {config['gabor_orientations']}")
                 print(f"  gabor_frequencies: {config['gabor_frequencies']}")

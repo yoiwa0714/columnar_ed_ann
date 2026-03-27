@@ -1,6 +1,6 @@
-[日本語](README.md) | **English**
+**English** | [日本語](README.md)
 
-# **[Columnar ED Method] Full Version — Extension of the Original ED Method with Cortical Column Structure**
+# **[Columnar ED Method]** — Extension of the Original ED Method with Cortical Column Structure
 
 [![Python](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](https://www.python.org/)
 [![NumPy](https://img.shields.io/badge/NumPy-1.19%2B-orange.svg)](https://numpy.org/)
@@ -13,12 +13,12 @@
 - [Quick Start](#quick-start)
 - [Reproducibility Checklist](#reproducibility-checklist)
 - [Usage Examples](#usage-examples)
-- [Command-Line Arguments](#command-line-arguments)
 - [Claims and Verifiability (FAQ)](#claims-and-verifiability-faq)
 - [How It Works](#how-it-works)
+  - [What Is the Columnar ED Method](#what-is-the-columnar-ed-method)
   - [What Is the Original ED Method](#what-is-the-original-ed-method)
-  - [Column Structure](#column-structure)
   - [Weight Update via Amine Diffusion](#weight-update-via-amine-diffusion)
+  - [Column Structure](#column-structure)
   - [Gabor Feature Extraction](#gabor-feature-extraction)
   - [Reservoir Computing Characteristics](#reservoir-computing-characteristics)
 - [Achieved Accuracy](#achieved-accuracy)
@@ -33,22 +33,18 @@
 
 ## Overview
 
-**The Columnar ED Method** is a neural network implementation that extends the Error Diffusion learning algorithm (ED method, hereinafter referred to as the "original ED method") conceived by Isamu Kaneko, by introducing cortical column structure from the cerebral cortex.
+**The Columnar ED Method** is a neural network implementation that extends Isamu Kaneko's Error Diffusion learning algorithm (ED method, hereinafter "the original ED method") by introducing cortical column structure from the cerebral cortex.
 
-The Columnar ED Method **does not use backpropagation based on the chain rule of derivatives at all**, and instead learns through biologically plausible amine diffusion mechanisms. Despite this, it achieves **97.16%** test accuracy on MNIST handwritten digit recognition (4-layer configuration, 10,000 training samples).
+The Columnar ED Method **does not use backpropagation based on the chain rule of derivatives at all**, and instead learns through biologically plausible amine diffusion mechanisms. Despite this, it achieves **97.36%** test accuracy on MNIST handwritten digit recognition (6-layer configuration, 50,000 training samples).
 
 This repository provides two implementations:
 
 | Implementation | File | Purpose |
 |----------------|------|---------|
-| **Full Version** | `columnar_ed_ann.py` | All parameters configurable. This document covers this version. |
-| Simple Version | `columnar_ed_ann_simple.py` | High accuracy with minimal arguments. See [README_simple_en.md](README_simple_en.md). |
+| **Main Version** | `columnar_ed_ann.py` | High accuracy with minimal arguments. This document covers this version. |
+| Experiment Version | `columnar_ed_ann_experiment.py` | More parameters can be specified than the main version. See [README_experiment_en.md](README_experiment_en.md) for details. |
 
-> **Key differences from the Simple Version:**
-> - Gabor feature extraction is OFF by default; enable explicitly with `--gabor_features` (Simple Version has it ON by default)
-> - Learning rates, amine diffusion coefficients, dynamic synaptic pruning, gradient clipping, early stopping, etc. can be specified from the command line — enabling parameter exploration and detailed experimentation
-> - GPU (CuPy) support
-> - Detailed Gabor filter parameters (number of orientations, frequencies, kernel size, etc.) are configurable
+The **Main Version** is a **self-contained implementation that uses only the `modules/` directory**. It operates with just `columnar_ed_ann.py` and `modules/`, allowing you to understand the ED method and column structure without referencing the experiment version code.
 
 ## Target Reader and Fast Path
 
@@ -57,8 +53,8 @@ This README targets readers who already have **basic Python and machine learning
 Recommended reading order:
 
 1. Run the minimum Quick Start command once
-2. Compare your output with the Achieved Accuracy section at a high level
-3. Read Claims and Verifiability (FAQ) for the definition of "no backpropagation"
+2. Compare your output with the Achieved Accuracy table at a high level
+3. Read Claims and Verifiability (FAQ) for the definition and verification points of "no Backpropagation"
 4. Move on to How It Works
 
 ---
@@ -75,7 +71,7 @@ The column structure found in the visual cortex of the cerebral cortex is introd
 
 ### 3. Gabor Feature Extraction
 
-Gabor filter-based feature extraction is built in, modeling the simple cells of the primary visual cortex (V1) (enabled via `--gabor_features`). By improving input quality, accuracy exceeding 95% can be achieved even with a single-layer configuration under appropriate parameter settings.
+Gabor filter-based feature extraction modeling the simple cells of the primary visual cortex (V1) is built in (ON by default). By improving input quality, accuracy exceeding 95% can be achieved even with a single-layer configuration under appropriate parameter settings.
 
 ### 4. Learning with Only Biologically Plausible Functions
 
@@ -83,7 +79,9 @@ Learning relies solely on biologically plausible mechanisms (amine diffusion, co
 
 ### 5. Fast Learning
 
-When the training data is sufficiently large, accuracy exceeding 90% of the final test accuracy is reached in the first epoch. High accuracy can be achieved with a small number of epochs without needing many repetitions.
+When the training data is sufficiently large, the model reaches over 90% of the final test accuracy in the first epoch. High accuracy is achieved with a small number of epochs without requiring many repetitions.
+
+Furthermore, per-sample training is fast. Under identical conditions (NumPy, CPU, per-sample learning), it operates approximately **3.7–4.4× faster** than backpropagation (BP). Since no backward-pass computation is required and fewer neurons are updated, the speed advantage increases with deeper networks.
 
 ### 6. Easy Parameter Tuning
 
@@ -91,11 +89,7 @@ The network responds to parameter changes in a stable and monotonic manner, with
 
 ### 7. Reservoir Computing Characteristics
 
-When the number of neurons per column is set to 1 (`--column_neurons 1`), this implementation operates on the same principle as reservoir computing. Non-column neurons in the hidden layer are maintained as fixed random weights (reservoir), and only a small number of column neurons are trained using the original ED method.
-
-### 8. Dynamic Synaptic Pruning
-
-A dynamic synaptic pruning feature models the developmental pruning observed in the brain (enabled via `--dynamic_pruning_fs`). Unnecessary synaptic connections are progressively removed during training, improving the computational efficiency of the network.
+When the number of neurons per column is set to 1 (`column_neurons=1`), the implementation operates on the same principle as reservoir computing. Non-column neurons in the hidden layer are maintained as fixed random weights (reservoir), and only a small number of column neurons are trained using the original ED method. With `column_neurons=10` (default for 2–3 layer configurations), 10 column neurons are assigned per class, increasing the number of learning neurons so that each class can be represented by more diverse features. The reservoir computing-like structure (majority of weights remain fixed) is maintained while classification performance improves with the increase in column neurons.
 
 ---
 
@@ -120,14 +114,17 @@ pip install -r requirements.txt
 ### 2. Run
 
 ```bash
-# 1-layer + Gabor features (~3 minutes)
-python columnar_ed_ann.py --hidden 2048 --train 10000 --test 10000 --gabor_features
+# Default configuration (2-layer + Gabor features, ~10 minutes)
+python columnar_ed_ann.py --train 10000 --test 10000
 
-# 1-layer + Gabor features + visualization (learning curve, confusion matrix, activation heatmap)
-python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_features --viz 2 --heatmap
+# 1-layer configuration (~3 minutes)
+python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000
+
+# With visualization (learning curve, confusion matrix, activation heatmap)
+python columnar_ed_ann.py --train 10000 --test 10000 --viz --heatmap
 ```
 
-With seed=42 (default), approximately 96% test accuracy is obtained.
+With seed=42 (default), approximately 96–97% test accuracy is obtained.
 
 > Runtime and accuracy are environment-dependent. Values in this README are representative benchmark values.
 
@@ -149,8 +146,8 @@ When the run completes, results similar to the following are displayed:
 ======================================================================
 Training Complete
 ======================================================================
-Final Accuracy: Train=0.9722, Test=0.9613
-Best Accuracy:  Test=0.9613 (Epoch 10)
+Final Accuracy: Train=0.9714, Test=0.9685
+Best Accuracy:  Test=0.9685 (Epoch 10)
 ```
 
 ---
@@ -161,225 +158,72 @@ Best Accuracy:  Test=0.9613 (Epoch 10)
 
 ```bash
 # 1-layer + Gabor features (~3 minutes)
-python columnar_ed_ann.py --hidden 2048 --train 10000 --test 10000 --gabor_features
+python columnar_ed_ann.py --hidden 2048 --train 10000 --test 10000
 # → Best ≈ 96.13% / Final ≈ 96.13%
 
-# 2-layer + Gabor features (~10 minutes)
-python columnar_ed_ann.py --hidden 2048,1024 --train 10000 --test 10000 --gabor_features
+# 2-layer + Gabor features (default configuration, ~10 minutes)
+python columnar_ed_ann.py --train 10000 --test 10000
 # → Best ≈ 96.85% / Final ≈ 96.84%
 
 # 3-layer + Gabor features (~30 minutes)
-python columnar_ed_ann.py --hidden 2048,1024,1024 --train 10000 --test 10000 --gabor_features
+python columnar_ed_ann.py --hidden 2048,1024,1024 --train 10000 --test 10000
 # → Best ≈ 97.11% / Final ≈ 96.78%
 
-# 4-layer + Gabor features (MNIST, cn=20 latest)
-python columnar_ed_ann.py --dataset mnist --hidden 1024[4] --train 10000 --test 10000 --epochs 10 --seed 42 --column_neurons 20 --init_method he --gabor_features --lr 0.04 --column_lr_factors 0.005,0.004,0.003,0.002 --gradient_clip 0.03 --init_scales 0.9,1.6,1.8,1.6,0.8 --viz 2 --heatmap
-# → Best = 97.16% (Epoch 10), Final = 97.16%
-
-# 5-layer + Gabor features (MNIST, T3M adopted)
-python columnar_ed_ann.py --dataset mnist --hidden 1024[5] --train 10000 --test 10000 --epochs 10 --seed 42 --column_neurons 20 --init_method he --gabor_features --lr 0.04 --column_lr_factors 0.005,0.004,0.003,0.002,0.0015 --gradient_clip 0.03 --init_scales 0.9,1.6,1.8,1.2,1.4,0.8 --viz 2 --heatmap
-# → Best = 96.78% (Epoch 10), Final = 96.78%
-
 # Without Gabor (to verify the pure learning capability of the original ED method)
-python columnar_ed_ann.py --hidden 2048 --train 10000 --test 10000
+python columnar_ed_ann.py --hidden 2048 --train 10000 --test 10000 --no_gabor
 # → Best ≈ 90.37% / Final ≈ 90.37%
 ```
 
 ### Visualization
 
 ```bash
-# Display real-time learning curve (size levels: 1=base, 2=1.3x, 3=1.6x, 4=2x; window size)
-# Omitting SIZE is equivalent to --viz 1
-python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_features --viz 2
+# Display real-time learning curve
+python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --viz
 
 # Learning curve + hidden layer and output layer heatmaps
-python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_features --viz 2 --heatmap
+python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --viz --heatmap
 
-# Save visualization to a directory (auto-named with timestamp)
-python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_features --viz 2 --heatmap --save_viz results/
-
-# Save with a specified filename
-python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_features --viz 2 --heatmap --save_viz results/my_experiment.png
-
-# Display misclassified training data (scrollable window after final epoch)
-python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_features --show_train_errors
-
-# Specify maximum number of errors displayed per class (default: 20)
-python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_features --show_train_errors --max_errors_per_class 50
-```
-
-### Specifying Training Parameters
-
-```bash
-# Manually specify learning rates
-python columnar_ed_ann.py --hidden 2048 --train 10000 --test 10000 --gabor_features \
-    --output_lr 0.15 --column_lr 0.0015
-
-# Use repeat notation for concise per-layer learning-rate specification (5 layers)
-python columnar_ed_ann.py --hidden 1024[5] --train 10000 --test 10000 --gabor_features \
-    --output_lr 0.04 --non_column_lr 0.04[5] --column_lr 0.0002,0.00016,0.00012,8e-05,6e-05
-
-# Adjust amine diffusion coefficients
-python columnar_ed_ann.py --hidden 2048 --train 10000 --test 10000 --gabor_features \
-    --u1 0.5 --u2 0.8
-
-# Specify gradient clipping for 2 layers
-python columnar_ed_ann.py --hidden 2048,1024 --train 10000 --test 10000 --gabor_features \
-    --gradient_clip 0.03
-```
-
-### Dynamic Synaptic Pruning
-
-```bash
-# Prune 40% of weights (equivalent to developmental pruning in the brain)
-python columnar_ed_ann.py --hidden 2048 --train 10000 --test 10000 --gabor_features \
-    --dynamic_pruning_fs 0.4
-
-# Display detailed pruning log
-python columnar_ed_ann.py --hidden 2048 --train 10000 --test 10000 --gabor_features \
-    --dynamic_pruning_fs 0.4 --pruning_verbose
-
-# Specify pruning start and end epochs
-python columnar_ed_ann.py --hidden 2048 --train 10000 --test 10000 --epochs 20 --gabor_features \
-    --dynamic_pruning_fs 0.4 --pruning_start_epoch 3 --pruning_end_epoch 15
-```
-
-### Early Stopping
-
-```bash
-# Early stopping for grid search (stop if Test accuracy ≤ 15% at Epoch 3)
-python columnar_ed_ann.py --hidden 2048 --train 10000 --test 10000 --gabor_features \
-    --early_stop_epoch 3 --early_stop_threshold 0.15
+# Save visualization results to a directory
+python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --viz --heatmap --save_viz results/
 ```
 
 ### Other Options
 
 ```bash
 # Fashion-MNIST
-python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_features --dataset fashion
-
-# Manually specify column neuron count and initialization scales (overrides YAML defaults)
-python columnar_ed_ann.py --hidden 2048,1024 --gabor_features --column_neurons 10 --init_scales 0.7,1.8,0.8
-
-# Change weight initialization method
-python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --gabor_features --init_method xavier
-
-# Display YAML configuration list
-python columnar_ed_ann.py --list_hyperparams
-
-# Diagnose column structure
-python columnar_ed_ann.py --hidden 2048 --diagnose_column
+python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --dataset fashion
 ```
 
----
+### All Command-Line Arguments
 
-## Command-Line Arguments
-
-### Network Configuration
+**Network Configuration:**
 
 | Argument | Default | Description |
 |----------|---------|-------------|
-| `--hidden` | `2048` | Hidden layer neuron count (e.g., `2048`=1 layer, `2048,1024`=2 layers, `1024[5]`=five identical layers) |
-| `--train` | `3000` | Number of training samples |
-| `--test` | `1000` | Number of test samples |
+| `--hidden` | `2048,1024` | Hidden layer neuron count (comma-separated, e.g., `2048`=1 layer, `2048,1024`=2 layers) |
+| `--train` | `10000` | Number of training samples |
+| `--test` | `10000` | Number of test samples |
 | `--epochs` | Auto (YAML) | Number of epochs |
 | `--seed` | `42` | Random seed |
 | `--dataset` | `mnist` | Dataset name (`mnist`, `fashion`, `cifar10`) or custom data path (see [CUSTOM_DATASET_GUIDE.md](CUSTOM_DATASET_GUIDE.md)) |
-| `--batch_size` | None | Mini-batch size (online learning when not specified) |
-| `--use_cupy` | OFF | Enable CuPy (GPU) acceleration |
 
-### Training Parameters
+**Gabor Feature Extraction:**
 
 | Argument | Default | Description |
 |----------|---------|-------------|
-| `--output_lr` | Auto (YAML) | [Recommended] Output layer learning rate |
-| `--non_column_lr` | Auto (YAML) | [Recommended] Non-column neuron learning rate per layer (comma-separated, repeat notation supported: `0.04[5]`) |
-| `--column_lr` | Auto (YAML) | [Recommended] Column neuron learning rate per layer (comma-separated, repeat notation supported: `0.0002[3],0.0001[2]`) |
-| `--lr` | `0.15` | [Compatibility] Learning rate (used when 3-system learning rates are not specified) |
-| `--column_lr_factors` | Auto (YAML) | [Compatibility] Per-layer suppression factors for column rows (effective `column_lr = lr × factor`, comma-separated) |
-| `--u1` | Auto (YAML) | Amine diffusion coefficient u1 |
-| `--u2` | Auto (YAML) | Amine diffusion coefficient u2 |
-| `--gradient_clip` | `0.03` | Gradient clipping value |
+| `--no_gabor` | OFF | Disable Gabor feature extraction (ON by default) |
 
-One-line compatibility mode example:
-```bash
-python columnar_ed_ann.py --dataset mnist --hidden 2048,1024 --train 10000 --test 10000 --epochs 20 --lr 0.15 --column_lr_factors 0.005,0.003
-```
-
-### Column Structure
+**Visualization:**
 
 | Argument | Default | Description |
 |----------|---------|-------------|
-| `--column_neurons` | Auto (YAML) | Number of column neurons per class |
-| `--base_column_radius` | `0.4` | Base column radius |
-| `--column_radius` | Auto | Column influence radius |
-| `--participation_rate` | `0.1` | Column participation rate |
-| `--diagnose_column` | OFF | Run detailed column structure diagnostics |
-| `--diagnose_hidden_weights` | OFF | Run detailed diagnostics on hidden layer weight state |
-
-### Initialization
-
-| Argument | Default | Description |
-|----------|---------|-------------|
-| `--init_method` | `he` | Weight initialization method (`uniform`, `xavier`, `he`) |
-| `--hidden_sparsity` | Auto (YAML) | Hidden layer sparsity (supports per-layer comma-separated values) |
-| `--init_scales` | Auto (YAML) | Per-layer initialization scales (e.g., `0.7,1.8,0.8`) |
-
-### Visualization
-
-| Argument | Default | Description |
-|----------|---------|-------------|
-| `--viz [SIZE]` | OFF | Display real-time learning curve (`1=base`, `2=1.3x`, `3=1.6x`, `4=2x` window size; omitted SIZE defaults to `1`) |
+| `--viz` | OFF | Display real-time learning curve |
 | `--heatmap` | OFF | Display heatmap (used together with `--viz`) |
-| `--save_viz` | None | Directory to save visualization results |
-| `--save_weights` | OFF | Save weight statistics per epoch |
-| `--show_train_errors` | OFF | Display misclassified training data after final epoch |
-| `--max_errors_per_class` | `20` | Maximum number of errors displayed per class |
-
-### Early Stopping
-
-| Argument | Default | Description |
-|----------|---------|-------------|
-| `--early_stop_epoch` | None | Epoch at which early stopping is evaluated (disabled if not specified) |
-| `--early_stop_threshold` | `0.15` | Stop if Test accuracy falls below this value |
-
-### Dynamic Synaptic Pruning
-
-Models developmental pruning in the brain. Unnecessary synaptic connections are progressively removed during training.
-
-| Argument | Default | Description |
-|----------|---------|-------------|
-| `--dynamic_pruning_fs` | None | Target sparsity ratio (e.g., `0.4` = 40% pruning; enabled when specified) |
-| `--pruning_start_epoch` | Auto-detect | Epoch to start pruning |
-| `--pruning_end_epoch` | Final epoch | Epoch to end pruning |
-| `--stability_threshold` | `0.01` | Threshold for stable-phase detection (Test accuracy change rate) |
-| `--pruning_verbose` | OFF | Output detailed pruning log |
-
-### Gabor Feature Extraction
-
-Extracts input features using fixed filters that model V1 simple cells.
-
-| Argument | Default | Description |
-|----------|---------|-------------|
-| `--gabor_features` | OFF | Enable Gabor feature extraction |
-| `--gabor_orientations` | `8` | Number of filter orientations |
-| `--gabor_frequencies` | `2` | Number of spatial frequencies |
-| `--gabor_kernel_size` | `7` | Filter kernel size |
-| `--gabor_pool_size` | `4` | Average pooling window size |
-| `--gabor_pool_stride` | `4` | Pooling stride |
-| `--gabor_no_edge` | OFF | Exclude Sobel edge filters |
-
-### Utilities
-
-| Argument | Default | Description |
-|----------|---------|-------------|
-| `--list_hyperparams` | — | Display YAML configuration list (layer count can be specified: `--list_hyperparams 2`) |
-| `--verbose [LEVEL]` | OFF | Show detailed logs. `--verbose` or `--verbose 0`: without activation statistics; `--verbose 1`: with activation statistics |
-| `--activation-stats` | OFF | Show activation statistics (compatible with `--verbose 1`) |
+| `--save_viz` | None | Directory or file path to save visualization results |
 
 ## Claims and Verifiability (FAQ)
 
-### Q1. What exactly does "no backpropagation" mean here?
+### Q1. What exactly does "no Backpropagation" mean here?
 
 In this project, it means **weight updates do not use error backpropagation based on the chain rule of derivatives**.
 Error signals are handled via amine diffusion and column-structured local updates.
@@ -405,17 +249,17 @@ Start by checking the Reproducibility Checklist above.
 >
 > 📘 For equation-level formalization aligned with the implementation, see **[Columnar ED Method: Detailed Principles](docs/en/Columnar_ED_Method_Detailed_Principles.md)**.
 
-### What Is the Columnar ED Method?
+### What Is the Columnar ED Method
 
-**The Columnar ED Method** is an extended implementation of Isamu Kaneko's original ED method, with the cortical column structure of the cerebral cortex introduced into the neural network.
+**The Columnar ED Method (Columnar Error Diffusion Method)** is an extended implementation of Isamu Kaneko's original ED method neural network, with the cortical column structure of the cerebral cortex introduced.
 
-The original ED method is a biologically plausible learning algorithm that models the diffusion of neurotransmitters in the brain. However, it was designed for binary classification and struggled with multi-class classification of 10 or more classes. The root cause was that hidden layer neurons in the network had no information about which output class they contributed to.
+The original ED method is a biologically plausible learning algorithm that models the diffusion of neurotransmitters in the brain. However, it was designed for binary classification and struggled with multi-class classification involving 10 or more classes. The root cause was that hidden layer neurons in the network had no information about which output class they contributed to.
 
 The Columnar ED Method introduces the column structure found in the cerebral cortex, explicitly mapping **column neurons** in the hidden layer to **output class neurons**. This enables each column neuron to receive learning signals only from its designated class, making multi-class classification possible within a single network (weight space).
 
 Furthermore, by combining Gabor filter-based feature extraction that models simple cells in the primary visual cortex (V1), test accuracy improves by approximately 6% without modifying the learning mechanism itself (MNIST 1-layer: 90.37% → 96.13%).
 
-### What Is the Original ED Method?
+### What Is the Original ED Method
 
 The **Error Diffusion Learning Algorithm (original ED method)** is a neural network learning algorithm conceived by Isamu Kaneko in 1999.
 
@@ -464,7 +308,7 @@ The primary visual cortex and association areas of the cerebral cortex exhibit a
 2. Column centers for each class are positioned in this space (10 centers for 10-class classification)
 3. The neuron closest to each column center is assigned as the **column neuron** for that class
 4. During training, only column neurons of the correct class receive amine signals and update their weights
-5. Neurons not belonging to any column retain fixed random weights (the number of learning neurons (column neurons) changes based on the `column_neurons` setting)
+5. Neurons not belonging to any column retain fixed random weights (the number of learning neurons changes based on the `column_neurons` setting)
 
 ![Hexagonal column structure spatial arrangement](images/hexagonal_column_structure_no_origin.png)
 
@@ -477,16 +321,14 @@ The primary visual cortex and association areas of the cerebral cortex exhibit a
 
 ### Gabor Feature Extraction
 
-Simple cells in the primary visual cortex (V1) respond selectively to edges of specific orientations and frequencies. This implementation models them with Gabor filters to extract features from input images.
+Simple cells in the primary visual cortex (V1) respond selectively to edges of specific orientations and frequencies. This implementation models them with Gabor filters to extract features from input images (ON by default).
 
 **Filter Configuration:**
 - 8 orientations × 2 frequencies = 16 Gabor filters + 2 Sobel edge filters = **18 filters total**
-- Kernel size: 7×7, Pooling: 4×4 average pooling
+- Kernel size: 11×11, Pooling: 4×4 average pooling
 - Output dimensions: 784 → 882 (for MNIST 28×28)
 
 **Effect:** With Gabor features, the MNIST 1-layer configuration improves from 90.37% → 96.13% (+5.76%). This is a biologically plausible approach that improves accuracy through input quality enhancement without modifying the learning mechanism itself.
-
-> In the Full Version, detailed filter parameters can be adjusted via `--gabor_orientations`, `--gabor_frequencies`, `--gabor_kernel_size`, `--gabor_pool_size`, `--gabor_pool_stride`, and `--gabor_no_edge`.
 
 ### Reservoir Computing Characteristics
 
@@ -509,9 +351,9 @@ This configuration allows the Columnar ED Method to reconcile biological plausib
 
 **When cn>1:**
 
-For example, with `column_neurons=10` (default for 2+ layer configurations), 10 column neurons are assigned per class. In a 2048-neuron hidden layer, 100 neurons (about 4.9% of total) become training targets, while the remaining 1948 retain fixed random weights.
+For example, with `column_neurons=10` (default for 2–3 layer configurations), 10 column neurons are assigned per class. In a 2048-neuron hidden layer, 100 neurons (about 4.9% of total) become training targets, while the remaining 1948 retain fixed random weights.
 
-Compared to cn=1, the increased number of learning neurons allows each class to be represented by more diverse features. While the reservoir computing-like structure (majority of weights remain fixed) is maintained, the increased column neurons improve classification performance. For 2-3 layer configurations, cn=10 is the default; for 4-5 layer configurations, cn=20 is the default. This achieves Best 97.11% (Final 96.78%) for 3 layers, Best 97.16% (Final 97.16%) for 4 layers, and Best 96.78% (Final 96.78%) for 5 layers.
+Compared to cn=1, the increased number of learning neurons allows each class to be represented by more diverse features. The reservoir computing-like structure (majority of weights remain fixed) is maintained while classification performance improves with the increase in column neurons.
 
 ---
 
@@ -519,34 +361,35 @@ Compared to cn=1, the increased number of learning neurons allows each class to 
 
 Experimental results on MNIST handwritten digit recognition (seed=42, reproducible):
 
-### With Gabor Features (`--gabor_features`)
+### With Gabor Features (default) — 10k samples
 
 | Configuration | Hidden Layers | Test Accuracy | Runtime (*) |
-|------|--------|-----------|----------------|
+|---------------|---------------|---------------|-------------|
 | 1-layer | [2048] | Best 96.13% / Final 96.13% | ~3 min |
 | 2-layer | [2048, 1024] | Best 96.85% / Final 96.84% | ~10 min |
-| 3-layer | [2048, 1024, 1024] | **Best 97.11% / Final 96.78%** | ~30 min |
+| 3-layer | [2048, 1024, 1024] | Best 97.11% / Final 96.78% | ~30 min |
 
-### With Gabor Features (Additional 4/5-layer results)
+### With Gabor Features — 50k samples
 
 | Configuration | Hidden Layers | Test Accuracy | Runtime (*) |
-|------|--------|-----------|----------------|
-| 4-layer (MNIST, cn=20) | [1024, 1024, 1024, 1024] | **Best 97.16% / Final 97.16%** | ~20 min |
-| 5-layer (MNIST, T3M adopted) | [1024, 1024, 1024, 1024, 1024] | Best 96.78% / Final 96.78% | ~20 min |
+|---------------|---------------|---------------|-------------|
+| 2-layer | [2048, 1024] | **Best 97.15%** | ~24 min |
+| 3-layer | [2048, 1024, 1024] | **Best 97.23%** | ~30 min |
+| 4-layer | [1024, 1024, 1024, 1024] | Best 97.12% | ~26 min |
+| 5-layer | [1024, 1024, 1024, 1024, 1024] | Best 97.25% | ~33 min |
+| 6-layer | [1024, 1024, 1024, 1024, 1024, 1024] | **Best 97.36%** | ~37 min |
 
 \* Runtimes measured on an Intel Core i5-11th gen / RTX 3060 system and will vary depending on your environment.
 
-### Without Gabor Features
+### Without Gabor Features (`--no_gabor`) — 10k samples
 
 | Configuration | Hidden Layers | Test Accuracy |
-|------|--------|-----------|
+|---------------|---------------|---------------|
 | 1-layer | [2048] | Best 90.37% / Final 90.37% |
 | 2-layer | [2048, 1024] | 89.38% |
 | 3-layer | [2048, 1024, 1024] | 89.41% |
 
-> **Experimental conditions:** 10,000 training samples, 10,000 test samples, seed=42 (all under identical conditions, fully reproducible). Epoch counts vary by each experiment (automatically set from `config/hyperparameters.yaml` or explicitly specified via CLI).
-
-> **Note:** For all layer configurations, column neuron counts and initialization scales are automatically set to optimal values from `config/hyperparameters.yaml` (6+ layers fall back to 5-layer parameters). Higher accuracy can be achieved by increasing training data and epochs (e.g., 2-layer + Gabor with 20k samples achieves 97.43%).
+> **Experimental conditions:** seed=42 (all under identical conditions, fully reproducible). Epoch counts are automatically set from `config/hyperparameters.yaml`. Higher accuracy can be achieved by increasing training data and epochs.
 
 ---
 
@@ -557,28 +400,18 @@ If you are new to this repository, start with these files first.
 
 ```
 columnar_ed_ann/
-├── columnar_ed_ann.py              # ★ Full Version main script (this document)
-├── columnar_ed_ann_simple.py       # Simple Version main script
-├── README.md                       # ★ This document (Full Version, Japanese)
-├── README_en.md                    # This document (Full Version, English)
-├── README_simple.md                # Simple Version documentation (Japanese)
-├── README_simple_en.md             # Simple Version documentation (English)
+├── columnar_ed_ann.py              # ★ Main script (recommended)
+├── columnar_ed_ann_experiment.py   # Experiment version (all parameters configurable)
+├── README.md                       # ★ This document (Japanese)
+├── README_en.md                    # ★ This document (English)
+├── README_experiment.md            # Experiment version documentation (Japanese)
+├── README_experiment_en.md         # Experiment version documentation (English)
 ├── LICENSE                         # License
 ├── requirements.txt                # Dependencies
 ├── CUSTOM_DATASET_GUIDE.md         # Custom dataset usage guide
 │
-├── modules/                        # ★ Full Version modules
-│   ├── ed_network.py               #   ED network core (training and evaluation)
-│   ├── column_structure.py         #   Column structure generation (hexagonal layout)
-│   ├── gabor_features.py           #   Gabor feature extraction (V1 simple cell model)
-│   ├── activation_functions.py     #   Activation functions (tanh, softmax)
-│   ├── neuron_structure.py         #   E/I pair structure (Dale's Principle)
-│   ├── data_augmentation.py        #   Data augmentation (referenced when using `--augment`)
-│   ├── hyperparameters.py          #   YAML parameter loading
-│   ├── data_loader.py              #   Dataset loading
-│   └── visualization_manager.py    #   Visualization (learning curves, heatmaps, training error analysis)
-│
-├── modules_simple/                 # Simple Version modules
+├── modules/                        # ★ Main version modules
+├── modules_experiment/             # Experiment version modules
 ├── config/                         # Parameter configuration files
 │   ├── hyperparameters.yaml        #   Per-layer optimal parameters (editable)
 │   └── hyperparameters_initial.yaml#   Initial state (for restoration)
@@ -597,31 +430,28 @@ columnar_ed_ann/
 
 ## Automatic Parameter Configuration
 
-Even in the Full Version, optimal parameters are automatically loaded from `config/hyperparameters.yaml` based on the number of hidden layers. Values explicitly specified via command-line arguments take precedence over automatic settings.
+In the main version, optimal parameters are automatically loaded from `config/hyperparameters.yaml` based on the number of hidden layers. Users only need to specify minimal arguments: hidden layer configuration, data size, and epoch count.
 
 ### Key Automatically Configured Parameters
 
-| Parameter | 1-layer | 2-layer | 3-layer | 4-layer | 5-layer (T3M adopted) | Description |
-|-----------|---------|---------|---------|---------|---------|-------------|
-| output_lr | 0.15 | 0.15 | 0.15 | 0.04 | 0.04 | Output layer learning rate |
-| non_column_lr | [0.15] | [0.15, 0.15] | [0.15, 0.15, 0.15] | [0.04, 0.04, 0.04, 0.04] | [0.04, 0.04, 0.04, 0.04, 0.04] | Hidden layer base learning rate (per layer) *1 |
-| column_lr | [0.0015] | [0.00075, 0.00045] | [0.00075, 0.0006, 0.0003] | [0.0002, 0.00016, 0.00012, 0.00008] | [0.0002, 0.00016, 0.00012, 0.00008, 0.00006] | Column neuron learning rate (per layer) |
-| lr | 0.15 | 0.15 | 0.15 | 0.04 | 0.04 | [Compatibility] Base learning rate (used when 3-system learning rates are not specified) |
-| column_lr_factors (clf) | [0.01] | [0.005, 0.003] | [0.005, 0.004, 0.002] | [0.005, 0.004, 0.003, 0.002] | [0.005, 0.004, 0.003, 0.002, 0.0015] | Per-layer suppression factors for column rows |
-| column_neurons | 1 | 10 | 10 | 20 | 20 | Number of column neurons |
-| init_scales | [0.4, 1.0] | [0.7, 1.8, 0.8] | [0.7, 1.8, 1.8, 0.8] | [0.9, 0.9, 1.8, 1.6, 0.8] | [0.9, 1.6, 1.8, 1.2, 1.4, 0.8] | Per-layer initialization scales |
-| hidden_sparsity | 0.4 | [0.4, 0.4] | [0.4, 0.4, 0.4] | [0.4, 0.4, 0.4, 0.4] | [0.4, 0.4, 0.4, 0.4, 0.4] | Hidden layer sparsity |
-| gradient_clip | 0.05 | 0.03 | 0.06 | 0.03 | 0.03 | Gradient clipping |
+| Parameter | 1-layer | 2-layer | 3-layer | Description |
+|-----------|---------|---------|---------|-------------|
+| column_neurons | 1 | 10 | 10 | Number of column neurons |
+| init_scales | [0.4, 1.0] | [0.7, 1.8, 0.8] | [0.7, 1.8, 1.8, 0.8] | Per-layer initialization scales |
+| output_lr | 0.15 | 0.15 | 0.15 | Output layer learning rate |
+| non_column_lr | [0.15] | [0.15, 0.15] | [0.15, 0.15, 0.15] | Hidden layer base learning rate (per layer) * |
+| column_lr_factors | [0.01] | [0.005, 0.003] | [0.005, 0.004, 0.002] | Column neuron learning rate multiplier (per layer) |
+| hidden_sparsity | 0.4 | [0.4, 0.4] | [0.4, 0.4, 0.4] | Hidden layer sparsity |
+| gradient_clip | 0.05 | 0.03 | 0.06 | Gradient clipping |
 
-> **3-system learning rates**: Learning rates are independently controlled via three systems: `output_lr` (output layer), `non_column_lr` (hidden layer base, per layer), and `column_lr` (column neurons, per layer). `column_lr_factors` is a per-layer suppression factor applied only to column rows.
+> \* `non_column_lr` is used as the base learning rate for the entire hidden layer. Non-column neurons do not actually learn because they receive no amine signals; only column neurons (updated with `column_lr_factors` multiplier) and the output layer (updated with `output_lr`) train.
 >
-> *1 `non_column_lr` is used as the base learning rate for the entire hidden layer. Non-column neurons do not actually learn because they receive no amine signals; only column neurons (updated with `column_lr`) and the output layer (updated with `output_lr`) train.
+> Parameters for 4+ layers are also defined in `config/hyperparameters.yaml`.
 
 ### Customization
 
-1. **Command-line arguments**: Override with `--output_lr`, `--column_lr`, `--column_lr_factors`, `--column_neurons`, `--init_scales`, etc.
-2. **Direct YAML editing**: Edit `config/hyperparameters.yaml` in a text editor
-3. **View settings**: `python columnar_ed_ann.py --list_hyperparams`
+1. **Direct YAML editing**: Edit `config/hyperparameters.yaml` in a text editor
+2. **View settings**: Refer to the YAML file directly
 
 > If the YAML file is accidentally corrupted, restore it by copying from `config/hyperparameters_initial.yaml`.
 
@@ -647,9 +477,9 @@ The implementation has been verified against Isamu Kaneko's C source code as a r
 - [Original ED Method Explanation (Japanese)](docs/ja/ED法_解説資料.md) — Detailed explanation of the theory and operation of the original ED method
 - [EDLA — Isamu Kaneko's Error Diffusion Learning Algorithm (Japanese)](docs/ja/EDLA_金子勇氏.md) — Academic background of the ED method and Isamu Kaneko's contributions
 - [ED Learning Mechanism (Mermaid Anchors, EN)](docs/en/ed_learning_mechanism_anchors_en.md) — Code-anchored execution and feature flow diagrams
-- [ED学習メカニズム（Mermaidアンカー・日本語）](docs/ja/ed_learning_mechanism_anchors.md) — 日本語版のコード行番号アンカー付きフロー図
-- [Columnar ED Method: Detailed Principles](docs/en/Columnar_ED_Method_Detailed_Principles.md) — Implementation-aligned mathematical formalization
-- [コラムED法の動作原理詳細](docs/ja/コラムED法の動作原理詳細.md) — 数式ベースの実装整合型定式化（日本語）
+- [ED Learning Mechanism (Mermaid Anchors, Japanese)](docs/ja/ed_learning_mechanism_anchors.md) — Code-anchored execution and feature flow diagrams (Japanese)
+- [Columnar ED Method: Detailed Principles](docs/en/Columnar_ED_Method_Detailed_Principles.md) — Implementation-aligned mathematical formalization (English)
+- [Columnar ED Method: Detailed Principles (Japanese)](docs/ja/コラムED法の動作原理詳細.md) — Implementation-aligned mathematical formalization (Japanese)
 - [Isamu Kaneko (1999) Original ED Method C Source Code](original-c-source-code/main.c) — The original implementation on which this work is based
 - [Cortical Column Structure](https://neu-brains.co.jp/neuro-plus/glossary/ka/140/) — Biological background of column structure
 
@@ -673,7 +503,3 @@ This implementation is based on the Error Diffusion (ED) learning algorithm conc
 ## Author
 
 yoiwa0714
-
----
-
-**Note:** This implementation is for research and educational purposes. For commercial use, please review the [LICENSE](LICENSE).
