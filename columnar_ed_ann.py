@@ -408,11 +408,11 @@ def main():
                     epoch=epoch,
                     sample_x=x_test[sample_idx],
                     sample_y_true=y_true,
-                    sample_y_true_name=str(y_true),
+                    sample_y_true_name=class_names[y_true] if class_names else str(y_true),
                     z_hiddens=z_hiddens,
                     z_output=z_output,
                     sample_y_pred=y_pred,
-                    sample_y_pred_name=str(y_pred),
+                    sample_y_pred_name=class_names[y_pred] if class_names else str(y_pred),
                     sample_x_raw=x_test_raw[sample_idx] if x_test_raw is not None else None,
                 )
 
