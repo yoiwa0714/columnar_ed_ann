@@ -646,7 +646,16 @@ class VisualizationManager:
                 ax_raw.axis('off')
             else:
                 ax_raw_img = ax_raw
-            img = sample_x_raw.reshape(img_shape)
+            # カラー画像(H×W×3)の場合はグレースケールに変換して表示
+            raw_size = sample_x_raw.size
+            expected_gray = img_shape[0] * img_shape[1]
+            if raw_size == expected_gray:
+                img = sample_x_raw.reshape(img_shape)
+            elif raw_size == expected_gray * 3:
+                img_rgb = sample_x_raw.reshape(img_shape[0], img_shape[1], 3)
+                img = 0.2989 * img_rgb[:,:,0] + 0.5870 * img_rgb[:,:,1] + 0.1140 * img_rgb[:,:,2]
+            else:
+                img = sample_x_raw.reshape(img_shape) if raw_size == expected_gray else np.zeros(img_shape)
             im = ax_raw_img.imshow(img, cmap='gray', aspect='equal', vmin=0, vmax=1)
             ax_raw_img.set_xticks([])
             ax_raw_img.set_yticks([])
