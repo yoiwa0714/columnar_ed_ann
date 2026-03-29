@@ -604,6 +604,48 @@ class SimpleColumnEDNetwork:
 
         return accuracy, avg_loss
 
+    def evaluate_with_errors(self, x_data, y_data, batch_size=256):
+        """
+        バッチ評価（不正解サンプル収集付き）
+
+        Returns:
+            accuracy, avg_loss, error_list[(sample_idx, true_label, pred_label), ...]
+        """
+        n_samples = len(x_data)
+        n_batches = (n_samples + batch_size - 1) // batch_size
+
+        all_predictions = []
+        all_losses = []
+
+        for batch_idx in range(n_batches):
+            start = batch_idx * batch_size
+            end = min(start + batch_size, n_samples)
+
+            x_batch = x_data[start:end]
+            y_batch = y_data[start:end]
+
+            _, z_output_batch, _ = self.forward_batch(x_batch)
+            y_pred_batch = np.argmax(z_output_batch, axis=1)
+            all_predictions.extend(y_pred_batch)
+
+            batch_losses = -np.log(
+                z_output_batch[np.arange(len(y_batch)), y_batch] + 1e-10
+            )
+            all_losses.extend(batch_losses)
+
+        all_predictions = np.array(all_predictions)
+        n_correct = np.sum(all_predictions == y_data)
+        accuracy = n_correct / n_samples
+        avg_loss = np.mean(all_losses)
+
+        error_list = [
+            (int(i), int(y_data[i]), int(all_predictions[i]))
+            for i in range(n_samples)
+            if all_predictions[i] != y_data[i]
+        ]
+
+        return accuracy, avg_loss, error_list
+
     # ================================================================
     # 統計
     # ================================================================

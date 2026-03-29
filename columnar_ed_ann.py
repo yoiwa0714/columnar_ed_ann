@@ -71,6 +71,8 @@ def parse_args():
                        help='データセット（mnist, fashion, cifar10）')
     parser.add_argument('--no_gabor', action='store_true',
                        help='Gabor特徴抽出を無効化（デフォルト: Gabor ON）')
+    parser.add_argument('--gradient_clip', type=float, default=None,
+                       help='勾配クリッピング閾値（未指定時: YAML設定値）')
 
     # 可視化
     viz_group = parser.add_argument_group('可視化')
@@ -84,6 +86,13 @@ def parse_args():
     viz_group.add_argument('--save_viz', type=str, nargs='?', const='viz_results',
                           default=None, metavar='PATH',
                           help='可視化結果を保存（パス指定可）')
+
+    # 不正解データ表示
+    error_group = parser.add_argument_group('不正解データ分析')
+    error_group.add_argument('--show_train_errors', action='store_true',
+                            help='学習完了後、最終エポックの不正解学習データを一覧表示')
+    error_group.add_argument('--max_errors_per_class', type=int, default=20,
+                            help='不正解表示のクラスごとの上限数（デフォルト: 20）')
 
     return parser.parse_args()
 
@@ -119,6 +128,10 @@ def main():
 
     # エポック数の決定
     epochs = args.epochs if args.epochs is not None else config['epochs']
+
+    # gradient_clip CLIオーバーライド
+    if args.gradient_clip is not None:
+        config['gradient_clip'] = args.gradient_clip
 
     # 学習率パラメータ
     output_lr = config['output_lr']
@@ -384,6 +397,56 @@ def main():
         viz_manager.save_figures()
         if args.save_viz:
             print(f"\n可視化結果を保存: {args.save_viz}")
+
+    # ========================================
+    # 11. 不正解学習データの一覧表示
+    # ========================================
+    if args.show_train_errors:
+        _, _, train_errors = network.evaluate_with_errors(x_train, y_train)
+
+        if not train_errors:
+            print("\n不正解サンプルはありませんでした。")
+        else:
+            # データセット別クラス名
+            dataset_class_names = {
+                'fashion': ['T-shirt', 'Trouser', 'Pullover', 'Dress', 'Coat',
+                           'Sandal', 'Shirt', 'Sneaker', 'Bag', 'Ankle boot'],
+                'cifar10': ['airplane', 'automobile', 'bird', 'cat', 'deer',
+                           'dog', 'frog', 'horse', 'ship', 'truck'],
+            }
+            class_names = dataset_class_names.get(args.dataset, None)
+
+            # 画像形状
+            dataset_img_shapes = {
+                'mnist': (28, 28),
+                'fashion': (28, 28),
+                'cifar10': (32, 32, 3),
+            }
+            img_shape = dataset_img_shapes.get(args.dataset, (28, 28))
+
+            # 表示用データ（Gabor変換前のデータがあればそちらを使用）
+            x_display = x_train_raw if x_train_raw is not None else x_train
+
+            # viz/heatmapウィンドウを先に閉じる
+            if viz_manager is not None:
+                viz_manager.close()
+
+            from collections import Counter
+            cls_count = Counter(int(t) for _, t, _ in train_errors)
+            total_rows = sum(1 + (min(n, args.max_errors_per_class) + 9) // 10
+                           for n in cls_count.values())
+            print(f"\n不正解学習データを表示中... ({len(train_errors)}/{len(x_train)} 件, {total_rows} 行)")
+            print("  ウィンドウを閉じると終了します。↑↓キーまたはマウスホイールでスクロール")
+
+            from modules_experiment.visualization_manager import show_train_errors
+            show_train_errors(
+                error_list=train_errors,
+                x_display=x_display,
+                y_train=y_train,
+                class_names=class_names,
+                img_shape=img_shape,
+                max_per_class=args.max_errors_per_class
+            )
 
     print()
 
