@@ -159,6 +159,15 @@ def main():
     n_classes = len(np.unique(y_train))
     print(f"入力次元: {n_input}, クラス数: {n_classes}")
 
+    # データセット別クラス名
+    _CLASS_NAMES = {
+        'fashion': ['T-shirt/top', 'Trouser', 'Pullover', 'Dress', 'Coat',
+                     'Sandal', 'Shirt', 'Sneaker', 'Bag', 'Ankle boot'],
+        'cifar10': ['airplane', 'automobile', 'bird', 'cat', 'deer',
+                     'dog', 'frog', 'horse', 'ship', 'truck'],
+    }
+    class_names = _CLASS_NAMES.get(args.dataset)  # MNISTはNone（数字そのまま）
+
     # Gabor変換前のデータ保持（ヒートマップ用）
     x_train_raw = None
     x_test_raw = None
@@ -332,11 +341,11 @@ def main():
                 epoch=epoch_ref[0],
                 sample_x=x_test[idx],
                 sample_y_true=y_true,
-                sample_y_true_name=str(y_true),
+                sample_y_true_name=class_names[y_true] if class_names else str(y_true),
                 z_hiddens=z_h,
                 z_output=z_o,
                 sample_y_pred=y_pred,
-                sample_y_pred_name=str(y_pred),
+                sample_y_pred_name=class_names[y_pred] if class_names else str(y_pred),
                 sample_x_raw=x_test_raw[idx] if x_test_raw is not None else None,
                 progress=f"{sample_i}/{n_samples}"
             )
