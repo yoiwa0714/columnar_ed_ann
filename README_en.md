@@ -442,7 +442,7 @@ In the main version, optimal parameters are automatically loaded from `config/hy
 | non_column_lr | [0.15] | [0.15, 0.15] | [0.15, 0.15, 0.15] | Hidden layer base learning rate (per layer) * |
 | column_lr_factors | [0.01] | [0.005, 0.003] | [0.005, 0.004, 0.002] | Column neuron learning rate multiplier (per layer) |
 | hidden_sparsity | 0.4 | [0.4, 0.4] | [0.4, 0.4, 0.4] | Hidden layer sparsity |
-| gradient_clip | 0.0001 | 0.0001 | 0.06 | Gradient clipping |
+| gradient_clip | 0.0001 | 0.0001 | 0.0001 | Gradient clipping |
 
 > \* `non_column_lr` is used as the base learning rate for the entire hidden layer. Non-column neurons do not actually learn because they receive no amine signals; only column neurons (updated with `column_lr_factors` multiplier) and the output layer (updated with `output_lr`) train.
 >
