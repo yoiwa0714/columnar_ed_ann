@@ -168,19 +168,43 @@ def main():
     # ========================================
     use_gabor = not args.no_gabor
     gabor_info = None
+    color_to_gray = False  # カラー→グレースケール変換フラグ
     if use_gabor:
         from modules.gabor_features import GaborFeatureExtractor
 
         if n_input == 784:
             img_shape = (28, 28)
+        elif n_input == 3072:
+            # CIFAR-10: 32×32×3 → グレースケール変換してGabor適用
+            img_shape = (32, 32)
+            color_to_gray = True
         else:
             side = int(np.sqrt(n_input))
             if side * side == n_input:
                 img_shape = (side, side)
             else:
-                print(f"警告: 入力次元{n_input}の画像形状を推定できません。Gabor無効化。")
-                use_gabor = False
-                img_shape = None
+                # カラー画像(H×W×3)の可能性をチェック
+                side = int(np.sqrt(n_input / 3))
+                if side * side * 3 == n_input:
+                    img_shape = (side, side)
+                    color_to_gray = True
+                else:
+                    print(f"警告: 入力次元{n_input}の画像形状を推定できません。Gabor無効化。")
+                    use_gabor = False
+                    img_shape = None
+
+    if use_gabor and color_to_gray:
+        # ヒートマップ用にカラー元画像を保持
+        x_train_raw = x_train.copy()
+        x_test_raw = x_test.copy()
+        # カラー画像をグレースケールに変換（ITU-R BT.601準拠）
+        h, w = img_shape
+        x_train_color = x_train.reshape(-1, h, w, 3)
+        x_test_color = x_test.reshape(-1, h, w, 3)
+        x_train = np.dot(x_train_color, [0.2989, 0.5870, 0.1140]).reshape(-1, h * w)
+        x_test = np.dot(x_test_color, [0.2989, 0.5870, 0.1140]).reshape(-1, h * w)
+        n_input = h * w
+        print(f"  カラー→グレースケール変換: {h}×{w}×3 → {h}×{w} ({n_input}次元)")
 
     if use_gabor:
         gp = hp.gabor_params
@@ -201,9 +225,10 @@ def main():
         print(f"  フィルタ数: {gabor_info['n_filters']}, "
               f"特徴次元: {gabor_info['feature_dim']} (元: {n_input})")
 
-        # 変換前のデータを保持（ヒートマップ用）
-        x_train_raw = x_train.copy()
-        x_test_raw = x_test.copy()
+        # 変換前のデータを保持（ヒートマップ用、カラー画像の場合は既に保存済み）
+        if x_train_raw is None:
+            x_train_raw = x_train.copy()
+            x_test_raw = x_test.copy()
 
         x_train = extractor.transform(x_train)
         x_test = extractor.transform_test(x_test)
