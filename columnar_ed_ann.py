@@ -21,15 +21,123 @@ Columnar ED-ANN
   # 2層+Gabor特徴（デフォルト構成、約10分）
   python columnar_ed_ann.py --train 10000 --test 10000
 
-  # 1層（約3分）
-  python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000
+  # 6層+層機能分化（約15分、96.57%@1024×6）
+  python columnar_ed_ann.py --hidden 1024,1024,1024,1024,1024,1024 \\
+      --train 10000 --test 10000 --epochs 10 \\
+      --lcn 0,10,10,10,10,10 \\
+      --is 0.7,1.2,1.2,1.8,2.2,2.2,0.8 \\
+      --hs 0.6,0.6,0.4,0.4,0.2,0.2
 
   # 可視化付き
   python columnar_ed_ann.py --train 10000 --test 10000 --viz --heatmap
 
   # Gabor特徴なし
   python columnar_ed_ann.py --hidden 2048 --train 10000 --test 10000 --no_gabor
+
+  # YAMLパラメータ一覧表示（全層）
+  python columnar_ed_ann.py --lh
+
+  # 2層の詳細表示
+  python columnar_ed_ann.py --lh 2
+
+■ コマンドラインオプション（短縮形）:
+  --gc   gradient_clip       勾配クリッピング閾値
+  --is   init_scales         層別重み初期化スケール（カンマ区切り）
+  --hs   hidden_sparsity     層別非コラム重みスパース率
+  --ncl  non_column_lr       層別非コラム学習率
+  --olr  output_lr           出力層学習率
+  --clf  column_lr_factors   コラムニューロン学習率倍率（層別）
+  --u1                       アミン拡散係数u1（出力→最終隠れ層）
+  --u2                       アミン拡散係数u2（隠れ層間）
+  --lcn  layer_column_neurons 層別コラムニューロン数（0=全コラム化）
+  --gks  gabor_kernel_size   Gaborフィルタカーネルサイズ
+  --go   gabor_orientations  Gaborフィルタ方位数
+  --gf   gabor_frequencies   Gaborフィルタ周波数帯域数
+  --lh   list_hyperparams    YAMLパラメータ一覧を表示して終了
+
+■ 変更履歴（主要ポイント）:
+  2026-04-05 パラメータ管理・表示の整備:
+    - columnar_ed_ann.py と columnar_ed_ann_experiment.py の役割分担を明確化
+      - columnar_ed_ann.py: 実績のあるパラメータのみ実装（教材）
+      - columnar_ed_ann_experiment.py: 実験的パラメータも含む（実験場）
+    - 実績なし実験的パラメータを columnar_ed_ann.py / modules/ed_network.py から完全削除
+      - 削除: nc_integration_strength, nc_spatial_sigma,
+               error_inhibition_strength, error_inhibition_topk
+    - YAMLのデッドパラメータを全6層から削除
+      - 削除: base_column_radius, column_radius_per_layer, participation_rate
+    - 1層YAMLにGabor設定(gabor_orientations/frequencies/kernel_size)を追加（全層統一）
+    - 新CLI短縮形: --gc, --is, --hs, --ncl, --olr, --clf, --u1, --u2,
+                   --lcn, --gks, --go, --gf, --lh
+    - --lh 復活: 全層縦並び一覧 / 層別詳細+推奨コマンド表示
+    - 学習開始時パラメータ表示を全面刷新:
+      YAMLの全パラメータを4グループ（ネットワーク構成/学習率/訓練設定/Gabor特徴）で表示
+      CLIで明示的に変更した値には "(変更)" を自動付記
+  2026-04-05 v1.1.0 重み保存・継続学習・アンサンブル学習の実装:
+    - --save_weights PATH: 学習完了後に重みをweights/ディレクトリに保存
+    - --save_best PATH:    ベスト精度更新時のみ保存
+    - --save_overwrite:    同パスへの上書きを許可
+    - --load_weights PATH: 保存済み重みから学習を再開（継続学習）
+    - --ensemble PATHS:    カンマ区切りで複数重みを指定してアンサンブル推論
+
+■ データセット別精度 (seed=42):
+  MNIST:       6層[1024×4+2048×2]+Gabor 20k/10k → 98.11% (プロジェクト最高, 2026-04-04)
+             3層+Gabor 20k/20k → 97.57%
+  Fashion-MNIST: 3層+Gabor 20k → 実験中
+  CIFAR-10:    5層+Gabor 3k → 37.70% (3エポック)
+    - カラー→グレースケール変換+Gabor特徴抽出で対応
+    - 隠れ層の重みがほぼ学習されない（出力層のみ学習）
+    - gradient_clip/init_scales調整では改善せず
+    - 根本原因: ED法のアミン拡散が深層の隠れ層まで十分に伝播しない
+    - 今後の方向: 非コラムニューロンの学習参加等を検討
+
+■ 6層 層機能分化実験 (2026-04-03):
+  脳の6層コラム構造（L1分子層〜L6多形細胞層）の機能分化を
+  既存パラメータの層別最適化で模倣。4 Phaseの累積探索で+0.72%改善。
+
+  Phase 1: 層別column_neurons配置 (cn=0の配置探索)
+    P1a: cn=0,10,10,10,10,10 → Best=95.79% (+0.19% vs baseline 95.60%) ★最良
+    P1b: cn=0,10,10,10,10,0  → Best=95.73% (+0.13%)
+    P1c: cn=10,0,0,10,10,10  → Best=95.60% (±0.00%)
+    → 入力層のみ全コラム化が最良（L4的: 汎用的な入力受付）
+
+  Phase 2: 層別init_scales分化
+    P2a: is=[1.8,1.8,1.8,1.8,1.8,1.8,0.8] → 94.80% (-0.99%) 入力層is増大は逆効果
+    P2b: is=[0.7,1.2,1.2,1.8,2.2,2.2,0.8] → 95.93% (+0.14%) ★最良
+    P2c: is=[0.7,2.2,2.2,1.8,1.2,1.2,0.8] → 95.74% (-0.05%)
+    → 出力近傍層(L4,L5)のis=2.2が最良（L5的: 行動出力層を厚く）
+
+  Phase 3: 層別学習率分化 (non_column_lr)
+    P3a: ncl=[0.08,0.08,0.04,0.04,0.02,0.02] → 95.92% (-0.01%) 効果なし
+    P3b: ncl=[0.02,0.02,0.04,0.04,0.08,0.08] → 95.96% (+0.03%) ノイズ範囲
+    → 学習率分化は有意な効果なし（均一0.04で十分）
+
+  Phase 4: 層別hidden_sparsity分化
+    P4a: hs=[0.2,0.2,0.4,0.4,0.6,0.6] → 96.04% (+0.11%) 浅層密・深層疎
+    P4b: hs=[0.6,0.6,0.4,0.4,0.2,0.2] → 96.32% (+0.39%) ★最良
+    → 浅層疎・深層密が大幅改善（L1的: 疎な調整層、L5的: 密な出力層）
+
+  累積改善: baseline 95.60% → P4b 96.32% (+0.72%)
+
+  検証実験:
+    512×6, 20ep → Best=96.32% (Ep8, Ep9以降改善なし、10epで十分)
+    1024×6, 10ep → Best=96.57% (Ep6, +0.25% vs 512×6)
+
+  生物学的知見との整合:
+    - 入力層(L4)は汎用的(cn=0) → 脳のL4も「生データの受付室」
+    - 出力層(L5)は厚い(is=2.2) → 脳の運動野ではL5が特に厚い
+    - 浅層は疎、深層は密 → 脳のL1は疎、L5は大きな錐体細胞が密集
+
+  最良6層構成コマンド:
+    python columnar_ed_ann.py --hidden 1024,1024,1024,1024,1024,1024 \\
+        --train 10000 --test 10000 --epochs 10 --seed 42 \\
+        --gradient_clip 0.0001 \\
+        --layer_column_neurons 0,10,10,10,10,10 \\
+        --init_scales 0.7,1.2,1.2,1.8,2.2,2.2,0.8 \\
+        --hidden_sparsity 0.6,0.6,0.4,0.4,0.2,0.2
+    # → Best=96.57% (Ep6, 1024×6) / 96.32% (Ep8, 512×6)
 """
+
+__version__ = "1.1.0"
 
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
@@ -48,12 +156,15 @@ def parse_args():
     """コマンドライン引数の解析（必要最小限）"""
     parser = argparse.ArgumentParser(
         prog='columnar_ed_ann.py',
-        description='コラムED法\n'
+        description=f'コラムED法 version {__version__}\n'
                     '微分の連鎖律による誤差逆伝播法を使用せず高精度を実現\n'
                     '\n'
                     '層数に応じた最適パラメータが自動適用されます',
         formatter_class=argparse.RawTextHelpFormatter
     )
+
+    parser.add_argument('--ver', '-V', action='version',
+                       version=f'columnar_ed_ann.py v{__version__}')
 
     parser.add_argument('--hidden', type=str, default=None,
                        help='隠れ層ニューロン数（カンマ区切り）\n'
@@ -71,9 +182,42 @@ def parse_args():
                        help='データセット（mnist, fashion, cifar10）')
     parser.add_argument('--no_gabor', action='store_true',
                        help='Gabor特徴抽出を無効化（デフォルト: Gabor ON）')
-    parser.add_argument('--gradient_clip', type=float, default=None,
-                       help='勾配クリッピング閾値（未指定時: YAML設定値）')
-
+    parser.add_argument('--gc', '--gradient_clip', dest='gradient_clip', type=float, default=None,
+                       help='勾配クリッピング閾値（未指定時: YAML設定値）　短縮形: --gc')
+    parser.add_argument('--is', '--init_scales', dest='init_scales', type=str, default=None,
+                       help='層別重み初期化スケール（カンマ区切り、長さ=層数+1）\n'
+                            '例: 0.7,1.8,1.8,1.8,1.8,1.8,0.8　短縮形: --is')
+    parser.add_argument('--hs', '--hidden_sparsity', dest='hidden_sparsity', type=str, default=None,
+                       help='層別非コラム重みスパース率（カンマ区切り）\n'
+                            '例: 0.2,0.2,0.4,0.4,0.6,0.6　短縮形: --hs')
+    parser.add_argument('--ncl', '--non_column_lr', dest='non_column_lr', type=str, default=None,
+                       help='層別非コラム学習率（カンマ区切り、長さ=層数）\n'
+                            '例: 0.08,0.08,0.04,0.04,0.02,0.02　短縮形: --ncl')
+    parser.add_argument('--olr', '--output_lr', dest='output_lr', type=float, default=None,
+                       help='出力層学習率（未指定時: YAML設定値）　短縮形: --olr')
+    parser.add_argument('--clf', '--column_lr_factors', dest='column_lr_factors', type=str, default=None,
+                       help='コラムニューロンの学習率倍率（カンマ区切り、長さ=層数）\n'
+                            '例: 0.005,0.003　短縮形: --clf')
+    parser.add_argument('--u1', type=float, default=None,
+                       help='アミン拡散係数u1（出力層→最終隠れ層、未指定時: YAML設定値）')
+    parser.add_argument('--u2', type=float, default=None,
+                       help='アミン拡散係数u2（隠れ層間、多層時に使用、未指定時: YAML設定値）')
+    parser.add_argument('--lcn', '--layer_column_neurons', dest='layer_column_neurons', type=str, default=None,
+                       help='層別コラムニューロン数（カンマ区切り、0=全コラム化）\n'
+                            '例: 0,0,0,10,10,10 → 浅層3層を全コラム化、深層3層はcn=10　短縮形: --lcn')
+    parser.add_argument('--gks', '--gabor_kernel_size', dest='gabor_kernel_size', type=int, default=None,
+                       help='Gaborフィルタのカーネルサイズ（未指定時: YAML設定値）　短縮形: --gks')
+    parser.add_argument('--go', '--gabor_orientations', dest='gabor_orientations', type=int, default=None,
+                       help='Gaborフィルタの方位数（未指定時: YAML設定値）　短縮形: --go')
+    parser.add_argument('--gf', '--gabor_frequencies', dest='gabor_frequencies', type=int, default=None,
+                       help='Gaborフィルタの周波数帯域数（未指定時: YAML設定値）　短縮形: --gf')
+    # ハイパーパラメータ一覧
+    parser.add_argument('--lh', '--list_hyperparams', dest='list_hyperparams',
+                       type=int, nargs='?', const=0, default=None,
+                       help='ハイパーパラメータ一覧を表示して終了\n'
+                            '層数なし: 全層数の簡易一覧\n'
+                            '層数指定: その層数の詳細表示\n'
+                            '例: --lh (=全層一覧), --lh 2 (=2層詳細)　短縮形: --lh')
     # 可視化
     viz_group = parser.add_argument_group('可視化')
     viz_group.add_argument('--viz', type=int, nargs='?', const=1, default=None,
@@ -94,12 +238,405 @@ def parse_args():
     error_group.add_argument('--max_errors_per_class', type=int, default=20,
                             help='不正解表示のクラスごとの上限数（デフォルト: 20）')
 
-    return parser.parse_args()
+    # 重み保存・読み込み
+    weight_group = parser.add_argument_group('重み保存・継続学習・アンサンブル')
+    weight_group.add_argument('--save_weights', type=str, default=None, metavar='PATH',
+                             help='学習完了後に重みを保存するディレクトリ（例: weights/run1）\n'
+                                  'ディレクトリ内に weights_<名前>.npz と weights_<名前>.yaml を作成')
+    weight_group.add_argument('--save_best', type=str, default=None, metavar='PATH',
+                             help='ベスト精度更新時のみ重みを保存するディレクトリ\n'
+                                  '--save_weights と同時指定可（独立して動作）')
+    weight_group.add_argument('--save_overwrite', action='store_true',
+                             help='--save_weights / --save_best で同名ファイルへの上書きを許可\n'
+                                  '未指定時、既存ファイルがある場合はエラー')
+    weight_group.add_argument('--load_weights', type=str, default=None, metavar='PATH',
+                             help='保存済み重みを読み込んで継続学習を行う（PATH: .npzファイルまたはそのディレクトリ）\n'
+                                  '学習率が元の値より高い場合は警告を表示')
+    weight_group.add_argument('--ensemble', type=str, default=None, metavar='PATHS',
+                             help='複数の重みをカンマ区切りで指定してアンサンブル推論\n'
+                                  '（学習は行わず推論のみ。例: weights/run1,weights/run2,weights/run3）')
+
+    args = parser.parse_args()
+    # コマンドラインで明示的に指定された引数名セット（" (変更)" 表示用）
+    import sys as _sys
+    _specified = set()
+    for action in parser._actions:
+        for opt in action.option_strings:
+            if opt.lstrip('-') in _sys.argv or opt in _sys.argv:
+                _specified.add(action.dest)
+    args._specified = _specified
+    return args
+
+
+def _show_hyperparams(n_layers_requested, hp):
+    """ハイパーパラメータ一覧を表示して終了する。"""
+    max_layers = max(hp.layer_configs.keys())
+
+    if n_layers_requested == 0:
+        # 層数なし: 全層数の縦並び一覧
+        print(f"\n{'='*56}")
+        print(f"ハイパーパラメータ設定一覧 ({max_layers}層まで対応)")
+        for n in sorted(hp.layer_configs.keys()):
+            cfg = hp.get_config(n)
+            hidden = cfg.get('hidden', '-')
+            cn = cfg.get('column_neurons', '-')
+            ep = cfg.get('epochs', '-')
+            gc = cfg.get('gradient_clip', '-')
+            olr = cfg.get('output_lr', '-')
+            ncl = cfg.get('non_column_lr', '-')
+            hs = cfg.get('hidden_sparsity', '-')
+            isc = cfg.get('weight_init_scales', cfg.get('init_scales', '-'))
+            clrf = cfg.get('column_lr_factors', '-')
+            u1 = cfg.get('u1', '-')
+            u2 = cfg.get('u2', '-')
+            has_gabor = 'あり' if 'gabor_orientations' in cfg else 'なし'
+            print(f"\n{'─'*56}")
+            print(f"{n}層構成:")
+            print(f"  hidden:            {hidden}")
+            print(f"  column_neurons:    {cn}")
+            print(f"  epochs:            {ep}")
+            print(f"  gradient_clip:     {gc}")
+            print(f"  output_lr:         {olr}")
+            print(f"  non_column_lr:     {ncl}")
+            print(f"  column_lr_factors: {clrf}")
+            print(f"  u1:                {u1}")
+            print(f"  u2:                {u2}")
+            print(f"  hidden_sparsity:   {hs}")
+            print(f"  init_scales:       {isc}")
+            print(f"  Gabor特徴:         {has_gabor}")
+            if 'gabor_orientations' in cfg:
+                print(f"  gabor_orientations:{cfg.get('gabor_orientations', 8)}")
+                print(f"  gabor_frequencies: {cfg.get('gabor_frequencies', 2)}")
+                print(f"  gabor_kernel_size: {cfg.get('gabor_kernel_size', 11)}")
+        print(f"\n{'='*56}")
+        print(f"詳細表示: python columnar_ed_ann.py --lh <層数>  例: --lh 2")
+        print()
+    else:
+        # 層数指定: 詳細表示
+        n = n_layers_requested
+        if n not in hp.layer_configs:
+            print(f"エラー: {n}層の設定はまだ定義されていません。利用可能: {sorted(hp.layer_configs.keys())}")
+            sys.exit(1)
+        cfg = hp.get_config(n)
+        hidden = cfg.get('hidden', [2048])
+        isc = cfg.get('weight_init_scales', cfg.get('init_scales',
+                      [0.7] + [1.8]*(n-1) + [0.8] if n > 1 else [0.4, 1.0]))
+        hs = cfg.get('hidden_sparsity', [0.4]*n)
+        clrf = cfg.get('column_lr_factors', [0.01]*n)
+        ncl = cfg.get('non_column_lr', [cfg.get('output_lr', 0.15)]*n)
+
+        print(f"\n{'='*70}")
+        print(f"ハイパーパラメータ設定 ({n}層構成)")
+        print(f"{'='*70}")
+        print(f"  {cfg.get('description', '-')}")
+
+        print(f"\n[ネットワーク構成]")
+        print(f"  hidden:             {hidden}")
+        print(f"  column_neurons:     {cfg.get('column_neurons', 10)}  (--lcn で層別指定可)")
+        print(f"  init_scales:        {isc}  (--is)")
+        print(f"  hidden_sparsity:    {hs}  (--hs)")
+
+        print(f"\n[学習率]")
+        print(f"  output_lr:          {cfg.get('output_lr', 0.15)}  (--olr)")
+        print(f"  non_column_lr:      {ncl}  (--ncl)")
+        print(f"  column_lr_factors:  {clrf}  (--clf)")
+        print(f"  u1:                 {cfg.get('u1', 0.5)}  (--u1)")
+        print(f"  u2:                 {cfg.get('u2', 0.8)}  (--u2)")
+
+        print(f"\n[訓練設定]")
+        print(f"  epochs:             {cfg.get('epochs', 10)}  (--epochs)")
+        print(f"  gradient_clip:      {cfg.get('gradient_clip', 0.0001)}  (--gc)")
+
+        if 'gabor_orientations' in cfg:
+            print(f"\n[Gabor特徴]")
+            print(f"  gabor_orientations: {cfg.get('gabor_orientations', 8)}  (--go)")
+            print(f"  gabor_frequencies:  {cfg.get('gabor_frequencies', 2)}  (--gf)")
+            print(f"  gabor_kernel_size:  {cfg.get('gabor_kernel_size', 11)}  (--gks)")
+
+        print(f"\n{'='*70}")
+        hidden_str = ','.join(str(h) for h in hidden)
+        cn = cfg.get('column_neurons', 10)
+        ep = cfg.get('epochs', 10)
+        gc = cfg.get('gradient_clip', 0.0001)
+        is_str = ','.join(str(x) for x in isc)
+        hs_str = ','.join(str(x) for x in (hs if isinstance(hs, list) else [hs]*n))
+        print(f"\n推奨実行コマンド:")
+        print(f"  python columnar_ed_ann.py \\")
+        print(f"      --hidden {hidden_str} --train 10000 --test 10000 \\")
+        print(f"      --lcn {','.join(['10']*n)} --epochs {ep} \\")
+        print(f"      --gc {gc} --is {is_str} --hs {hs_str}")
+        print()
+    sys.exit(0)
+
+
+def _resolve_save_dir(path):
+    """保存先パスを解決する。
+
+    ディレクトリ区切り文字を含まない単純名（例: "run1"）は
+    weights/ ディレクトリ下に自動配置する（例: "weights/run1"）。
+    パスを含む指定（例: "weights/run1", "/abs/path/run1"）はそのまま使用する。
+    """
+    import os
+    if os.sep not in path and '/' not in path:
+        return os.path.join('weights', path)
+    return path
+
+
+def _save_weights(network, save_dir, args, config, best_test_acc, best_epoch,
+                  final_train_acc, final_test_acc, allow_overwrite=False,
+                  finetune_source=None):
+    """重みをnpz＋yamlの分離形式で保存する。
+
+    save_dir/
+      weights_<basename>.npz   ← 重み行列（numpy圧縮バイナリ）
+      weights_<basename>.yaml  ← ネットワーク構成・精度情報（人間が読める）
+
+    basename はディレクトリ名の末尾部分（タイムスタンプ等）を使用。
+    """
+    import os
+    import yaml
+    from datetime import datetime
+
+    os.makedirs(save_dir, exist_ok=True)
+    basename = os.path.basename(save_dir.rstrip('/\\'))
+    npz_path  = os.path.join(save_dir, f"weights_{basename}.npz")
+    yaml_path = os.path.join(save_dir, f"weights_{basename}.yaml")
+
+    # 上書きチェック: --save_overwrite未指定かつ既存ファイルあり → ユーザーに問い合わせ
+    if not allow_overwrite and (os.path.exists(npz_path) or os.path.exists(yaml_path)):
+        print()
+        print(f"既に存在する重みファイルと同名のファイルが重み保存先として指定されました。")
+        print(f"  保存先: {save_dir}/")
+        print()
+        print("  1) 別のファイル名を指定する")
+        print("  2) 上書きする (--save_overwrite 指定と同じ)")
+        print("  3) 実行を中止する")
+        print()
+        while True:
+            try:
+                choice = input("  1から3の番号を選択してください: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print("\n中止しました。")
+                return False
+            if choice == '1':
+                new_name = input("  新しい保存先を入力してください: ").strip()
+                if not new_name:
+                    print("  入力が空です。再度入力してください。")
+                    continue
+                new_dir = _resolve_save_dir(new_name)
+                return _save_weights(network, new_dir, args, config,
+                                     best_test_acc, best_epoch,
+                                     final_train_acc, final_test_acc,
+                                     allow_overwrite=False,
+                                     finetune_source=finetune_source)
+            elif choice == '2':
+                allow_overwrite = True
+                break
+            elif choice == '3':
+                print("  重みの保存を中止しました。")
+                return False
+            else:
+                print("  1、2、3のいずれかを入力してください。")
+
+    # --- npz 保存 ---
+    save_dict = {'w_output': network.w_output}
+    for i, w in enumerate(network.w_hidden):
+        save_dict[f'w_hidden_{i}'] = w
+    np.savez_compressed(npz_path, **save_dict)
+
+    # --- yaml 保存 ---
+    # column_neuronsは層別リストまたは単一値
+    cn_val = network.column_neurons
+    if isinstance(cn_val, list):
+        cn_yaml = cn_val
+    else:
+        cn_yaml = cn_val
+
+    meta = {
+        '# ネットワーク構成': None,
+        'hidden': list(network.n_hidden),
+        'n_input': int(network.n_input),
+        'n_output': int(network.n_output),
+        'column_neurons': cn_yaml,
+        'init_scales': list(config.get('weight_init_scales', [])),
+        'hidden_sparsity': config.get('hidden_sparsity', None),
+        'output_lr': float(network.layer_lrs[-1] if hasattr(network, 'layer_lrs') and network.layer_lrs else network.learning_rate),
+        'gradient_clip': float(network.gradient_clip),
+        'u1': float(network.u1),
+        'u2': float(network.u2),
+        '# 学習条件': None,
+        'dataset': args.dataset,
+        'n_train': args.train,
+        'n_test': args.test,
+        'gabor_features': not args.no_gabor,
+        'seed': args.seed,
+        '# 達成精度': None,
+        'best_test_acc': round(float(best_test_acc), 6),
+        'best_epoch': int(best_epoch),
+        'final_train_acc': round(float(final_train_acc), 6),
+        'final_test_acc': round(float(final_test_acc), 6),
+        '# 保存情報': None,
+        'saved_at': datetime.now().strftime('%Y-%m-%dT%H:%M:%S'),
+        'version': __version__,
+    }
+    if finetune_source is not None:
+        meta['finetune_history'] = [finetune_source]
+
+    # コメントキーを除いてYAMLへ書き出す
+    yaml_data = {k: v for k, v in meta.items() if not k.startswith('#') and v is not None}
+    with open(yaml_path, 'w', encoding='utf-8') as f:
+        # セクションコメントを手動挿入しつつ通常のYAMLで出力
+        sections = [
+            ('# ネットワーク構成', ['hidden', 'n_input', 'n_output', 'column_neurons',
+                                    'init_scales', 'hidden_sparsity', 'output_lr',
+                                    'gradient_clip', 'u1', 'u2']),
+            ('# 学習条件',         ['dataset', 'n_train', 'n_test', 'gabor_features', 'seed']),
+            ('# 達成精度',         ['best_test_acc', 'best_epoch', 'final_train_acc', 'final_test_acc']),
+            ('# 保存情報',         ['saved_at', 'version', 'finetune_history']),
+        ]
+        for comment, keys in sections:
+            f.write(f"{comment}\n")
+            for k in keys:
+                if k in yaml_data:
+                    v = yaml_data[k]
+                    if isinstance(v, list):
+                        f.write(f"{k}: {v}\n")
+                    elif isinstance(v, bool):
+                        f.write(f"{k}: {str(v).lower()}\n")
+                    elif isinstance(v, str):
+                        f.write(f"{k}: '{v}'\n")
+                    else:
+                        f.write(f"{k}: {v}\n")
+            f.write("\n")
+
+    print(f"  重み保存完了: {save_dir}/")
+    print(f"    weights_{basename}.npz  ({os.path.getsize(npz_path) // 1024} KB)")
+    print(f"    weights_{basename}.yaml")
+    return True
+
+
+def _load_weights(network, load_path, current_lr=None):
+    """保存済み重みをネットワークに読み込む。
+
+    load_path: .npzファイルへの直接パスまたはそのディレクトリ。
+    ディレクトリ指定時は内部の唯一の .npz ファイルを自動検索。
+    """
+    import os
+    import glob
+
+    # .npzファイルの特定
+    if os.path.isfile(load_path) and load_path.endswith('.npz'):
+        npz_path = load_path
+    elif os.path.isdir(load_path):
+        npz_files = glob.glob(os.path.join(load_path, '*.npz'))
+        if len(npz_files) == 0:
+            print(f"エラー: {load_path} に .npz ファイルが見つかりません。")
+            return False, None
+        if len(npz_files) > 1:
+            print(f"エラー: {load_path} に複数の .npz ファイルがあります。直接ファイルパスを指定してください。")
+            return False, None
+        npz_path = npz_files[0]
+    else:
+        print(f"エラー: --load_weights の指定が不正です: {load_path}")
+        return False, None
+
+    # yamlパスの推定
+    yaml_path = npz_path.replace('.npz', '.yaml')
+    source_info = None
+    if os.path.exists(yaml_path):
+        import yaml
+        with open(yaml_path, 'r', encoding='utf-8') as f:
+            source_meta = yaml.safe_load(f)
+        if source_meta:
+            # 継続学習の学習率警告
+            if current_lr is not None and source_meta.get('output_lr') is not None:
+                orig_lr = source_meta['output_lr']
+                if current_lr > orig_lr * 1.5:
+                    print(f"  警告: 指定された学習率({current_lr:.5f})が元の学習率({orig_lr:.5f})より"
+                          f"かなり高い値です。継続学習では元の0.3〜0.5倍程度を推奨します。")
+            source_info = {
+                'source_path': npz_path,
+                'source_acc': source_meta.get('best_test_acc'),
+                'source_epoch': source_meta.get('best_epoch'),
+            }
+            print(f"  元の精度: Test={source_meta.get('best_test_acc', '?'):.4f} "
+                  f"(Epoch {source_meta.get('best_epoch', '?')})")
+
+    # 重みの読み込み
+    data = np.load(npz_path)
+
+    # 形状チェック
+    if 'w_output' not in data:
+        print(f"エラー: npzファイルに w_output が含まれていません。")
+        return False, None
+    if data['w_output'].shape != network.w_output.shape:
+        print(f"エラー: 出力層の形状不一致。"
+              f"保存済み: {data['w_output'].shape}, 現在: {network.w_output.shape}")
+        return False, None
+    for i in range(len(network.w_hidden)):
+        key = f'w_hidden_{i}'
+        if key not in data:
+            print(f"エラー: npzファイルに {key} が含まれていません。")
+            return False, None
+        if data[key].shape != network.w_hidden[i].shape:
+            print(f"エラー: 隠れ層{i}の形状不一致。"
+                  f"保存済み: {data[key].shape}, 現在: {network.w_hidden[i].shape}")
+            return False, None
+
+    # 重みを上書き
+    network.w_output = data['w_output'].copy()
+    for i in range(len(network.w_hidden)):
+        network.w_hidden[i] = data[f'w_hidden_{i}'].copy()
+
+    print(f"  重み読み込み完了: {npz_path}")
+    return True, source_info
+
+
+def _ensemble_predict(networks, x_test, y_test):
+    """複数ネットワークの出力確率を平均してアンサンブル推論を行う。"""
+    all_outputs = []
+    for net in networks:
+        outputs = []
+        for x in x_test:
+            _, z_output, _ = net.forward(x)
+            outputs.append(z_output)
+        all_outputs.append(np.array(outputs))  # (n_test, n_classes)
+
+    # 出力スコアの平均
+    mean_output = np.mean(all_outputs, axis=0)  # (n_test, n_classes)
+    y_pred = np.argmax(mean_output, axis=1)
+
+    if len(y_test.shape) > 1 and y_test.shape[1] > 1:
+        y_true = np.argmax(y_test, axis=1)
+    else:
+        y_true = y_test.astype(int)
+
+    acc = np.mean(y_pred == y_true)
+    return acc, y_pred
 
 
 def main():
     """メイン処理"""
     args = parse_args()
+
+    # --lh / --list_hyperparams: ハイパーパラメータ一覧を表示して終了
+    if args.list_hyperparams is not None:
+        hp = HyperParams()
+        _show_hyperparams(args.list_hyperparams, hp)
+
+    # ========================================
+    # 0. パスの解決（単純名 → weights/ 配下に自動配置）
+    # ========================================
+    if args.save_weights is not None:
+        args.save_weights = _resolve_save_dir(args.save_weights)
+    if args.save_best is not None:
+        args.save_best = _resolve_save_dir(args.save_best)
+    if args.load_weights is not None:
+        args.load_weights = _resolve_save_dir(args.load_weights)
+    if args.ensemble is not None:
+        args.ensemble = ','.join(
+            _resolve_save_dir(p.strip()) for p in args.ensemble.split(',')
+        )
 
     # ========================================
     # 1. 隠れ層サイズのパース
@@ -137,6 +674,17 @@ def main():
     output_lr = config['output_lr']
     non_column_lr = config['non_column_lr']
     column_lr_factors = config['column_lr_factors']
+    # CLIオーバーライド
+    if args.output_lr is not None:
+        output_lr = args.output_lr
+    if args.non_column_lr is not None:
+        non_column_lr = [float(x) for x in args.non_column_lr.split(',')]
+    if args.column_lr_factors is not None:
+        column_lr_factors = [float(x) for x in args.column_lr_factors.split(',')]
+    if args.u1 is not None:
+        config['u1'] = args.u1
+    if args.u2 is not None:
+        config['u2'] = args.u2
     # layer_learning_rates: non_column_lr + output_lr
     layer_lrs = list(non_column_lr) + [output_lr]
 
@@ -217,6 +765,13 @@ def main():
 
     if use_gabor:
         gp = hp.gabor_params
+        # CLIオーバーライド
+        if args.gabor_kernel_size is not None:
+            gp['kernel_size'] = args.gabor_kernel_size
+        if args.gabor_orientations is not None:
+            gp['orientations'] = args.gabor_orientations
+        if args.gabor_frequencies is not None:
+            gp['frequencies'] = args.gabor_frequencies
         print(f"Gabor特徴抽出中... (方位: {gp['orientations']}, 周波数: {gp['frequencies']}, "
               f"カーネル: {gp['kernel_size']})")
 
@@ -248,6 +803,19 @@ def main():
     # ========================================
     print(f"\nネットワーク構築中... ({n_layers}層: {hidden_sizes})")
 
+    # 層別コラムニューロン数
+    cn_config = config['column_neurons']
+    if args.layer_column_neurons is not None:
+        cn_config = [int(x) for x in args.layer_column_neurons.split(',')]
+
+    # CLIからのinit_scales/hidden_sparsityパース
+    actual_init_scales = config['weight_init_scales']
+    if args.init_scales is not None:
+        actual_init_scales = [float(x) for x in args.init_scales.split(',')]
+    actual_hidden_sparsity = config.get('hidden_sparsity', 0.4)
+    if args.hidden_sparsity is not None:
+        actual_hidden_sparsity = [float(x) for x in args.hidden_sparsity.split(',')]
+
     network = SimpleColumnEDNetwork(
         n_input=n_input,
         n_hidden=hidden_sizes,
@@ -256,19 +824,49 @@ def main():
         u1=config['u1'],
         u2=config['u2'],
         base_column_radius=config.get('base_column_radius', 0.4),
-        column_neurons=config['column_neurons'],
+        column_neurons=cn_config,
         participation_rate=config.get('participation_rate', 0.1),
         use_hexagonal=config.get('use_hexagonal', True),
         gradient_clip=config['gradient_clip'],
-        hidden_sparsity=config.get('hidden_sparsity', 0.4),
+        hidden_sparsity=actual_hidden_sparsity,
         column_lr_factors=column_lr_factors,
-        init_scales=config['weight_init_scales'],
+        init_scales=actual_init_scales,
         layer_learning_rates=layer_lrs,
         seed=args.seed,
     )
 
     # ========================================
-    # 7. 可視化マネージャーの初期化
+    # 6-A. --load_weights: 継続学習用の重み読み込み
+    # ========================================
+    load_source_info = None
+    if args.load_weights is not None:
+        print(f"\n重みを読み込み中: {args.load_weights}")
+        ok, load_source_info = _load_weights(network, args.load_weights,
+                                             current_lr=output_lr)
+        if not ok:
+            sys.exit(1)
+
+    # ========================================
+    # 6-B. --ensemble: アンサンブル推論（学習なし）
+    # ========================================
+    if args.ensemble is not None:
+        ensemble_paths = [p.strip() for p in args.ensemble.split(',')]
+        print(f"\nアンサンブル推論: {len(ensemble_paths)} モデル")
+        networks_ens = []
+        for path in ensemble_paths:
+            print(f"  読み込み: {path}")
+            ok, _ = _load_weights(network, path)
+            if not ok:
+                sys.exit(1)
+            import copy
+            networks_ens.append(copy.deepcopy(network))
+
+        print(f"\nアンサンブル推論中 ({len(x_test)} サンプル)...")
+        acc, _ = _ensemble_predict(networks_ens, x_test, y_test)
+        print(f"\n{'='*60}")
+        print(f"アンサンブル結果: Test={acc:.4f} ({len(ensemble_paths)} モデル平均)")
+        print(f"{'='*60}")
+        return
     # ========================================
     viz_manager = None
     if args.viz is not None:
@@ -294,22 +892,43 @@ def main():
     # ========================================
     # 8. パラメータ表示
     # ========================================
+    def _p(label, value, dest=None):
+        """パラメータ1行表示。dest が明示指定された場合は " (変更)" を付ける。"""
+        changed = f" (変更)" if dest and dest in args._specified else ""
+        print(f"  {label:<20} {value}{changed}")
+
     print("\n" + "=" * 60)
     print(f"パラメータ設定（{n_layers}層構成）")
     print("=" * 60)
-    print(f"  hidden:            {hidden_sizes}")
-    print(f"  column_neurons:    {config['column_neurons']}")
-    print(f"  init_scales:       {config['weight_init_scales']}")
-    print(f"  output_lr:         {output_lr}")
-    print(f"  column_lr_factors: {column_lr_factors}")
-    print(f"  gradient_clip:     {config['gradient_clip']}")
-    print(f"  hidden_sparsity:   {config['hidden_sparsity']}")
-    print(f"  u1={config['u1']}, u2={config['u2']}")
-    print(f"  init_method:       {config.get('init_method', 'he')}")
-    print(f"  gabor_features:    {use_gabor}"
-          + (f" (kernel_size={hp.gabor_params['kernel_size']})" if use_gabor else ""))
-    print(f"  epochs:            {epochs}")
-    print(f"  seed:              {args.seed}")
+    print(f"  # --- ネットワーク構成 ---")
+    _p("hidden:",            hidden_sizes,            "hidden")
+    _p("column_neurons:",    cn_config,               "layer_column_neurons")
+    _p("init_scales:",       actual_init_scales,      "init_scales")
+    _p("hidden_sparsity:",   actual_hidden_sparsity,  "hidden_sparsity")
+    print(f"  # --- 学習率 ---")
+    _p("output_lr:",         output_lr,               "output_lr")
+    _p("non_column_lr:",     non_column_lr,           "non_column_lr")
+    _p("column_lr_factors:", column_lr_factors,       "column_lr_factors")
+    _p("u1:",                config['u1'],             "u1")
+    _p("u2:",                config['u2'],             "u2")
+    print(f"  # --- 訓練設定 ---")
+    _p("gradient_clip:",     config['gradient_clip'],  "gradient_clip")
+    _p("epochs:",            epochs,                   "epochs")
+    _p("seed:",              args.seed,                "seed")
+    print(f"  # --- Gabor特徴 ---")
+    if use_gabor:
+        gp = hp.gabor_params
+        _p("gabor_features:",    True,                    None)
+        _p("gabor_orientations:", gp['orientations'],     "gabor_orientations")
+        _p("gabor_frequencies:", gp['frequencies'],       "gabor_frequencies")
+        _p("gabor_kernel_size:", gp['kernel_size'],       "gabor_kernel_size")
+    else:
+        _p("gabor_features:",    False,                   None)
+    print(f"  # --- 重み保存・継続学習 ---")
+    _p("save_weights:",      args.save_weights or "-",  "save_weights")
+    _p("save_best:",         args.save_best or "-",     "save_best")
+    _p("load_weights:",      args.load_weights or "-",  "load_weights")
+    _p("ensemble:",          args.ensemble or "-",      "ensemble")
     print("=" * 60)
 
     # ========================================
@@ -379,6 +998,13 @@ def main():
         if test_acc > best_test_acc:
             best_test_acc = test_acc
             best_epoch = epoch
+            # --save_best: ベスト更新時に都度保存
+            if args.save_best is not None:
+                _save_weights(network, args.save_best, args, config,
+                              best_test_acc, best_epoch,
+                              final_train_acc=train_acc, final_test_acc=test_acc,
+                              allow_overwrite=True,  # ベストは常に上書き
+                              finetune_source=load_source_info)
 
         pbar.set_postfix({
             'Train': f'{train_acc:.4f}',
@@ -425,6 +1051,15 @@ def main():
     print(f"最終精度:   Train={train_acc:.4f}, Test={test_acc:.4f}")
     print(f"ベスト精度: Test={best_test_acc:.4f} (Epoch {best_epoch})")
     print("=" * 60)
+
+    # --save_weights: 学習完了後に保存
+    if args.save_weights is not None:
+        print(f"\n重みを保存中: {args.save_weights}")
+        _save_weights(network, args.save_weights, args, config,
+                      best_test_acc, best_epoch,
+                      final_train_acc=train_acc, final_test_acc=test_acc,
+                      allow_overwrite=args.save_overwrite,
+                      finetune_source=load_source_info)
 
     # 可視化の保存
     if viz_manager is not None:

@@ -6,10 +6,7 @@ layer_params:
     hidden: [2048]  # v044グリッドサーチ最適値: 1024 → 2048 (2026-02-07)
     u1: 0.5  # v044グリッドサーチ: 影響軽微だがデフォルト0.5維持
     u2: 0.8  # 1層構成では未使用（2層以上で有効）
-    lateral_lr: 0.08  # 側方結合学習率
-    base_column_radius: 0.4  # コラム半径基準値
-    column_radius_per_layer: [1.13]  # [sqrt(2048/256) * 0.4]
-    participation_rate: 0.1  # 10%参加率 (column_neurons=1使用時は無視)
+
     column_neurons: 1  # リザバーコンピューティング最適値 (v044グリッドサーチで再確認)
     weight_init_scales: [0.4, 1.0]  # [Layer 0, 出力層] (v044グリッドサーチ最適値、2026-02-07)
     hidden_sparsity: 0.4  # v044グリッドサーチ最適値: 0.2 → 0.4 (2026-02-07)
@@ -19,6 +16,9 @@ layer_params:
     column_lr: [0.0015]  # コラムニューロン学習率（層別）
     column_lr_factors: [0.01]  # column_lr / output_lr
     epochs: 10  # v044グリッドサーチ基準 (BestEpoch=10、学習曲線が単調増加)
+    gabor_orientations: 8  # 2層Phase A検証から全層共通適用
+    gabor_frequencies: 2   # 2層Phase A検証から全層共通適用
+    gabor_kernel_size: 11  # 2層Phase A検証でk11が最良(+0.21% @10k) → 全層共通適用
     # v044グリッドサーチ最適化結果（2026-02-07）:
     #   Phase 1: init_scale_layer0 × init_scale_output × hidden_sparsity (27通り)
     #     最適: L0=0.4, out=1.0, hs=0.4 → Test=87.64%
@@ -38,10 +38,6 @@ layer_params:
     hidden: [2048, 1024]  # v045グリッドサーチ最適値 (2026-02-09)
     u1: 0.5
     u2: 0.8
-    lateral_lr: 0.08  # 側方結合学習率
-    base_column_radius: 0.4  # コラム半径基準値
-    column_radius_per_layer: [1.13, 0.80]  # [sqrt(2048/256)*0.4, sqrt(1024/256)*0.4]
-    participation_rate: 0.1  # 10%参加率 (column_neurons=1使用時は無視)
     column_neurons: 10  # init_scales感度実験: cn=10がcn=1を一貫して上回る (2026-02-22 20k検証済)
     weight_init_scales: [0.7, 1.8, 0.8]  # [Layer 0, Layer 1, 出力層] (init_scales感度実験+20k検証, 2026-02-22更新)
     hidden_sparsity: [0.4, 0.4]  # v045 Phase 1a確定 + init×sparsityグリッドで再確認
@@ -88,45 +84,12 @@ layer_params:
     #   方位増(12,16)は悪化、周波数増(3freq)は悪化、プーリング縮小(p3s3)は悪化
     #   カーネルサイズ増大のみ改善 → gabor_kernel_size: 7→11に更新
     description: '2層最適構成、cn=10, is=[0.7,1.8,0.8], k11。Gabor ON: 97.03%(10k,k11)/96.82%(10k,k7)。（2026-03-22、Phase A Gabor最適化完了）'
-    # v051 Cortex Mode パラメータ (2026-03-21):
-    cortex_mode: true  # 大脳皮質全体学習モード
-    hebb_base_lr: 0.0  # ベースヘブ学習率 η_base（ED法との併用で正帰還崩壊するため恒久無効）
-    hebb_boost: 0.01  # アミン変調増幅係数 η_boost（5ep標準）
-    bcm_alpha: 0.995  # BCM閾値移動平均係数
-    hc_radius: 3  # 水平結合の半径
-    hc_strength: 0.0  # 水平結合の強度（0=無効、機能は保持）
-    hc_sigma: 0.0  # ガウシアン減衰σ（0=hc_radius/2自動使用=1.5）
-    # v051 Phase2 HC強度スイープ結果 (2026-03-21, 10k/5ep, hebb_boost=0.01, hc_radius=3):
-    #   hc_strength=0.00: 96.61% (loss=0.1221)
-    #   hc_strength=0.05: 96.64% (loss=0.1204)
-    #   hc_strength=0.10: 96.73% (loss=0.1190)
-    #   hc_strength=0.15: 96.79% (loss=0.1184) ★5ep最良
-    #   hc_strength=0.20: 96.70% (loss=0.1191)
-    #   → 5epではhc_strength=0.15が最良だが、10epではHC正帰還ループにより
-    #     壊滅的劣化（96.79%→94.61%）。HC OFF時は97.04%で安定。
-    #   → hc_strength=0.0（無効）に変更。機能は削除せず保持。
-    li_strength: 0.0  # 側抑制の強度（0=無効、機能は保持）
-    # v051 Phase3 LI強度スイープ結果 (2026-03-21, 10k/5ep, hebb_boost=0.01):
-    #   li_strength=0.00: 96.61% ★baseline
-    #   li_strength=0.05: 96.46%
-    #   li_strength=0.10: 96.31%
-    #   li_strength=0.15: 96.21%
-    #   li_strength=0.20: 96.09%
-    #   li_strength=0.30: 95.72%
-    #   → 単調劣化。10epデバッグ診断で根本原因を特定:
-    #     Layer0: C8が勝者を100%独占（Ep6以降）、正解一致率9.4%（ランダム以下）
-    #     Layer1: C6+C9で~90%寡占、正解一致率~14%
-    #     正帰還ループで非勝者が不可逆的に抑制され、正解クラス情報を破壊。
-    #   → li_strength=0.0（無効）に設定。機能は削除せず保持。
     
   3:  # 3層構成（H3グリッドサーチ最適更新、2026-03-08）
     hidden: [2048, 1024, 1024]  # Layer2=512→1024: cn=10に対して十分なニューロン数を確保
     u1: 0.5
     u2: 0.8
-    lateral_lr: 0.08
-    base_column_radius: 0.4
-    column_radius_per_layer: [1.13, 0.80, 0.80]  # [sqrt(2048/256)*0.4, sqrt(1024/256)*0.4, sqrt(1024/256)*0.4]
-    participation_rate: 0.1
+
     column_neurons: 10  # cn=10+十分な層サイズでcn=1を上回る（96.75%→97.08%）
     weight_init_scales: [0.7, 1.8, 1.8, 0.8]  # [L0, L1, L2, 出力層] is[2]=1.8が最適（感度検証済）
     hidden_sparsity: [0.4, 0.4, 0.4]  # 2層構成と同値(0.4)をOATで確認（変更不要）
@@ -172,10 +135,6 @@ layer_params:
     hidden: [1024, 1024, 1024, 1024]  # 1024×4均一構成が[2048,1024×3]より+0.07%良好
     u1: 0.5
     u2: 0.8
-    lateral_lr: 0.08
-    base_column_radius: 0.4
-    column_radius_per_layer: [0.80, 0.80, 0.80, 0.80]  # sqrt(1024/256)*0.4 = 0.80 ×4
-    participation_rate: 0.1
     column_neurons: 10  # 3層構成と同じ（cn=10が安定）
     weight_init_scales: [0.7, 1.8, 1.8, 1.8, 0.8]  # [L0-L3, 出力層] 全隠れ層間is=1.8が最適
     hidden_sparsity: [0.4, 0.4, 0.4, 0.4]  # 2層構成と同値(0.4)を全層に適用
@@ -222,10 +181,6 @@ layer_params:
     hidden: [1024, 1024, 1024, 1024, 1024]  # 1024×5均一構成が[2048,1024×4]より+0.04%改善、18%高速
     u1: 0.5
     u2: 0.8
-    lateral_lr: 0.08
-    base_column_radius: 0.4
-    column_radius_per_layer: [0.80, 0.80, 0.80, 0.80, 0.80]  # sqrt(1024/256)*0.4 = 0.80 ×5
-    participation_rate: 0.1
     column_neurons: 10  # 3層構成と同じ（cn=10が安定）
     weight_init_scales: [0.7, 1.8, 1.8, 1.8, 1.8, 0.8]  # [L0-L4, 出力層] 全隠れ層間is=1.8（3層/4層パターン踏襲）
     hidden_sparsity: [0.4, 0.4, 0.4, 0.4, 0.4]  # 2層構成と同値(0.4)を全層に適用
@@ -253,10 +208,6 @@ layer_params:
     hidden: [1024, 1024, 1024, 1024, 1024, 1024]  # 1024×6均一構成（[2048,1024×5]と同等精度、19%高速）
     u1: 0.5
     u2: 0.8
-    lateral_lr: 0.08
-    base_column_radius: 0.4
-    column_radius_per_layer: [0.80, 0.80, 0.80, 0.80, 0.80, 0.80]  # sqrt(1024/256)*0.4 = 0.80 ×6
-    participation_rate: 0.1
     column_neurons: 10  # 3層構成と同じ（cn=10が安定）
     weight_init_scales: [0.7, 1.8, 1.8, 1.8, 1.8, 1.8, 0.8]  # [L0-L5, 出力層] 全隠れ層間is=1.8（3層/4層/5層パターン踏襲）
     hidden_sparsity: [0.4, 0.4, 0.4, 0.4, 0.4, 0.4]  # 2層構成と同値(0.4)を全層に適用

@@ -194,6 +194,25 @@ python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --viz --heatmap
 python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --dataset fashion
 ```
 
+### Weight Save / Continual Learning / Ensemble
+
+```bash
+# Save weights after training (auto-created under weights/run1/)
+python columnar_ed_ann.py --hidden 2048 --train 10000 --test 10000 --save_weights run1
+
+# Save only when best accuracy is updated (overwrites automatically per epoch)
+python columnar_ed_ann.py --hidden 2048 --train 10000 --test 10000 --save_best best_run
+
+# Load saved weights and continue training
+python columnar_ed_ann.py --hidden 2048 --train 20000 --test 10000 --load_weights run1 --save_weights run1_cont
+
+# Ensemble inference from multiple saved weights (no training)
+python columnar_ed_ann.py --hidden 2048 --train 10000 --test 10000 \
+    --ensemble run1,run1_cont
+```
+
+> **Saved file format**: Pair of `weights/run1/weights_run1.npz` (weight matrices) and `weights_run1.yaml` (config & accuracy info). If the file already exists, an interactive prompt will ask you to confirm (use `--save_overwrite` to skip).
+
 ### All Command-Line Arguments
 
 **Network Configuration:**
@@ -220,6 +239,16 @@ python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000 --dataset fashi
 | `--viz` | OFF | Display real-time learning curve |
 | `--heatmap` | OFF | Display heatmap (used together with `--viz`) |
 | `--save_viz` | None | Directory or file path to save visualization results |
+
+**Weight Save / Continual Learning / Ensemble:**
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--save_weights PATH` | None | Directory to save weights after training (simple names auto-placed under `weights/`) |
+| `--save_best PATH` | None | Save weights only when best accuracy is updated |
+| `--save_overwrite` | OFF | Allow overwriting existing files (interactive prompt when not set) |
+| `--load_weights PATH` | None | Load saved weights and start continual learning |
+| `--ensemble PATHS` | None | Comma-separated list of weight paths for ensemble inference (no training) |
 
 ## Claims and Verifiability (FAQ)
 

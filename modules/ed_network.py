@@ -42,7 +42,8 @@ class SimpleColumnEDNetwork:
                  participation_rate=0.1, use_hexagonal=True,
                  gradient_clip=0.0, hidden_sparsity=None,
                  column_lr_factors=None, init_scales=None,
-                 layer_learning_rates=None, seed=None):
+                 layer_learning_rates=None,
+                 seed=None):
         """
         ネットワーク初期化
 
@@ -54,7 +55,8 @@ class SimpleColumnEDNetwork:
             u1: アミン拡散係数（出力層→最終隠れ層）
             u2: アミン拡散係数（隠れ層間、多層時に使用）
             base_column_radius: コラム基本半径
-            column_neurons: 各クラスのコラムニューロン数
+            column_neurons: 各クラスのコラムニューロン数（int または層別リスト）
+                0を指定すると全ニューロンをコラムに帰属させる
             participation_rate: コラム参加率
             use_hexagonal: ハニカム配置を使用するか
             gradient_clip: 勾配クリッピング閾値
@@ -83,8 +85,18 @@ class SimpleColumnEDNetwork:
         self.learning_rate = learning_rate
         self.u1 = u1
         self.u2 = u2
-        self.column_neurons = column_neurons
         self.gradient_clip = gradient_clip
+
+        # column_neuronsを層別リストに正規化
+        # 0 = 全ニューロンをコラムに帰属（n_hidden // n_output 個/クラス）
+        if column_neurons is None:
+            self.column_neurons_per_layer = [None] * self.n_layers
+        elif isinstance(column_neurons, (list, tuple)):
+            self.column_neurons_per_layer = list(column_neurons)
+        else:
+            self.column_neurons_per_layer = [column_neurons] * self.n_layers
+        self.column_neurons = column_neurons  # 後方互換
+
         self.initial_amine = 1.0
 
         # 層別学習率
@@ -125,13 +137,17 @@ class SimpleColumnEDNetwork:
         self.class_coords_all_layers = []
 
         for layer_idx, layer_size in enumerate(self.n_hidden):
+            cn_layer = self.column_neurons_per_layer[layer_idx]
+            # cn=0: 全ニューロンをコラムに帰属
+            if cn_layer == 0:
+                cn_layer = layer_size // n_output
             membership, positions, coords = create_column_membership(
                 n_hidden=layer_size,
                 n_classes=n_output,
                 participation_rate=participation_rate,
                 use_hexagonal=use_hexagonal,
                 column_radius=base_column_radius,
-                column_neurons=column_neurons
+                column_neurons=cn_layer
             )
             self.column_membership_all_layers.append(membership)
             self.neuron_positions_all_layers.append(positions)
@@ -146,15 +162,21 @@ class SimpleColumnEDNetwork:
         # ============================================
         # ランク依存学習率のルックアップテーブル（LUT）
         # ============================================
-        # コラム内でのニューロンの活性値ランクに応じた学習率倍率
-        # cn依存型線形減衰: rank=0(1位)で1.0、rank=cn-1で1/cn
+        # 層別に作成: 各層のcn値に応じた線形減衰LUT
         max_rank = 256
-        cn = column_neurons if column_neurons is not None else 1
-        self._learning_weight_lut = np.zeros(max_rank, dtype=np.float32)
-        for i in range(max_rank):
-            if i < cn:
-                self._learning_weight_lut[i] = (cn - i) / cn
-            # rank >= cn は 0.0（非コラムニューロンの学習には不参加）
+        self._learning_weight_luts = []
+        for layer_idx in range(self.n_layers):
+            cn_layer = self.column_neurons_per_layer[layer_idx]
+            if cn_layer == 0:
+                cn_layer = self.n_hidden[layer_idx] // n_output
+            cn = cn_layer if cn_layer is not None else 1
+            lut = np.zeros(max_rank, dtype=np.float32)
+            for i in range(max_rank):
+                if i < cn:
+                    lut[i] = (cn - i) / cn
+            self._learning_weight_luts.append(lut)
+        # 後方互換: 第1層のLUTをデフォルトとして保持
+        self._learning_weight_lut = self._learning_weight_luts[0]
 
         # ============================================
         # E/Iフラグ（Dale's Principle用）
@@ -219,6 +241,10 @@ class SimpleColumnEDNetwork:
         # NCゲートマスク（互換性用、simple版では未使用）
         self._nc_gate_mask = None
 
+        # ============================================
+        # 統計カウンタ（続き）
+        # ============================================
+
     # ================================================================
     # 順伝播
     # ================================================================
@@ -246,6 +272,7 @@ class SimpleColumnEDNetwork:
         for layer_idx in range(self.n_layers):
             a_hidden = np.dot(self.w_hidden[layer_idx], z_current)
             z_hidden = tanh_activation(a_hidden)
+
             z_hiddens.append(z_hidden)
             z_current = z_hidden
 
@@ -286,7 +313,7 @@ class SimpleColumnEDNetwork:
     # 勾配計算（コラムED法の核心）
     # ================================================================
 
-    def _compute_gradients(self, x_paired, z_hiddens, z_output, y_true):
+    def _compute_gradients(self, x_paired, z_hiddens, z_output, y_true, y_pred=None):
         """
         ED法による勾配計算（微分の連鎖律を使用しない）
 
@@ -381,12 +408,14 @@ class SimpleColumnEDNetwork:
             sorted_indices = np.argsort(-masked_activations, axis=1)
             ranks = np.argsort(sorted_indices, axis=1)
 
-            # ランクから学習率を取得（LUT参照）
-            clamped_ranks = np.minimum(ranks, len(self._learning_weight_lut) - 1)
-            learning_weights = self._learning_weight_lut[clamped_ranks]
+            # ランクから学習率を取得（層別LUT参照）
+            layer_lut = self._learning_weight_luts[layer_idx]
+            clamped_ranks = np.minimum(ranks, len(layer_lut) - 1)
+            learning_weights = layer_lut[clamped_ranks]
 
             # 非コラムニューロンの学習率は0（リザバーとして固定）
             learning_weights = np.where(active_membership, learning_weights, 0.0)
+
 
             # アミン拡散値に学習率を適用
             amine_hidden_3d = np.zeros((self.n_output, 2, n_neurons))
@@ -456,14 +485,15 @@ class SimpleColumnEDNetwork:
     # 重み更新
     # ================================================================
 
-    def update_weights(self, x_paired, z_hiddens, z_output, y_true):
+    def update_weights(self, x_paired, z_hiddens, z_output, y_true, y_pred=None):
         """
         重みの更新（ED法準拠、微分の連鎖律不使用）
         """
-        gradients = self._compute_gradients(x_paired, z_hiddens, z_output, y_true)
+        gradients = self._compute_gradients(x_paired, z_hiddens, z_output, y_true, y_pred=y_pred)
 
         # 出力層の更新
-        self.w_output += gradients['w_output']
+        output_grad = gradients['w_output']
+        self.w_output += output_grad
 
         # 隠れ層の更新
         for layer_idx in range(self.n_layers):
@@ -479,8 +509,23 @@ class SimpleColumnEDNetwork:
                         self._sign_matrix_layer0[active_neurons]
                     )
 
-        # 出力重みの正則化（微小な重み減衰）
-        self.w_output *= (1.0 - 0.00001)
+        # 出力重みの正則化はエポック単位で適用（end_of_epoch_regularize()）
+
+    # ================================================================
+    # 学習率調整
+    # ================================================================
+
+    def scale_learning_rates(self, factor):
+        """全層の学習率を指定倍率でスケーリング"""
+        self.layer_lrs = [lr * factor for lr in self.layer_lrs]
+
+    def set_learning_rates(self, lrs):
+        """学習率を直接設定"""
+        self.layer_lrs = list(lrs)
+
+    def end_of_epoch_regularize(self):
+        """エポック終了後の正則化処理"""
+        pass  # weight_decay削除済み。フック用に残す
 
     # ================================================================
     # 学習
@@ -498,7 +543,7 @@ class SimpleColumnEDNetwork:
 
         loss = cross_entropy_loss(z_output, y_true)
 
-        self.update_weights(x_paired, z_hiddens, z_output, y_true)
+        self.update_weights(x_paired, z_hiddens, z_output, y_true, y_pred=y_pred)
         self.class_training_counts[y_true] += 1
 
         return loss, correct
@@ -523,6 +568,9 @@ class SimpleColumnEDNetwork:
         n_correct = 0
         _last_callback_time = _time.time()
 
+        # エポック開始時に視床ゲート状態をリセット（shuffle後に前エポックの文脈を持ち込まない）
+        self._prev_error = 0.0
+
         for i in range(n_samples):
             loss, correct = self.train_one_sample(x_train[i], y_train[i])
             total_loss += loss
@@ -535,6 +583,9 @@ class SimpleColumnEDNetwork:
                 if now - _last_callback_time >= 5.0:
                     _last_callback_time = now
                     progress_callback(self, i, n_samples)
+
+        # エポック終了後の正則化（weight decay等）
+        self.end_of_epoch_regularize()
 
         if return_true_accuracy:
             true_accuracy, true_loss = self.evaluate_parallel(x_train, y_train)
