@@ -79,9 +79,7 @@ Learning relies solely on biologically plausible mechanisms (amine diffusion, co
 
 ### 5. Fast Learning
 
-When the training data is sufficiently large, the model reaches over 90% of the final test accuracy in the first epoch. High accuracy is achieved with a small number of epochs without requiring many repetitions.
-
-Furthermore, per-sample training is fast. Under identical conditions (NumPy, CPU, per-sample learning), it operates approximately **3.7–4.4× faster** than backpropagation (BP). Since no backward-pass computation is required and fewer neurons are updated, the speed advantage increases with deeper networks.
+On MNIST, the model reaches over 90% of the final test accuracy in the first epoch. High accuracy is achieved with a small number of epochs without requiring many repetitions.
 
 ### 6. Easy Parameter Tuning
 
@@ -212,6 +210,18 @@ python columnar_ed_ann.py --hidden 2048 --train 10000 --test 10000 \
 ```
 
 > **Saved file format**: Pair of `weights/run1/weights_run1.npz` (weight matrices) and `weights_run1.yaml` (config & accuracy info). If the file already exists, an interactive prompt will ask you to confirm (use `--save_overwrite` to skip).
+
+#### Using the Pre-trained Weights Included in This Repository
+
+This repository includes pre-trained weights that achieved Best Test=98.12% on MNIST (`weights/best_mnist_6layer/`). You can use them for continual learning immediately after cloning.
+
+```bash
+# Continual learning from the included weights (to push accuracy further)
+python columnar_ed_ann.py \
+    --hidden 1024,1024,1024,1024,2048,2048 --train 20000 --test 20000 \
+    --load_weights weights/best_mnist_6layer \
+    --save_best weights/my_best
+```
 
 ### All Command-Line Arguments
 
