@@ -871,7 +871,7 @@ def main():
     viz_manager = None
     if args.viz is not None:
         try:
-            from modules_experiment.visualization_manager import VisualizationManager
+            from modules.visualization_manager import VisualizationManager
             viz_scale_map = {1: 1.00, 2: 1.30, 3: 1.60, 4: 2.00}
             viz_scale = viz_scale_map.get(args.viz, 1.00)
             viz_manager = VisualizationManager(
@@ -1107,7 +1107,7 @@ def main():
             print(f"\n不正解学習データを表示中... ({len(train_errors)}/{len(x_train)} 件, {total_rows} 行)")
             print("  ウィンドウを閉じると終了します。↑↓キーまたはマウスホイールでスクロール")
 
-            from modules_experiment.visualization_manager import show_train_errors
+            from modules.visualization_manager import show_train_errors
             show_train_errors(
                 error_list=train_errors,
                 x_display=x_display,
