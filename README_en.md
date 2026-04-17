@@ -40,7 +40,7 @@
 
 **The Columnar ED Method** is a neural network implementation that extends Isamu Kaneko's Error Diffusion learning algorithm (ED method, hereinafter "the original ED method") by introducing cortical column structure from the cerebral cortex.
 
-The Columnar ED Method **does not use backpropagation based on the chain rule of derivatives at all**, and instead learns through biologically plausible amine diffusion mechanisms. Despite this, it achieves **98.12%** test accuracy on MNIST handwritten digit recognition (6-layer [1024×4+2048×2] + layer functional differentiation, 20,000 training samples).
+The Columnar ED Method **does not use backpropagation based on the chain rule of derivatives at all**, and instead learns through biologically plausible amine diffusion mechanisms. Despite this, it achieves **98.56%** test accuracy on MNIST handwritten digit recognition (3-layer [2048×3], 50,000 training samples).
 
 It is a **self-contained implementation that uses only the `modules/` directory**. It operates with just `columnar_ed_ann.py` and `modules/`, allowing you to understand the ED method and column structure simply.
 
@@ -162,8 +162,8 @@ python columnar_ed_ann.py --train 10000 --test 10000
 # → Best ≈ 96.85% / Final ≈ 96.84%
 
 # 3-layer + Gabor features (~30 minutes)
-python columnar_ed_ann.py --hidden 2048,1024,1024 --train 10000 --test 10000
-# → Best ≈ 97.11% / Final ≈ 96.78%
+python columnar_ed_ann.py --hidden 1024,1024,1024 --train 10000 --test 10000
+# → Best ≈ 96.78% / Final ≈ 96.78%
 
 # Without Gabor (to verify the pure learning capability of the original ED method)
 python columnar_ed_ann.py --hidden 2048 --train 10000 --test 10000 --no_gabor
@@ -482,15 +482,22 @@ Results using uniform configuration [1024×N] + layer functional differentiation
 | Configuration | Hidden Layers | Test Accuracy | Runtime (*) |
 |---------------|---------------|---------------|-------------|
 | 1-layer | [1024] | Best 97.17% | ~2 min |
-| 2-layer | [1024×2] | **Best 98.03%** | ~5 min |
+| 2-layer | [1024×2] | Best 98.03% | ~5 min |
 | 3-layer | [1024×3] | Best 97.66% | ~8 min |
 | 4-layer | [1024×4] | Best 97.78% | ~10 min |
 | 5-layer | [1024×5] | Best 97.80% | ~13 min |
 | 6-layer | [1024×6] | Best 98.03% | ~37 min |
-| 6-layer (deep expansion) | [1024×4, 2048×2] | **Best 98.11%** ★ | ~40 min |
+| 6-layer (deep expansion) | [1024×4, 2048×2] | **Best 98.11%** | ~40 min |
+
+### With Gabor Features — 50k samples
+
+| Configuration | Hidden Layers | Test Accuracy | Runtime (*) |
+|---------------|---------------|---------------|-------------|
+| 3-layer | [1024×3] | Best 98.50% | ~4.2 hours |
+| 3-layer | [2048×3] | **Best 98.56%** ★ | ~15.8 hours |
 
 \* Runtimes measured on an Intel Core i5-11th gen / RTX 3060 system and will vary depending on your environment.
-★ Project best accuracy (seed=42, `--layer_column_neurons 0,10,10,10,20,20`, `--init_scales 0.7,1.2,1.2,1.8,2.2,2.2,0.8`, `--hidden_sparsity 0.6,0.6,0.4,0.4,0.2,0.2`).
+★ Project best accuracy (seed=42, `--hidden 2048,2048,2048`, `--train 50000`, `--epochs 30`, `--layer_column_neurons 0,10,10`, `--init_scales 0.7,1.8,1.8,0.8`, `--hidden_sparsity 0.4,0.4,0.4`).
 
 > **Experimental conditions:** seed=42 (all under identical conditions, fully reproducible). Epoch counts are automatically set from `config/hyperparameters.yaml`.
 
@@ -529,7 +536,7 @@ columnar_ed_ann/
 
 ## Automatic Parameter Configuration
 
-In the main version, optimal parameters are automatically loaded from `config/hyperparameters.yaml` based on the number of hidden layers. Users only need to specify minimal arguments: hidden layer configuration, data size, and epoch count.
+Optimal parameters are automatically loaded from `config/hyperparameters.yaml` based on the number of hidden layers. Users only need to specify minimal arguments: hidden layer configuration, data size, and epoch count.
 
 ### Key Automatically Configured Parameters
 
