@@ -42,14 +42,7 @@
 
 The Columnar ED Method **does not use backpropagation based on the chain rule of derivatives at all**, and instead learns through biologically plausible amine diffusion mechanisms. Despite this, it achieves **98.12%** test accuracy on MNIST handwritten digit recognition (6-layer [1024×4+2048×2] + layer functional differentiation, 20,000 training samples).
 
-This repository provides two implementations:
-
-| Implementation | File | Purpose |
-|----------------|------|---------|
-| **Main Version** | `columnar_ed_ann.py` | High accuracy with minimal arguments. This document covers this version. |
-| Experiment Version | `columnar_ed_ann_experiment.py` | More parameters can be specified than the main version. See [README_experiment_en.md](README_experiment_en.md) for details. |
-
-The **Main Version** is a **self-contained implementation that uses only the `modules/` directory**. It operates with just `columnar_ed_ann.py` and `modules/`, allowing you to understand the ED method and column structure without referencing the experiment version code.
+It is a **self-contained implementation that uses only the `modules/` directory**. It operates with just `columnar_ed_ann.py` and `modules/`, allowing you to understand the ED method and column structure simply.
 
 ## Target Reader and Fast Path
 
@@ -510,18 +503,14 @@ If you are new to this repository, start with these files first.
 
 ```
 columnar_ed_ann/
-├── columnar_ed_ann.py              # ★ Main script (recommended)
-├── columnar_ed_ann_experiment.py   # Experiment version (all parameters configurable)
+├── columnar_ed_ann.py              # ★ Main script
 ├── README.md                       # ★ This document (Japanese)
 ├── README_en.md                    # ★ This document (English)
-├── README_experiment.md            # Experiment version documentation (Japanese)
-├── README_experiment_en.md         # Experiment version documentation (English)
 ├── LICENSE                         # License
 ├── requirements.txt                # Dependencies
 ├── CUSTOM_DATASET_GUIDE.md         # Custom dataset usage guide
 │
-├── modules/                        # ★ Main version modules
-├── modules_experiment/             # Experiment version modules
+├── modules/                        # ★ Modules
 ├── config/                         # Parameter configuration files
 │   ├── hyperparameters.yaml        #   Per-layer optimal parameters (editable)
 │   └── hyperparameters_initial.yaml#   Initial state (for restoration)

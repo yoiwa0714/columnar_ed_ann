@@ -41,14 +41,7 @@
 
 コラムED法では**微分の連鎖律を用いた誤差逆伝播法（Backpropagation）を一切使用せず**、生物学的に妥当なアミン拡散機構によって学習を行っていますが、MNIST手書き数字認識で **98.12%** のテスト精度を達成しています（6層[1024×4+2048×2]+層機能分化、訓練20,000サンプル）。
 
-本リポジトリでは以下の2つの実装を提供しています：
-
-| 実装 | ファイル | 用途 |
-|------|---------|------|
-| **メイン版** | `columnar_ed_ann.py` | 最小限の引数で高精度を実現。本ドキュメントの対象 |
-| 実験版 | `columnar_ed_ann_experiment.py` | メイン版よりも多くのパラメータを指定可能。詳細は [README_experiment.md](README_experiment.md) 参照 |
-
-**メイン版**は、**`modules/` ディレクトリのモジュールだけを使用する自己完結型の実装**です。`columnar_ed_ann.py` と `modules/` だけで動作するため、実験版のコードを参照せずにED法とコラム構造の仕組みを理解できます。
+**`modules/` ディレクトリのモジュールだけを使用する自己完結型の実装**です。`columnar_ed_ann.py` と `modules/` だけで動作するため、ED法とコラム構造の仕組みをシンプルに理解できます。
 
 ## 対象読者と最短導線
 
@@ -509,18 +502,14 @@ MNIST手書き数字認識での実験結果（seed=42、再現可能）:
 
 ```
 columnar_ed_ann/
-├── columnar_ed_ann.py              # ★ メインスクリプト（推奨）
-├── columnar_ed_ann_experiment.py   # 実験版（全パラメータ指定可能）
+├── columnar_ed_ann.py              # ★ メインスクリプト
 ├── README.md                       # ★ 本ドキュメント（日本語）
 ├── README_en.md                    # ★ 本ドキュメント（英語）
-├── README_experiment.md            # 実験版ドキュメント（日本語）
-├── README_experiment_en.md         # 実験版ドキュメント（英語）
 ├── LICENSE                         # ライセンス
 ├── requirements.txt                # 依存パッケージ
 ├── CUSTOM_DATASET_GUIDE.md         # カスタムデータセット利用ガイド
 │
-├── modules/                        # ★ メイン版モジュール群
-├── modules_experiment/             # 実験版モジュール群
+├── modules/                        # ★ モジュール群
 ├── config/                         # パラメータ設定ファイル
 │   ├── hyperparameters.yaml        #   層数別最適パラメータ（編集可能）
 │   └── hyperparameters_initial.yaml#   初期状態（復元用）
