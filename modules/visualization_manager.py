@@ -13,11 +13,15 @@ columnar_ed_ann.pyから可視化機能を抽出したモジュール
 """
 
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import seaborn as sns
 from datetime import datetime
 from pathlib import Path
+
+# Aggバックエンド（非インタラクティブ）の判定
+_IS_INTERACTIVE_BACKEND = matplotlib.get_backend().lower() not in ('agg', 'pdf', 'svg', 'ps')
 
 
 def setup_japanese_font():
@@ -439,6 +443,11 @@ class VisualizationManager:
         n_edge = gi['n_edge_filters']
         
         # 特徴量を (n_filters, pool_h, pool_w) にリシェイプ
+        # RGB 3チャネルの場合は先頭チャネル（R）のみ可視化
+        n_channels = gi.get('n_channels', 1)
+        if n_channels > 1:
+            single_ch_dim = n_filters * pool_h * pool_w
+            features = features[:single_ch_dim]
         maps = features.reshape(n_filters, pool_h, pool_w)
         
         # レイアウト: 列=方位数、行=周波数数 + エッジ行(あれば)

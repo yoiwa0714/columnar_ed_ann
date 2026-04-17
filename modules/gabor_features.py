@@ -11,6 +11,7 @@ Gabor特徴抽出モジュール（教育用シンプル版）
   - Gaborフィルタバンク（方位×空間周波数）+ Sobelエッジフィルタ
   - im2col＋行列積による高速畳み込み → 平均プーリング → 平坦化
   - 入力: 28×28画像（784次元）→ 出力: フィルタ数×プーリング後次元
+  - RGB画像対応: チャネル別独立方式（各チャネルに同一フィルタバンクを適用→結合）
 """
 
 import numpy as np
@@ -21,7 +22,7 @@ class GaborFeatureExtractor:
 
     def __init__(self, image_shape=(28, 28), n_orientations=8, n_frequencies=2,
                  kernel_size=11, pool_size=4, pool_stride=4,
-                 include_edge_filters=True):
+                 include_edge_filters=True, n_channels=1):
         self.image_shape = image_shape
         self.n_orientations = n_orientations
         self.n_frequencies = n_frequencies
@@ -29,6 +30,7 @@ class GaborFeatureExtractor:
         self.pool_size = pool_size
         self.pool_stride = pool_stride
         self.include_edge_filters = include_edge_filters
+        self.n_channels = n_channels
 
         # フィルタバンク構築
         self.filters = self._build_filter_bank()
@@ -38,7 +40,8 @@ class GaborFeatureExtractor:
         self.pool_h = (h - pool_size) // pool_stride + 1
         self.pool_w = (w - pool_size) // pool_stride + 1
         self.n_filters = len(self.filters)
-        self.feature_dim = self.n_filters * self.pool_h * self.pool_w
+        self._single_channel_dim = self.n_filters * self.pool_h * self.pool_w
+        self.feature_dim = self._single_channel_dim * n_channels
 
         # im2col用カーネル行列を事前構築
         self._kernel_matrix = np.array(self.filters).reshape(self.n_filters, -1)
@@ -100,6 +103,18 @@ class GaborFeatureExtractor:
 
     def transform_single(self, flat_image):
         """単一画像の特徴抽出（im2col＋行列積による高速実装）"""
+        if self.n_channels > 1:
+            pixels_per_ch = flat_image.size // self.n_channels
+            features = np.empty(self.feature_dim, dtype=np.float64)
+            for c in range(self.n_channels):
+                ch_data = flat_image[c * pixels_per_ch : (c + 1) * pixels_per_ch]
+                features[c * self._single_channel_dim : (c + 1) * self._single_channel_dim] = \
+                    self._transform_single_channel(ch_data)
+            return features
+        return self._transform_single_channel(flat_image)
+
+    def _transform_single_channel(self, flat_image):
+        """1チャネル分の特徴抽出（im2col＋行列積）"""
         image = flat_image.reshape(self.image_shape)
         h, w = self.image_shape
         ksize = self.kernel_size
@@ -173,4 +188,5 @@ class GaborFeatureExtractor:
             'pool_output_shape': (self.pool_h, self.pool_w),
             'feature_dim': self.feature_dim,
             'image_shape': self.image_shape,
+            'n_channels': self.n_channels,
         }

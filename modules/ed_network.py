@@ -43,6 +43,20 @@ class SimpleColumnEDNetwork:
                  gradient_clip=0.0, hidden_sparsity=None,
                  column_lr_factors=None, init_scales=None,
                  layer_learning_rates=None,
+                 output_weight_decay=0.0,
+                 output_gradient_clip=0.0,
+                 layer_gradient_clips=None,
+                 lut_base_rate=0.0,
+                 uncertainty_modulation=0.0,
+                 hc_strength=0.0,
+                 skip_connections=None,
+                 li_strength=0.0,
+                 li_soft_temp=0.0,
+                 hebb_strength=0.0,
+                 nc_hebb_lr=0.0,
+                 prediction_error_strength=0.0,
+                 input_gate_strength=0.0,
+                 attention_boost_strength=0.0,
                  seed=None):
         """
         ネットワーク初期化
@@ -86,6 +100,13 @@ class SimpleColumnEDNetwork:
         self.u1 = u1
         self.u2 = u2
         self.gradient_clip = gradient_clip
+        self.output_gradient_clip = output_gradient_clip
+        # 層別勾配クリッピング（指定時はgradient_clipより優先）
+        if layer_gradient_clips is not None:
+            self.layer_gradient_clips = list(layer_gradient_clips)
+        else:
+            self.layer_gradient_clips = None
+        self.lut_base_rate = lut_base_rate
 
         # column_neuronsを層別リストに正規化
         # 0 = 全ニューロンをコラムに帰属（n_hidden // n_output 個/クラス）
@@ -98,6 +119,30 @@ class SimpleColumnEDNetwork:
         self.column_neurons = column_neurons  # 後方互換
 
         self.initial_amine = 1.0
+        self.output_weight_decay = output_weight_decay
+        self.uncertainty_modulation = uncertainty_modulation
+        self.hc_strength = hc_strength
+
+        # D7-4: スキップ接続 [(src_layer, dst_layer, alpha), ...]
+        if skip_connections is not None:
+            self.skip_connections = list(skip_connections)
+        else:
+            self.skip_connections = []
+
+        # D6: 隠れ層内側抑制
+        self.li_strength = li_strength      # D6-1: ハード側抑制強度
+        self.li_soft_temp = li_soft_temp    # D6-2: ソフト側抑制温度
+
+        # D8: ヘブ則
+        self.hebb_strength = hebb_strength  # D8-1: コラム内ヘブ強化
+        self.nc_hebb_lr = nc_hebb_lr        # D8-3: NCヘブ自己組織化
+
+        # P1: 層間予測エラー伝播（上位層からの逆投影でアミン変調）
+        self.prediction_error_strength = prediction_error_strength
+        # P2: L6フィードバック（深層活性による入力ゲート制御）
+        self.input_gate_strength = input_gate_strength
+        # P3: L1注意ブースト（出力確信度による浅層活性増幅）
+        self.attention_boost_strength = attention_boost_strength
 
         # 層別学習率
         if layer_learning_rates is not None:
@@ -174,6 +219,8 @@ class SimpleColumnEDNetwork:
             for i in range(max_rank):
                 if i < cn:
                     lut[i] = (cn - i) / cn
+                else:
+                    lut[i] = self.lut_base_rate
             self._learning_weight_luts.append(lut)
         # 後方互換: 第1層のLUTをデフォルトとして保持
         self._learning_weight_lut = self._learning_weight_luts[0]
@@ -232,6 +279,26 @@ class SimpleColumnEDNetwork:
         self.w_hidden[0] = np.abs(self.w_hidden[0]) * self._sign_matrix_layer0
 
         # ============================================
+        # P1: 逆投影重み（予測エラー伝播用）
+        # ============================================
+        # 上位層→下位層への逆投影重みを初期化（固定、学習しない）
+        # 脳のL5/6→L2/3予測信号に対応
+        if self.prediction_error_strength > 0 and self.n_layers > 1:
+            self._feedback_weights = []
+            for layer_idx in range(self.n_layers - 1):
+                n_lower = self.n_hidden[layer_idx]
+                n_upper = self.n_hidden[layer_idx + 1]
+                # 正規化された逆投影（出力次元で正規化）
+                w_fb = np.random.randn(n_lower, n_upper) * np.sqrt(1.0 / n_upper)
+                self._feedback_weights.append(w_fb)
+
+        # P2: 入力ゲート重み（L6フィードバック用）
+        if self.input_gate_strength > 0 and self.n_layers > 1:
+            n_input_paired = n_input * 2
+            n_deep = self.n_hidden[-1]
+            self._input_gate_weights = np.random.randn(n_input_paired, n_deep) * np.sqrt(1.0 / n_deep)
+
+        # ============================================
         # 統計カウンタ
         # ============================================
         self.winner_selection_counts = np.zeros(n_output, dtype=int)
@@ -266,6 +333,14 @@ class SimpleColumnEDNetwork:
         # E/Iペア: 入力を複製して興奮性/抑制性の対を作る
         x_paired = np.concatenate([x, x])
 
+        # P2: L6フィードバック（入力ゲート制御）
+        # 前回の最終隠れ層活性に基づいて入力を選択的にゲーティング
+        # 脳のL6→視床フィードバック「今はその情報は要らない/もっと詳しく送れ」に対応
+        if self.input_gate_strength > 0 and self.n_layers > 1 and hasattr(self, '_prev_z_deep'):
+            gate_raw = np.dot(self._input_gate_weights, self._prev_z_deep)
+            gate = 1.0 + self.input_gate_strength * np.tanh(gate_raw)
+            x_paired = x_paired * gate
+
         z_hiddens = []
         z_current = x_paired
 
@@ -273,14 +348,141 @@ class SimpleColumnEDNetwork:
             a_hidden = np.dot(self.w_hidden[layer_idx], z_current)
             z_hidden = tanh_activation(a_hidden)
 
+            # P1: 層間予測エラー（上位層からの逆投影による変調）
+            # 前回の上位層活性との予測エラーを用いて現在の活性を変調
+            # 脳のL2/3エラーユニット「予測と現実のズレ」に対応
+            if (self.prediction_error_strength > 0 and
+                layer_idx < self.n_layers - 1 and
+                hasattr(self, '_prev_z_hiddens') and
+                self._prev_z_hiddens is not None):
+                z_upper_prev = self._prev_z_hiddens[layer_idx + 1]
+                predicted = np.dot(self._feedback_weights[layer_idx], z_upper_prev)
+                prediction_error = z_hidden - np.tanh(predicted)
+                # 予測エラーが大きい部分を強化（=注目すべき新しい情報）
+                error_magnitude = np.abs(prediction_error)
+                boost = 1.0 + self.prediction_error_strength * error_magnitude
+                z_hidden = z_hidden * boost
+                z_hidden = np.clip(z_hidden, -1.0, 1.0)
+
+            # P3: L1注意ブースト（出力確信度による浅層活性増幅）
+            # 前回の出力確信度が低いとき、浅層の感度を上げて情報取得を強化
+            # 脳のL1注意信号「今はここを重視せよ」に対応
+            if (self.attention_boost_strength > 0 and
+                layer_idx < self.n_layers // 2 and
+                hasattr(self, '_prev_confidence')):
+                # 確信度が低い(=不確実)ほど強くブースト
+                uncertainty = 1.0 - self._prev_confidence
+                boost = 1.0 + self.attention_boost_strength * uncertainty
+                z_hidden = z_hidden * boost
+                z_hidden = np.clip(z_hidden, -1.0, 1.0)
+
+            # D7-4: スキップ接続（加算型残差）
+            for src, dst, alpha in self.skip_connections:
+                if dst == layer_idx and src < layer_idx:
+                    src_z = z_hiddens[src]
+                    if src_z.shape[0] == z_hidden.shape[0]:
+                        z_hidden = np.tanh(z_hidden + alpha * src_z)
+
+            # D6: 隠れ層内側抑制（コラム間コントラスト強化）
+            if self.li_strength > 0.0 or self.li_soft_temp > 0.0:
+                z_hidden = self._apply_lateral_inhibition(z_hidden, layer_idx)
+
             z_hiddens.append(z_hidden)
             z_current = z_hidden
+
+        # D4: 水平結合（最終隠れ層の同クラスコラムニューロン間ゲイン変調）
+        if self.hc_strength > 0.0:
+            z_current = self._apply_horizontal_connection(z_current, self.n_layers - 1)
+            z_hiddens[-1] = z_current
 
         # 出力層: 重み積 → softmax
         a_output = np.dot(self.w_output, z_current)
         z_output = softmax(a_output)
 
+        # P1/P2/P3用：次回の順伝播で使う状態を保存
+        if self.prediction_error_strength > 0:
+            self._prev_z_hiddens = [z.copy() for z in z_hiddens]
+        if self.input_gate_strength > 0 and self.n_layers > 1:
+            self._prev_z_deep = z_hiddens[-1].copy()
+        if self.attention_boost_strength > 0:
+            self._prev_confidence = float(np.max(z_output))
+
         return z_hiddens, z_output, x_paired
+
+    def _apply_horizontal_connection(self, z_hidden, layer_idx):
+        """
+        D4: 同クラスコラムニューロン間の水平結合（乗算型ゲイン変調）
+
+        脳のL2/3水平結合を模倣: 同種機能コラム間で情報統合する。
+        v051のHCが「正帰還ループ問題」で失敗した教訓を踏まえ、
+        乗算型ゲイン変調（加算ではなく）を採用し、発散を防止。
+
+        各クラスのコラムニューロンの平均活性を計算し、
+        個々のニューロンの活性をクラス平均の方向にゲイン変調する。
+        """
+        membership = self.column_membership_all_layers[layer_idx]
+        z_mod = z_hidden.copy()
+
+        for class_idx in range(self.n_output):
+            col_neurons = np.where(membership[class_idx])[0]
+            if len(col_neurons) < 2:
+                continue
+
+            # 同クラスコラムニューロンの平均活性
+            col_acts = z_hidden[col_neurons]
+            col_mean = np.mean(col_acts)
+
+            # 乗算型ゲイン変調: 平均が正なら正のニューロンを強化、負なら負を強化
+            # ゲイン = 1.0 + hc_strength * sign(mean) * sign(neuron)
+            # → 同符号なら強化(>1.0)、異符号なら抑制(<1.0)
+            if abs(col_mean) > 1e-6:
+                gain = 1.0 + self.hc_strength * np.sign(col_mean) * np.sign(col_acts)
+                gain = np.clip(gain, 1.0 - self.hc_strength, 1.0 + self.hc_strength)
+                z_mod[col_neurons] = col_acts * gain
+
+        return z_mod
+
+    def _apply_lateral_inhibition(self, z_hidden, layer_idx):
+        """
+        D6: 隠れ層内のコラム間側抑制
+
+        D6-1 (li_strength): 勝者コラム以外を固定比率で減衰（ハード側抑制）
+        D6-2 (li_soft_temp): 活性比例のソフト側抑制（温度パラメータで強度調節）
+        v051の失敗教訓: 正帰還ループ防止のため乗算型ゲイン変調を採用
+        """
+        membership = self.column_membership_all_layers[layer_idx]
+        z_mod = z_hidden.copy()
+
+        # 各クラスのコラム平均|活性|を計算
+        col_means = np.zeros(self.n_output)
+        for c in range(self.n_output):
+            col_neurons = np.where(membership[c])[0]
+            if len(col_neurons) > 0:
+                col_means[c] = np.mean(np.abs(z_hidden[col_neurons]))
+
+        max_mean = np.max(col_means)
+        if max_mean < 1e-8:
+            return z_mod
+
+        if self.li_soft_temp > 0.0:
+            # D6-2: ソフト側抑制（温度付きsoftmax的ゲイン）
+            scaled = col_means / (self.li_soft_temp * max_mean + 1e-8)
+            gains = scaled / (np.max(scaled) + 1e-8)  # 0～1に正規化
+            for c in range(self.n_output):
+                col_neurons = np.where(membership[c])[0]
+                if len(col_neurons) > 0:
+                    z_mod[col_neurons] *= gains[c]
+        elif self.li_strength > 0.0:
+            # D6-1: ハード側抑制（勝者以外を減衰）
+            winner = np.argmax(col_means)
+            for c in range(self.n_output):
+                if c == winner:
+                    continue
+                col_neurons = np.where(membership[c])[0]
+                if len(col_neurons) > 0:
+                    z_mod[col_neurons] *= (1.0 - self.li_strength)
+
+        return z_mod
 
     def forward_batch(self, x_batch):
         """
@@ -301,8 +503,27 @@ class SimpleColumnEDNetwork:
         for layer_idx in range(self.n_layers):
             a_hidden = np.dot(z_current, self.w_hidden[layer_idx].T)
             z_hidden = tanh_activation(a_hidden)
+
+            # D7-4: スキップ接続（バッチ版）
+            for src, dst, alpha in self.skip_connections:
+                if dst == layer_idx and src < layer_idx:
+                    src_z = z_hiddens_batch[src]
+                    if src_z.shape[1] == z_hidden.shape[1]:
+                        z_hidden = np.tanh(z_hidden + alpha * src_z)
+
+            # D6: 隠れ層内側抑制（バッチ版）
+            if self.li_strength > 0.0 or self.li_soft_temp > 0.0:
+                for i in range(z_hidden.shape[0]):
+                    z_hidden[i] = self._apply_lateral_inhibition(z_hidden[i], layer_idx)
+
             z_hiddens_batch.append(z_hidden)
             z_current = z_hidden
+
+        # D4: 水平結合（バッチ版 — 各サンプルに個別適用）
+        if self.hc_strength > 0.0:
+            for i in range(z_current.shape[0]):
+                z_current[i] = self._apply_horizontal_connection(z_current[i], self.n_layers - 1)
+            z_hiddens_batch[-1] = z_current
 
         a_output = np.dot(z_current, self.w_output.T)
         z_output_batch = softmax_batch(a_output)
@@ -373,7 +594,15 @@ class SimpleColumnEDNetwork:
         amine_concentration = np.zeros((self.n_output, 2))
         error_correct = 1.0 - z_output[y_true]
         if error_correct > 0:
-            amine_concentration[y_true, 0] = error_correct * self.initial_amine
+            amine_signal = error_correct * self.initial_amine
+            # D5-3: 不確実性変調（予測符号化インスパイア）
+            # 出力エントロピーが高い=予測が不確実なとき学習信号を増強
+            if self.uncertainty_modulation > 0:
+                entropy = -np.sum(z_output * np.log(z_output + 1e-10))
+                max_entropy = np.log(self.n_output)
+                normalized_entropy = entropy / max_entropy  # 0(確信)～1(最大不確実)
+                amine_signal *= (1.0 + self.uncertainty_modulation * normalized_entropy)
+            amine_concentration[y_true, 0] = amine_signal
 
         # --------------------------------------------------
         # 3. 各隠れ層のアミン拡散と勾配計算（出力側→入力側）
@@ -388,6 +617,18 @@ class SimpleColumnEDNetwork:
             # アミン拡散
             amine_mask = amine_concentration >= 1e-8
             amine_diffused = amine_concentration * diffusion_coef
+
+            # P1: 予測エラーによるアミン変調（層ごと）
+            # 上位層からの逆投影と現在層の差が大きい=新しい情報が多い層で学習を増強
+            if (self.prediction_error_strength > 0 and
+                layer_idx < self.n_layers - 1 and
+                hasattr(self, '_feedback_weights')):
+                z_upper = z_hiddens[layer_idx + 1]
+                predicted = np.dot(self._feedback_weights[layer_idx], z_upper)
+                pred_error = np.mean(np.abs(z_hiddens[layer_idx] - np.tanh(predicted)))
+                # 予測エラーが大きい層でアミンを増強（最大2倍）
+                amine_boost = 1.0 + self.prediction_error_strength * pred_error
+                amine_diffused = amine_diffused * amine_boost
 
             # コラムmembership方式でのアミン分配
             membership = self.column_membership_all_layers[layer_idx]
@@ -458,13 +699,16 @@ class SimpleColumnEDNetwork:
                 w_sign[w_sign == 0] = 1
                 delta_w_batch *= w_sign
 
-            # 勾配クリッピング
-            if self.gradient_clip > 0:
+            # 勾配クリッピング（層別gc優先、なければグローバルgc）
+            gc_value = self.gradient_clip
+            if self.layer_gradient_clips is not None and layer_idx < len(self.layer_gradient_clips):
+                gc_value = self.layer_gradient_clips[layer_idx]
+            if gc_value > 0:
                 delta_w_norms = np.linalg.norm(delta_w_batch, axis=1, keepdims=True)
-                clip_mask = delta_w_norms > self.gradient_clip
+                clip_mask = delta_w_norms > gc_value
                 delta_w_batch = np.where(
                     clip_mask,
-                    delta_w_batch * (self.gradient_clip / delta_w_norms),
+                    delta_w_batch * (gc_value / delta_w_norms),
                     delta_w_batch
                 )
 
@@ -493,7 +737,15 @@ class SimpleColumnEDNetwork:
 
         # 出力層の更新
         output_grad = gradients['w_output']
+        if self.output_gradient_clip > 0:
+            g_norm = np.linalg.norm(output_grad)
+            if g_norm > self.output_gradient_clip:
+                output_grad = output_grad * (self.output_gradient_clip / g_norm)
         self.w_output += output_grad
+
+        # サンプル単位の出力層weight decay
+        if self.output_weight_decay > 0:
+            self.w_output *= (1.0 - self.output_weight_decay / self._n_train_samples)
 
         # 隠れ層の更新
         for layer_idx in range(self.n_layers):
@@ -509,7 +761,88 @@ class SimpleColumnEDNetwork:
                         self._sign_matrix_layer0[active_neurons]
                     )
 
+        # D8-1: コラム内ヘブ強化（正解クラスのコラムニューロンの重みを微小強化）
+        if self.hebb_strength > 0.0:
+            self._apply_hebbian_column(z_hiddens, y_true)
+
+        # D8-3: NCヘブ自己組織化（非コラムニューロンの重みをヘブ則で更新）
+        if self.nc_hebb_lr > 0.0:
+            self._apply_nc_hebbian(x_paired, z_hiddens)
+
         # 出力重みの正則化はエポック単位で適用（end_of_epoch_regularize()）
+
+    def _apply_hebbian_column(self, z_hiddens, y_true):
+        """
+        D8-1: コラム内ヘブ強化
+
+        正解クラスのコラムニューロンのうち強く発火したものの入力重みを微小強化。
+        「共に発火するニューロンは結合が強まる」原理に基づく。
+        重みクリッピングで発散を防止（v051のdecay方式との違い）。
+        """
+        for layer_idx in range(self.n_layers):
+            membership = self.column_membership_all_layers[layer_idx]
+            col_neurons = np.where(membership[y_true])[0]
+            if len(col_neurons) == 0:
+                continue
+
+            z_col = z_hiddens[layer_idx][col_neurons]
+            # 活性が正のニューロンのみ（発火しているもの）
+            active_mask = z_col > 0.1
+            if not np.any(active_mask):
+                continue
+
+            active_idx = col_neurons[active_mask]
+            z_active = z_col[active_mask]
+
+            # 入力を取得
+            if layer_idx == 0:
+                # 第1層はDale's Principleが適用されるため、ヘブ則は適用しない
+                continue
+            z_input = z_hiddens[layer_idx - 1]
+
+            # ヘブ則: Δw = η × z_out × z_in（外積の簡略版）
+            for i, ni in enumerate(active_idx):
+                delta = self.hebb_strength * z_active[i] * z_input
+                self.w_hidden[layer_idx][ni] += delta
+                # 重みクリッピングで発散防止
+                np.clip(self.w_hidden[layer_idx][ni], -2.0, 2.0,
+                        out=self.w_hidden[layer_idx][ni])
+
+    def _apply_nc_hebbian(self, x_paired, z_hiddens):
+        """
+        D8-3: NCヘブ自己組織化
+
+        非コラムニューロンの重みをヘブ則で更新。
+        ED法の学習とは独立した自己組織化パスで、リザバーの質を改善。
+        """
+        for layer_idx in range(self.n_layers):
+            membership = self.column_membership_all_layers[layer_idx]
+            is_column = np.any(membership, axis=0)
+            nc_indices = np.where(~is_column)[0]
+            if len(nc_indices) == 0:
+                continue
+
+            z_nc = z_hiddens[layer_idx][nc_indices]
+            # 活性が十分なNCニューロンのみ
+            active_mask = np.abs(z_nc) > 0.1
+            if not np.any(active_mask):
+                continue
+
+            active_nc = nc_indices[active_mask]
+            z_active = z_nc[active_mask]
+
+            # 入力
+            if layer_idx == 0:
+                z_input = x_paired
+            else:
+                z_input = z_hiddens[layer_idx - 1]
+
+            # ヘブ則更新
+            delta = self.nc_hebb_lr * np.outer(z_active, z_input)
+            self.w_hidden[layer_idx][active_nc] += delta
+            # 重みクリッピング
+            np.clip(self.w_hidden[layer_idx][active_nc], -2.0, 2.0,
+                    out=self.w_hidden[layer_idx][active_nc])
 
     # ================================================================
     # 学習率調整
@@ -524,8 +857,115 @@ class SimpleColumnEDNetwork:
         self.layer_lrs = list(lrs)
 
     def end_of_epoch_regularize(self):
-        """エポック終了後の正則化処理"""
-        pass  # weight_decay削除済み。フック用に残す
+        """エポック終了後の正則化処理（output weight decay）
+        サンプル単位OWDが有効な場合はスキップ（重複適用防止）
+        """
+        if self.output_weight_decay > 0 and not hasattr(self, '_n_train_samples'):
+            self.w_output *= (1.0 - self.output_weight_decay)
+
+    def collect_epoch_diagnostics(self, x_sample, y_sample, n_diag=500):
+        """エポック終了時に診断情報を収集する（学習には影響しない読み取り専用）
+
+        Args:
+            x_sample: 診断用入力サンプル配列
+            y_sample: 診断用ラベル配列
+            n_diag: 診断に使うサンプル数
+        Returns:
+            dict: 各種診断統計
+        """
+        diag = {}
+        n = min(n_diag, len(x_sample))
+        indices = np.random.choice(len(x_sample), n, replace=False)
+
+        # --- 層別活性化統計 ---
+        layer_act_stats = []
+        layer_amine_stats = []
+        for layer_idx in range(self.n_layers):
+            layer_act_stats.append({'abs_mean': [], 'saturation_rate': [], 'std': []})
+            layer_amine_stats.append({'amine_true': [], 'amine_total': []})
+
+        output_scores = {'true_score': [], 'pred_score': [], 'max_score': []}
+        class_correct = np.zeros(self.n_output, dtype=int)
+        class_total = np.zeros(self.n_output, dtype=int)
+        confusion = np.zeros((self.n_output, self.n_output), dtype=int)
+
+        for i in indices:
+            x = x_sample[i]
+            y = int(y_sample[i])
+            z_hiddens, z_output, x_paired = self.forward(x)
+            y_pred = np.argmax(z_output)
+
+            # クラス別精度
+            class_total[y] += 1
+            if y_pred == y:
+                class_correct[y] += 1
+            confusion[y, y_pred] += 1
+
+            # 出力スコア
+            output_scores['true_score'].append(float(z_output[y]))
+            output_scores['pred_score'].append(float(z_output[y_pred]))
+            output_scores['max_score'].append(float(np.max(z_output)))
+
+            # 層別活性化統計
+            for layer_idx, z in enumerate(z_hiddens):
+                abs_z = np.abs(z)
+                layer_act_stats[layer_idx]['abs_mean'].append(float(np.mean(abs_z)))
+                layer_act_stats[layer_idx]['saturation_rate'].append(
+                    float(np.mean(abs_z > 0.95)))
+                layer_act_stats[layer_idx]['std'].append(float(np.std(z)))
+
+            # アミン濃度推定（正解クラスのerror_correct）
+            error_correct = 1.0 - z_output[y]
+            for layer_idx in range(self.n_layers):
+                diffusion = self.u1 if layer_idx == self.n_layers - 1 else self.u2
+                amine_at_layer = error_correct * (diffusion ** (self.n_layers - layer_idx))
+                layer_amine_stats[layer_idx]['amine_true'].append(float(amine_at_layer))
+
+        # 集約
+        diag['layer_activation'] = []
+        for layer_idx in range(self.n_layers):
+            diag['layer_activation'].append({
+                'abs_mean': float(np.mean(layer_act_stats[layer_idx]['abs_mean'])),
+                'saturation_rate': float(np.mean(layer_act_stats[layer_idx]['saturation_rate'])),
+                'std': float(np.mean(layer_act_stats[layer_idx]['std'])),
+            })
+
+        diag['layer_amine'] = []
+        for layer_idx in range(self.n_layers):
+            diag['layer_amine'].append({
+                'mean': float(np.mean(layer_amine_stats[layer_idx]['amine_true'])),
+            })
+
+        # 重み統計
+        diag['weight_stats'] = []
+        for layer_idx in range(self.n_layers):
+            w = self.w_hidden[layer_idx]
+            diag['weight_stats'].append({
+                'norm': float(np.linalg.norm(w)),
+                'abs_mean': float(np.mean(np.abs(w))),
+                'max': float(np.max(np.abs(w))),
+            })
+        w_out = self.w_output
+        diag['output_weight'] = {
+            'norm': float(np.linalg.norm(w_out)),
+            'abs_mean': float(np.mean(np.abs(w_out))),
+            'max': float(np.max(np.abs(w_out))),
+        }
+
+        # 出力スコア
+        diag['output_scores'] = {
+            'true_score_mean': float(np.mean(output_scores['true_score'])),
+            'max_score_mean': float(np.mean(output_scores['max_score'])),
+        }
+
+        # クラス別精度
+        diag['class_accuracy'] = {}
+        for c in range(self.n_output):
+            if class_total[c] > 0:
+                diag['class_accuracy'][c] = float(class_correct[c] / class_total[c])
+        diag['confusion'] = confusion
+
+        return diag
 
     # ================================================================
     # 学習
@@ -564,6 +1004,7 @@ class SimpleColumnEDNetwork:
         """
         import time as _time
         n_samples = len(x_train)
+        self._n_train_samples = n_samples
         total_loss = 0.0
         n_correct = 0
         _last_callback_time = _time.time()

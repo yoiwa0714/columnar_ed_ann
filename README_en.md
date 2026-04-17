@@ -13,6 +13,10 @@
 - [Quick Start](#quick-start)
 - [Reproducibility Checklist](#reproducibility-checklist)
 - [Usage Examples](#usage-examples)
+  - [Basic Execution Patterns](#basic-execution-patterns)
+  - [Visualization](#visualization)
+  - [Weight Save / Continual Learning / Ensemble](#weight-save--continual-learning--ensemble)
+  - [All Command-Line Arguments](#all-command-line-arguments)
 - [Claims and Verifiability (FAQ)](#claims-and-verifiability-faq)
 - [How It Works](#how-it-works)
   - [What Is the Columnar ED Method](#what-is-the-columnar-ed-method)
@@ -21,6 +25,7 @@
   - [Column Structure](#column-structure)
   - [Gabor Feature Extraction](#gabor-feature-extraction)
   - [Reservoir Computing Characteristics](#reservoir-computing-characteristics)
+  - [Functional Differentiation of the 6-Layer Cortical Structure](#functional-differentiation-of-the-6-layer-cortical-structure)
 - [Achieved Accuracy](#achieved-accuracy)
 - [Directory Structure](#directory-structure)
 - [Automatic Parameter Configuration](#automatic-parameter-configuration)
@@ -35,7 +40,7 @@
 
 **The Columnar ED Method** is a neural network implementation that extends Isamu Kaneko's Error Diffusion learning algorithm (ED method, hereinafter "the original ED method") by introducing cortical column structure from the cerebral cortex.
 
-The Columnar ED Method **does not use backpropagation based on the chain rule of derivatives at all**, and instead learns through biologically plausible amine diffusion mechanisms. Despite this, it achieves **97.36%** test accuracy on MNIST handwritten digit recognition (6-layer configuration, 50,000 training samples).
+The Columnar ED Method **does not use backpropagation based on the chain rule of derivatives at all**, and instead learns through biologically plausible amine diffusion mechanisms. Despite this, it achieves **98.12%** test accuracy on MNIST handwritten digit recognition (6-layer [1024×4+2048×2] + layer functional differentiation, 20,000 training samples).
 
 This repository provides two implementations:
 
@@ -225,40 +230,94 @@ python columnar_ed_ann.py \
 
 ### All Command-Line Arguments
 
+Short forms (e.g., `--gc`) are shown next to each argument. `--gradient_clip 0.001` and `--gc 0.001` are equivalent.
+
+**Execution Settings:**
+
+| Argument | Short Form | Default | Description |
+|----------|------------|---------|-------------|
+| `--hidden` | | `2048,1024` | Hidden layer neuron count (comma-separated, e.g., `2048`=1 layer, `2048,1024`=2 layers) |
+| `--train` | | `10000` | Number of training samples |
+| `--test` | | `10000` | Number of test samples |
+| `--epochs` | | Auto (YAML) | Number of epochs |
+| `--seed` | | `42` | Random seed |
+| `--dataset` | | `mnist` | Dataset name (`mnist`, `fashion`, `cifar10`) or custom data path (see [CUSTOM_DATASET_GUIDE.md](CUSTOM_DATASET_GUIDE.md)) |
+
 **Network Configuration:**
 
-| Argument | Default | Description |
-|----------|---------|-------------|
-| `--hidden` | `2048,1024` | Hidden layer neuron count (comma-separated, e.g., `2048`=1 layer, `2048,1024`=2 layers) |
-| `--train` | `10000` | Number of training samples |
-| `--test` | `10000` | Number of test samples |
-| `--epochs` | Auto (YAML) | Number of epochs |
-| `--seed` | `42` | Random seed |
-| `--dataset` | `mnist` | Dataset name (`mnist`, `fashion`, `cifar10`) or custom data path (see [CUSTOM_DATASET_GUIDE.md](CUSTOM_DATASET_GUIDE.md)) |
+| Argument | Short Form | Default | Description |
+|----------|------------|---------|-------------|
+| `--init_scales` | `--is` | Auto (YAML) | Per-layer weight initialization scales (comma-separated, length = num_layers + 1) |
+| `--hidden_sparsity` | `--hs` | Auto (YAML) | Per-layer non-column weight sparsity (comma-separated) |
+| `--layer_column_neurons` | `--lcn` | Auto (YAML) | Per-layer column neuron count (comma-separated, 0 = all neurons become column neurons) |
+
+**Learning Rate:**
+
+| Argument | Short Form | Default | Description |
+|----------|------------|---------|-------------|
+| `--output_lr` | `--olr` | Auto (YAML) | Output layer learning rate |
+| `--non_column_lr` | `--ncl` | Auto (YAML) | Per-layer non-column learning rate (comma-separated) |
+| `--column_lr_factors` | `--clf` | Auto (YAML) | Column neuron learning rate multiplier (per layer, comma-separated) |
+| `--gradient_clip` | `--gc` | Auto (YAML) | Gradient clipping threshold |
+| `--u1` | | Auto (YAML) | Amine diffusion coefficient u1 (output layer → last hidden layer) |
+| `--u2` | | Auto (YAML) | Amine diffusion coefficient u2 (between hidden layers, for multi-layer) |
 
 **Gabor Feature Extraction:**
 
-| Argument | Default | Description |
-|----------|---------|-------------|
-| `--no_gabor` | OFF | Disable Gabor feature extraction (ON by default) |
+| Argument | Short Form | Default | Description |
+|----------|------------|---------|-------------|
+| `--no_gabor` | | OFF | Disable Gabor feature extraction (ON by default) |
+| `--gabor_orientations` | `--go` | Auto (YAML) | Number of Gabor filter orientations |
+| `--gabor_frequencies` | `--gf` | Auto (YAML) | Number of Gabor filter frequency bands |
+| `--gabor_kernel_size` | `--gks` | Auto (YAML) | Gabor filter kernel size |
 
 **Visualization:**
 
-| Argument | Default | Description |
-|----------|---------|-------------|
-| `--viz` | OFF | Display real-time learning curve |
-| `--heatmap` | OFF | Display heatmap (used together with `--viz`) |
-| `--save_viz` | None | Directory or file path to save visualization results |
+| Argument | Short Form | Default | Description |
+|----------|------------|---------|-------------|
+| `--viz [SIZE]` | | OFF | Display real-time learning curve. Size options: 1=base, 2=1.3×, 3=1.6×, 4=2×. Defaults to 1 when omitted (`--viz` == `--viz 1`) |
+| `--heatmap` | | OFF | Display heatmap (used together with `--viz`) |
+| `--save_viz [PATH]` | | None | Directory to save visualization results. Defaults to `viz_results` when path is omitted (`--save_viz` == `--save_viz viz_results`) |
 
 **Weight Save / Continual Learning / Ensemble:**
 
 | Argument | Default | Description |
 |----------|---------|-------------|
 | `--save_weights PATH` | None | Directory to save weights after training (simple names auto-placed under `weights/`) |
-| `--save_best PATH` | None | Save weights only when best accuracy is updated |
+| `--save_best PATH` | None | Save weights only when best accuracy is updated (can be used with `--save_weights`) |
 | `--save_overwrite` | OFF | Allow overwriting existing files (interactive prompt when not set) |
 | `--load_weights PATH` | None | Load saved weights and start continual learning |
 | `--ensemble PATHS` | None | Comma-separated list of weight paths for ensemble inference (no training) |
+
+**Training Control (Experimental):**
+
+The following parameters default to `0.0` (disabled). They are activated when specified via CLI.
+
+| Argument | Short Form | Default | Description |
+|----------|------------|---------|-------------|
+| `--layer_gc` | `--lgc` | None | Per-layer gradient clipping (comma-separated, overrides `--gc`) |
+| `--lut_base_rate` | | `0.0` | LUT base learning rate (minimum learning rate for unranked neurons) |
+| `--output_weight_decay` | | `0.0` | Output layer weight decay rate |
+| `--output_gradient_clip` | | `0.0` | Output layer gradient clipping threshold |
+| `--uncertainty_modulation` | | `0.0` | Uncertainty modulation strength (amplifies amine signal by output entropy) |
+| `--hc_strength` | | `0.0` | Horizontal connection strength (gain modulation between same-class column neurons) |
+| `--skip` | | None | Skip connections (`src,dst,alpha` format, multiple allowed) |
+| `--li_strength` | | `0.0` | Hard lateral inhibition strength (attenuates non-winner columns) |
+| `--li_soft_temp` | | `0.0` | Soft lateral inhibition temperature |
+| `--hebb_strength` | | `0.0` | Intra-column Hebbian reinforcement strength |
+| `--nc_hebb_lr` | | `0.0` | NC Hebbian self-organization learning rate |
+| `--prediction_error_strength` | | `0.0` | Inter-layer prediction error propagation strength |
+| `--input_gate_strength` | | `0.0` | L6 feedback input gate strength |
+| `--attention_boost_strength` | | `0.0` | L1 attention boost strength |
+
+**Other:**
+
+| Argument | Short Form | Description |
+|----------|------------|-------------|
+| `--list_hyperparams` | `--lh` | Display YAML parameter list and exit (`--lh 2` for 2-layer details) |
+| `--show_train_errors` | | Display misclassified samples from the final epoch after training |
+| `--max_errors_per_class` | | Maximum number of misclassified samples displayed per class (default: 20) |
+| `--diagnose_plateau` | | Output learning plateau diagnostic information at the end of each epoch |
 
 ## Claims and Verifiability (FAQ)
 
@@ -394,6 +453,18 @@ For example, with `column_neurons=10` (default for 2–3 layer configurations), 
 
 Compared to cn=1, the increased number of learning neurons allows each class to be represented by more diverse features. The reservoir computing-like structure (majority of weights remain fixed) is maintained while classification performance improves with the increase in column neurons.
 
+### Functional Differentiation of the 6-Layer Cortical Structure
+
+The cerebral cortex is anatomically divided into six layers (L1–L6), each serving a distinct functional role. This implementation can mimic this functional differentiation using the following three parameters.
+
+| Parameter | Biological Correspondence | Recommended Settings (6-layer) |
+|---|---|---|
+| `--lcn 0,10,...` | L4 (sensory input layer) receives input generically | Only the input layer set to `0` (all neurons become column neurons), other layers set to `10` |
+| `--is 0.7,1.2,...,2.2,0.8` | L5 (behavioral output layer) is the thickest in the cortex | Higher values for layers closer to the output |
+| `--hs 0.6,0.6,...,0.2,0.2` | L1 (molecular layer) is sparse, L5 (pyramidal cell layer) is dense | Shallow layers high sparsity (0.6), deep layers low sparsity (0.2) |
+
+These differentiation settings achieve up to +0.39% accuracy improvement over uniform parameter configurations, demonstrating consistency between biological plausibility and accuracy improvement.
+
 ---
 
 ## Achieved Accuracy
@@ -402,33 +473,33 @@ Experimental results on MNIST handwritten digit recognition (seed=42, reproducib
 
 ### With Gabor Features (default) — 10k samples
 
-| Configuration | Hidden Layers | Test Accuracy | Runtime (*) |
-|---------------|---------------|---------------|-------------|
-| 1-layer | [2048] | Best 96.13% / Final 96.13% | ~3 min |
-| 2-layer | [2048, 1024] | Best 96.85% / Final 96.84% | ~10 min |
-| 3-layer | [2048, 1024, 1024] | Best 97.11% / Final 96.78% | ~30 min |
-
-### With Gabor Features — 50k samples
+Results using uniform configuration [1024×N] + layer functional differentiation parameters (`--lcn`, `--is`, `--hs`).
 
 | Configuration | Hidden Layers | Test Accuracy | Runtime (*) |
 |---------------|---------------|---------------|-------------|
-| 2-layer | [2048, 1024] | **Best 97.15%** | ~24 min |
-| 3-layer | [2048, 1024, 1024] | **Best 97.23%** | ~30 min |
-| 4-layer | [1024, 1024, 1024, 1024] | Best 97.12% | ~26 min |
-| 5-layer | [1024, 1024, 1024, 1024, 1024] | Best 97.25% | ~33 min |
-| 6-layer | [1024, 1024, 1024, 1024, 1024, 1024] | **Best 97.36%** | ~37 min |
+| 1-layer | [1024] | Best 96.77% | ~1 min |
+| 2-layer | [1024×2] | Best 96.93% | ~2 min |
+| 3-layer | [1024×3] | Best 96.78% | ~3 min |
+| 4-layer | [1024×4] | Best 96.51% | ~4 min |
+| 5-layer | [1024×5] | Best 96.57% | ~5 min |
+| 6-layer | [1024×6] | Best 96.42% | ~6 min |
+
+### With Gabor Features — 20k samples
+
+| Configuration | Hidden Layers | Test Accuracy | Runtime (*) |
+|---------------|---------------|---------------|-------------|
+| 1-layer | [1024] | Best 97.17% | ~2 min |
+| 2-layer | [1024×2] | **Best 98.03%** | ~5 min |
+| 3-layer | [1024×3] | Best 97.66% | ~8 min |
+| 4-layer | [1024×4] | Best 97.78% | ~10 min |
+| 5-layer | [1024×5] | Best 97.80% | ~13 min |
+| 6-layer | [1024×6] | Best 98.03% | ~37 min |
+| 6-layer (deep expansion) | [1024×4, 2048×2] | **Best 98.11%** ★ | ~40 min |
 
 \* Runtimes measured on an Intel Core i5-11th gen / RTX 3060 system and will vary depending on your environment.
+★ Project best accuracy (seed=42, `--layer_column_neurons 0,10,10,10,20,20`, `--init_scales 0.7,1.2,1.2,1.8,2.2,2.2,0.8`, `--hidden_sparsity 0.6,0.6,0.4,0.4,0.2,0.2`).
 
-### Without Gabor Features (`--no_gabor`) — 10k samples
-
-| Configuration | Hidden Layers | Test Accuracy |
-|---------------|---------------|---------------|
-| 1-layer | [2048] | Best 90.37% / Final 90.37% |
-| 2-layer | [2048, 1024] | 89.38% |
-| 3-layer | [2048, 1024, 1024] | 89.41% |
-
-> **Experimental conditions:** seed=42 (all under identical conditions, fully reproducible). Epoch counts are automatically set from `config/hyperparameters.yaml`. Higher accuracy can be achieved by increasing training data and epochs.
+> **Experimental conditions:** seed=42 (all under identical conditions, fully reproducible). Epoch counts are automatically set from `config/hyperparameters.yaml`.
 
 ---
 
@@ -473,15 +544,20 @@ In the main version, optimal parameters are automatically loaded from `config/hy
 
 ### Key Automatically Configured Parameters
 
-| Parameter | 1-layer | 2-layer | 3-layer | Description |
-|-----------|---------|---------|---------|-------------|
-| column_neurons | 1 | 10 | 10 | Number of column neurons |
-| init_scales | [0.4, 1.0] | [0.7, 1.8, 0.8] | [0.7, 1.8, 1.8, 0.8] | Per-layer initialization scales |
-| output_lr | 0.15 | 0.15 | 0.15 | Output layer learning rate |
-| non_column_lr | [0.15] | [0.15, 0.15] | [0.15, 0.15, 0.15] | Hidden layer base learning rate (per layer) * |
-| column_lr_factors | [0.01] | [0.005, 0.003] | [0.005, 0.004, 0.002] | Column neuron learning rate multiplier (per layer) |
-| hidden_sparsity | 0.4 | [0.4, 0.4] | [0.4, 0.4, 0.4] | Hidden layer sparsity |
-| gradient_clip | 0.0001 | 0.0001 | 0.0001 | Gradient clipping |
+| Parameter | CLI Short Form | 1-layer | 2-layer | 3-layer | Description |
+|-----------|----------------|---------|---------|---------|-------------|
+| column_neurons | `--lcn` | 1 | 10 | 10 | Number of column neurons |
+| init_scales | `--is` | [0.4, 1.0] | [0.7, 1.8, 0.8] | [0.7, 1.8, 1.8, 0.8] | Per-layer initialization scales |
+| hidden_sparsity | `--hs` | 0.4 | [0.4, 0.4] | [0.4, 0.4, 0.4] | Hidden layer sparsity |
+| output_lr | `--olr` | 0.15 | 0.15 | 0.15 | Output layer learning rate |
+| non_column_lr | `--ncl` | [0.15] | [0.15, 0.15] | [0.15, 0.15, 0.15] | Hidden layer base learning rate (per layer) * |
+| column_lr_factors | `--clf` | [0.01] | [0.005, 0.003] | [0.005, 0.004, 0.002] | Column neuron learning rate multiplier (per layer) |
+| gradient_clip | `--gc` | 0.0001 | 0.0001 | 0.0001 | Gradient clipping |
+| u1 | `--u1` | 0.5 | 0.5 | 0.5 | Amine diffusion coefficient (output → last hidden layer) |
+| u2 | `--u2` | 0.8 | 0.8 | 0.8 | Amine diffusion coefficient (between hidden layers, for multi-layer) |
+| gabor_orientations | `--go` | 8 | 8 | 8 | Number of Gabor filter orientations |
+| gabor_frequencies | `--gf` | 2 | 2 | 2 | Number of Gabor filter frequency bands |
+| gabor_kernel_size | `--gks` | 11 | 11 | 11 | Gabor filter kernel size |
 
 > \* `non_column_lr` is used as the base learning rate for the entire hidden layer. Non-column neurons do not actually learn because they receive no amine signals; only column neurons (updated with `column_lr_factors` multiplier) and the output layer (updated with `output_lr`) train.
 >
@@ -489,8 +565,20 @@ In the main version, optimal parameters are automatically loaded from `config/hy
 
 ### Customization
 
-1. **Direct YAML editing**: Edit `config/hyperparameters.yaml` in a text editor
-2. **View settings**: Refer to the YAML file directly
+1. **Direct CLI specification**: Override at runtime using the "CLI Short Form" options in the table above
+   ```bash
+   # Example: Change gradient clipping and Gabor kernel size
+   python columnar_ed_ann.py --train 10000 --test 10000 --gc 0.001 --gks 7
+   ```
+   Items changed via CLI are marked with `(changed)` in the parameter display at the start of execution.
+
+2. **View parameter list**: Use `--lh` to check YAML settings for all layer configurations
+   ```bash
+   python columnar_ed_ann.py --lh       # List for all layers
+   python columnar_ed_ann.py --lh 2     # Details for 2-layer configuration
+   ```
+
+3. **Direct YAML editing**: Edit `config/hyperparameters.yaml` in a text editor to change default values
 
 > If the YAML file is accidentally corrupted, restore it by copying from `config/hyperparameters_initial.yaml`.
 

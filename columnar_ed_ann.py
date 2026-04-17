@@ -1,143 +1,7 @@
 #!/usr/bin/env python3
-"""
-Columnar ED-ANN
+"""Columnar ED-ANN v1.2.0"""
 
-コラムED法（Error Diffusion法 + 大脳皮質コラム構造）の実装。
-微分の連鎖律を用いた誤差逆伝播法を一切使用せずに高い学習精度を実現する。
-
-■ コラムED法の動作原理:
-  1. 入力→隠れ層→出力の順伝播（活性化関数: tanh）
-  2. 出力スコアが最大のクラス（勝者）に対してのみ学習
-  3. 正解の場合: 勝者クラスのコラムニューロンを強化（正のアミン信号）
-  4. 不正解の場合: 勝者クラスのコラムニューロンを弱化（負のアミン信号）
-  5. 重み更新は勾配降下ではなく、アミン信号×入力活性の外積で行う
-
-■ コラム構造:
-  大脳皮質のコラム構造を模倣。各クラスに少数のコラムニューロンを割り当て、
-  残りの大多数は固定重みのリザバーとして機能する（学習しない）。
-  この構造により多クラス分類を実現。
-
-■ 使用例:
-  # 2層+Gabor特徴（デフォルト構成、約10分）
-  python columnar_ed_ann.py --train 10000 --test 10000
-
-  # 6層+層機能分化（約15分、96.57%@1024×6）
-  python columnar_ed_ann.py --hidden 1024,1024,1024,1024,1024,1024 \\
-      --train 10000 --test 10000 --epochs 10 \\
-      --lcn 0,10,10,10,10,10 \\
-      --is 0.7,1.2,1.2,1.8,2.2,2.2,0.8 \\
-      --hs 0.6,0.6,0.4,0.4,0.2,0.2
-
-  # 可視化付き
-  python columnar_ed_ann.py --train 10000 --test 10000 --viz --heatmap
-
-  # Gabor特徴なし
-  python columnar_ed_ann.py --hidden 2048 --train 10000 --test 10000 --no_gabor
-
-  # YAMLパラメータ一覧表示（全層）
-  python columnar_ed_ann.py --lh
-
-  # 2層の詳細表示
-  python columnar_ed_ann.py --lh 2
-
-■ コマンドラインオプション（短縮形）:
-  --gc   gradient_clip       勾配クリッピング閾値
-  --is   init_scales         層別重み初期化スケール（カンマ区切り）
-  --hs   hidden_sparsity     層別非コラム重みスパース率
-  --ncl  non_column_lr       層別非コラム学習率
-  --olr  output_lr           出力層学習率
-  --clf  column_lr_factors   コラムニューロン学習率倍率（層別）
-  --u1                       アミン拡散係数u1（出力→最終隠れ層）
-  --u2                       アミン拡散係数u2（隠れ層間）
-  --lcn  layer_column_neurons 層別コラムニューロン数（0=全コラム化）
-  --gks  gabor_kernel_size   Gaborフィルタカーネルサイズ
-  --go   gabor_orientations  Gaborフィルタ方位数
-  --gf   gabor_frequencies   Gaborフィルタ周波数帯域数
-  --lh   list_hyperparams    YAMLパラメータ一覧を表示して終了
-
-■ 変更履歴（主要ポイント）:
-  2026-04-05 パラメータ管理・表示の整備:
-    - columnar_ed_ann.py と columnar_ed_ann_experiment.py の役割分担を明確化
-      - columnar_ed_ann.py: 実績のあるパラメータのみ実装（教材）
-      - columnar_ed_ann_experiment.py: 実験的パラメータも含む（実験場）
-    - 実績なし実験的パラメータを columnar_ed_ann.py / modules/ed_network.py から完全削除
-      - 削除: nc_integration_strength, nc_spatial_sigma,
-               error_inhibition_strength, error_inhibition_topk
-    - YAMLのデッドパラメータを全6層から削除
-      - 削除: base_column_radius, column_radius_per_layer, participation_rate
-    - 1層YAMLにGabor設定(gabor_orientations/frequencies/kernel_size)を追加（全層統一）
-    - 新CLI短縮形: --gc, --is, --hs, --ncl, --olr, --clf, --u1, --u2,
-                   --lcn, --gks, --go, --gf, --lh
-    - --lh 復活: 全層縦並び一覧 / 層別詳細+推奨コマンド表示
-    - 学習開始時パラメータ表示を全面刷新:
-      YAMLの全パラメータを4グループ（ネットワーク構成/学習率/訓練設定/Gabor特徴）で表示
-      CLIで明示的に変更した値には "(変更)" を自動付記
-  2026-04-05 v1.1.0 重み保存・継続学習・アンサンブル学習の実装:
-    - --save_weights PATH: 学習完了後に重みをweights/ディレクトリに保存
-    - --save_best PATH:    ベスト精度更新時のみ保存
-    - --save_overwrite:    同パスへの上書きを許可
-    - --load_weights PATH: 保存済み重みから学習を再開（継続学習）
-    - --ensemble PATHS:    カンマ区切りで複数重みを指定してアンサンブル推論
-
-■ データセット別精度 (seed=42):
-  MNIST:       6層[1024×4+2048×2]+Gabor 20k/10k → 98.11% (プロジェクト最高, 2026-04-04)
-             3層+Gabor 20k/20k → 97.57%
-  Fashion-MNIST: 3層+Gabor 20k → 実験中
-  CIFAR-10:    5層+Gabor 3k → 37.70% (3エポック)
-    - カラー→グレースケール変換+Gabor特徴抽出で対応
-    - 隠れ層の重みがほぼ学習されない（出力層のみ学習）
-    - gradient_clip/init_scales調整では改善せず
-    - 根本原因: ED法のアミン拡散が深層の隠れ層まで十分に伝播しない
-    - 今後の方向: 非コラムニューロンの学習参加等を検討
-
-■ 6層 層機能分化実験 (2026-04-03):
-  脳の6層コラム構造（L1分子層〜L6多形細胞層）の機能分化を
-  既存パラメータの層別最適化で模倣。4 Phaseの累積探索で+0.72%改善。
-
-  Phase 1: 層別column_neurons配置 (cn=0の配置探索)
-    P1a: cn=0,10,10,10,10,10 → Best=95.79% (+0.19% vs baseline 95.60%) ★最良
-    P1b: cn=0,10,10,10,10,0  → Best=95.73% (+0.13%)
-    P1c: cn=10,0,0,10,10,10  → Best=95.60% (±0.00%)
-    → 入力層のみ全コラム化が最良（L4的: 汎用的な入力受付）
-
-  Phase 2: 層別init_scales分化
-    P2a: is=[1.8,1.8,1.8,1.8,1.8,1.8,0.8] → 94.80% (-0.99%) 入力層is増大は逆効果
-    P2b: is=[0.7,1.2,1.2,1.8,2.2,2.2,0.8] → 95.93% (+0.14%) ★最良
-    P2c: is=[0.7,2.2,2.2,1.8,1.2,1.2,0.8] → 95.74% (-0.05%)
-    → 出力近傍層(L4,L5)のis=2.2が最良（L5的: 行動出力層を厚く）
-
-  Phase 3: 層別学習率分化 (non_column_lr)
-    P3a: ncl=[0.08,0.08,0.04,0.04,0.02,0.02] → 95.92% (-0.01%) 効果なし
-    P3b: ncl=[0.02,0.02,0.04,0.04,0.08,0.08] → 95.96% (+0.03%) ノイズ範囲
-    → 学習率分化は有意な効果なし（均一0.04で十分）
-
-  Phase 4: 層別hidden_sparsity分化
-    P4a: hs=[0.2,0.2,0.4,0.4,0.6,0.6] → 96.04% (+0.11%) 浅層密・深層疎
-    P4b: hs=[0.6,0.6,0.4,0.4,0.2,0.2] → 96.32% (+0.39%) ★最良
-    → 浅層疎・深層密が大幅改善（L1的: 疎な調整層、L5的: 密な出力層）
-
-  累積改善: baseline 95.60% → P4b 96.32% (+0.72%)
-
-  検証実験:
-    512×6, 20ep → Best=96.32% (Ep8, Ep9以降改善なし、10epで十分)
-    1024×6, 10ep → Best=96.57% (Ep6, +0.25% vs 512×6)
-
-  生物学的知見との整合:
-    - 入力層(L4)は汎用的(cn=0) → 脳のL4も「生データの受付室」
-    - 出力層(L5)は厚い(is=2.2) → 脳の運動野ではL5が特に厚い
-    - 浅層は疎、深層は密 → 脳のL1は疎、L5は大きな錐体細胞が密集
-
-  最良6層構成コマンド:
-    python columnar_ed_ann.py --hidden 1024,1024,1024,1024,1024,1024 \\
-        --train 10000 --test 10000 --epochs 10 --seed 42 \\
-        --gradient_clip 0.0001 \\
-        --layer_column_neurons 0,10,10,10,10,10 \\
-        --init_scales 0.7,1.2,1.2,1.8,2.2,2.2,0.8 \\
-        --hidden_sparsity 0.6,0.6,0.4,0.4,0.2,0.2
-    # → Best=96.57% (Ep6, 1024×6) / 96.32% (Ep8, 512×6)
-"""
-
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
@@ -184,6 +48,13 @@ def parse_args():
                        help='Gabor特徴抽出を無効化（デフォルト: Gabor ON）')
     parser.add_argument('--gc', '--gradient_clip', dest='gradient_clip', type=float, default=None,
                        help='勾配クリッピング閾値（未指定時: YAML設定値）　短縮形: --gc')
+    parser.add_argument('--lgc', '--layer_gc', dest='layer_gc', type=str, default=None,
+                       help='層別勾配クリッピング（カンマ区切り、長さ=層数）\n'
+                            '例: 0.001,0.005,0.01,0.03,0.05,0.1　短縮形: --lgc\n'
+                            '指定時は--gcより優先される')
+    parser.add_argument('--lut_base_rate', type=float, default=0.0,
+                       help='LUTのベース学習率（ランク外ニューロンの最低学習率、デフォルト: 0.0）\n'
+                            '例: 0.01 → ランクcn以降も学習率=0.01で学習に参加')
     parser.add_argument('--is', '--init_scales', dest='init_scales', type=str, default=None,
                        help='層別重み初期化スケール（カンマ区切り、長さ=層数+1）\n'
                             '例: 0.7,1.8,1.8,1.8,1.8,1.8,0.8　短縮形: --is')
@@ -255,6 +126,34 @@ def parse_args():
     weight_group.add_argument('--ensemble', type=str, default=None, metavar='PATHS',
                              help='複数の重みをカンマ区切りで指定してアンサンブル推論\n'
                                   '（学習は行わず推論のみ。例: weights/run1,weights/run2,weights/run3）')
+
+    parser.add_argument('--output_weight_decay', type=float, default=0.0,
+                       help='出力層の重み減衰率（0.0で無効、推奨: 0.00001）')
+    parser.add_argument('--output_gradient_clip', type=float, default=0.0,
+                       help='出力層の勾配クリッピング閾値（0.0で無効）')
+    parser.add_argument('--uncertainty_modulation', type=float, default=0.0,
+                       help='不確実性変調の強度（0.0で無効）。出力エントロピーに比例してアミン信号を増強')
+    parser.add_argument('--hc_strength', type=float, default=0.0,
+                       help='D4水平結合の強度（0.0で無効）。同クラスコラムニューロン間のゲイン変調')
+    parser.add_argument('--skip', type=str, action='append', default=None,
+                       help='D7-4スキップ接続。src,dst,alpha形式。複数指定可\n'
+                            '例: --skip 0,3,0.1 --skip 1,4,0.1')
+    parser.add_argument('--li_strength', type=float, default=0.0,
+                       help='D6-1ハード側抑制の強度（0.0で無効）。勝者コラム以外を減衰')
+    parser.add_argument('--li_soft_temp', type=float, default=0.0,
+                       help='D6-2ソフト側抑制の温度（0.0で無効）。大=弱い抑制、小=強い抑制')
+    parser.add_argument('--hebb_strength', type=float, default=0.0,
+                       help='D8-1コラム内ヘブ強化の強度（0.0で無効）')
+    parser.add_argument('--nc_hebb_lr', type=float, default=0.0,
+                       help='D8-3 NCヘブ自己組織化の学習率（0.0で無効）')
+    parser.add_argument('--prediction_error_strength', type=float, default=0.0,
+                       help='P1層間予測エラー伝播の強度（0.0で無効）。上位層逆投影でアミン変調')
+    parser.add_argument('--input_gate_strength', type=float, default=0.0,
+                       help='P2 L6フィードバック入力ゲートの強度（0.0で無効）。深層活性で入力ゲーティング')
+    parser.add_argument('--attention_boost_strength', type=float, default=0.0,
+                       help='P3 L1注意ブーストの強度（0.0で無効）。出力不確実時に浅層ブースト')
+    parser.add_argument('--diagnose_plateau', action='store_true',
+                       help='各エポック終了時に学習停滞診断情報を出力する')
 
     args = parser.parse_args()
     # コマンドラインで明示的に指定された引数名セット（" (変更)" 表示用）
@@ -725,43 +624,45 @@ def main():
     # ========================================
     use_gabor = not args.no_gabor
     gabor_info = None
-    color_to_gray = False  # カラー→グレースケール変換フラグ
+    n_channels = 1  # RGB=3, モノクロ=1
     if use_gabor:
         from modules.gabor_features import GaborFeatureExtractor
 
         if n_input == 784:
             img_shape = (28, 28)
+            n_channels = 1
         elif n_input == 3072:
-            # CIFAR-10: 32×32×3 → グレースケール変換してGabor適用
+            # CIFAR-10: 32×32×3 → RGB 3チャネルGabor
             img_shape = (32, 32)
-            color_to_gray = True
+            n_channels = 3
         else:
             side = int(np.sqrt(n_input))
             if side * side == n_input:
                 img_shape = (side, side)
+                n_channels = 1
             else:
                 # カラー画像(H×W×3)の可能性をチェック
                 side = int(np.sqrt(n_input / 3))
                 if side * side * 3 == n_input:
                     img_shape = (side, side)
-                    color_to_gray = True
+                    n_channels = 3
                 else:
                     print(f"警告: 入力次元{n_input}の画像形状を推定できません。Gabor無効化。")
                     use_gabor = False
                     img_shape = None
 
-    if use_gabor and color_to_gray:
+    if use_gabor and n_channels == 3:
         # ヒートマップ用にカラー元画像を保持
         x_train_raw = x_train.copy()
         x_test_raw = x_test.copy()
-        # カラー画像をグレースケールに変換（ITU-R BT.601準拠）
+        # RGB画像をチャネル別平坦化: (N, H*W*3) → (N, H*W*3) [R全画素|G全画素|B全画素]
         h, w = img_shape
         x_train_color = x_train.reshape(-1, h, w, 3)
         x_test_color = x_test.reshape(-1, h, w, 3)
-        x_train = np.dot(x_train_color, [0.2989, 0.5870, 0.1140]).reshape(-1, h * w)
-        x_test = np.dot(x_test_color, [0.2989, 0.5870, 0.1140]).reshape(-1, h * w)
-        n_input = h * w
-        print(f"  カラー→グレースケール変換: {h}×{w}×3 → {h}×{w} ({n_input}次元)")
+        # HWC → CHW順に並べ替え（チャネル別独立Gabor用）
+        x_train = x_train_color.transpose(0, 3, 1, 2).reshape(-1, 3 * h * w)
+        x_test = x_test_color.transpose(0, 3, 1, 2).reshape(-1, 3 * h * w)
+        print(f"  RGB 3チャネルGabor: {h}×{w}×3 → チャネル別独立処理")
 
     if use_gabor:
         gp = hp.gabor_params
@@ -772,8 +673,9 @@ def main():
             gp['orientations'] = args.gabor_orientations
         if args.gabor_frequencies is not None:
             gp['frequencies'] = args.gabor_frequencies
+        ch_label = f", チャネル: {n_channels}" if n_channels > 1 else ""
         print(f"Gabor特徴抽出中... (方位: {gp['orientations']}, 周波数: {gp['frequencies']}, "
-              f"カーネル: {gp['kernel_size']})")
+              f"カーネル: {gp['kernel_size']}{ch_label})")
 
         extractor = GaborFeatureExtractor(
             image_shape=img_shape,
@@ -782,11 +684,12 @@ def main():
             kernel_size=gp['kernel_size'],
             pool_size=gp['pool_size'],
             pool_stride=gp['pool_stride'],
-            include_edge_filters=True
+            include_edge_filters=True,
+            n_channels=n_channels
         )
 
         gabor_info = extractor.get_info()
-        print(f"  フィルタ数: {gabor_info['n_filters']}, "
+        print(f"  フィルタ数: {gabor_info['n_filters']}×{n_channels}ch, "
               f"特徴次元: {gabor_info['feature_dim']} (元: {n_input})")
 
         # 変換前のデータを保持（ヒートマップ用、カラー画像の場合は既に保存済み）
@@ -816,6 +719,19 @@ def main():
     if args.hidden_sparsity is not None:
         actual_hidden_sparsity = [float(x) for x in args.hidden_sparsity.split(',')]
 
+    # 層別勾配クリッピング
+    layer_gc_list = None
+    if args.layer_gc is not None:
+        layer_gc_list = [float(x) for x in args.layer_gc.split(',')]
+
+    # D7-4: スキップ接続の解析
+    skip_connections = []
+    if args.skip is not None:
+        for spec in args.skip:
+            parts = spec.split(',')
+            if len(parts) == 3:
+                skip_connections.append((int(parts[0]), int(parts[1]), float(parts[2])))
+
     network = SimpleColumnEDNetwork(
         n_input=n_input,
         n_hidden=hidden_sizes,
@@ -828,10 +744,24 @@ def main():
         participation_rate=config.get('participation_rate', 0.1),
         use_hexagonal=config.get('use_hexagonal', True),
         gradient_clip=config['gradient_clip'],
+        layer_gradient_clips=layer_gc_list,
+        lut_base_rate=args.lut_base_rate,
         hidden_sparsity=actual_hidden_sparsity,
         column_lr_factors=column_lr_factors,
         init_scales=actual_init_scales,
         layer_learning_rates=layer_lrs,
+        output_weight_decay=args.output_weight_decay,
+        output_gradient_clip=args.output_gradient_clip,
+        uncertainty_modulation=args.uncertainty_modulation,
+        hc_strength=args.hc_strength,
+        skip_connections=skip_connections,
+        li_strength=args.li_strength,
+        li_soft_temp=args.li_soft_temp,
+        hebb_strength=args.hebb_strength,
+        nc_hebb_lr=args.nc_hebb_lr,
+        prediction_error_strength=args.prediction_error_strength,
+        input_gate_strength=args.input_gate_strength,
+        attention_boost_strength=args.attention_boost_strength,
         seed=args.seed,
     )
 
@@ -913,6 +843,28 @@ def main():
     _p("u2:",                config['u2'],             "u2")
     print(f"  # --- 訓練設定 ---")
     _p("gradient_clip:",     config['gradient_clip'],  "gradient_clip")
+    if layer_gc_list:
+        _p("layer_gc:",      layer_gc_list,            "layer_gc")
+    if args.uncertainty_modulation > 0:
+        _p("uncertainty_mod:", args.uncertainty_modulation, "uncertainty_modulation")
+    if args.hc_strength > 0:
+        _p("hc_strength:", args.hc_strength, "hc_strength")
+    if skip_connections:
+        _p("skip:", skip_connections, "skip")
+    if args.li_strength > 0:
+        _p("li_strength:", args.li_strength, "li_strength")
+    if args.li_soft_temp > 0:
+        _p("li_soft_temp:", args.li_soft_temp, "li_soft_temp")
+    if args.hebb_strength > 0:
+        _p("hebb_strength:", args.hebb_strength, "hebb_strength")
+    if args.nc_hebb_lr > 0:
+        _p("nc_hebb_lr:", args.nc_hebb_lr, "nc_hebb_lr")
+    if args.prediction_error_strength > 0:
+        _p("pred_error:", args.prediction_error_strength, "prediction_error_strength")
+    if args.input_gate_strength > 0:
+        _p("input_gate:", args.input_gate_strength, "input_gate_strength")
+    if args.attention_boost_strength > 0:
+        _p("attn_boost:", args.attention_boost_strength, "attention_boost_strength")
     _p("epochs:",            epochs,                   "epochs")
     _p("seed:",              args.seed,                "seed")
     print(f"  # --- Gabor特徴 ---")
@@ -1016,6 +968,32 @@ def main():
               f"Train={train_acc:.4f}, Test={test_acc:.4f}, "
               f"Best={best_test_acc:.4f} (ep{best_epoch}), "
               f"Time={epoch_time:.1f}s")
+
+        # 学習停滞診断
+        if args.diagnose_plateau:
+            _y_diag = np.argmax(y_test, axis=1) if len(y_test.shape) > 1 and y_test.shape[1] > 1 else y_test
+            diag = network.collect_epoch_diagnostics(x_test, _y_diag, n_diag=500)
+            print(f"  [診断] 活性化: ", end="")
+            for li, la in enumerate(diag['layer_activation']):
+                print(f"L{li}(mean={la['abs_mean']:.3f},sat={la['saturation_rate']:.1%},std={la['std']:.3f}) ", end="")
+            print()
+            print(f"  [診断] アミン: ", end="")
+            for li, am in enumerate(diag['layer_amine']):
+                print(f"L{li}({am['mean']:.6f}) ", end="")
+            print()
+            print(f"  [診断] 重み: ", end="")
+            for li, ws in enumerate(diag['weight_stats']):
+                print(f"L{li}(norm={ws['norm']:.1f},max={ws['max']:.4f}) ", end="")
+            ow = diag['output_weight']
+            print(f"Out(norm={ow['norm']:.1f},max={ow['max']:.4f})")
+            print(f"  [診断] 出力: true_score={diag['output_scores']['true_score_mean']:.4f}, "
+                  f"max_score={diag['output_scores']['max_score_mean']:.4f}")
+            # クラス別精度（ワースト3）
+            ca = diag['class_accuracy']
+            worst = sorted(ca.items(), key=lambda x: x[1])[:3]
+            class_names_local = class_names if class_names else {i: str(i) for i in range(network.n_output)}
+            worst_str = ", ".join([f"C{c}({class_names_local[c] if class_names else c})={a:.1%}" for c, a in worst])
+            print(f"  [診断] ワースト3: {worst_str}")
 
         # 可視化更新
         if viz_manager is not None:
