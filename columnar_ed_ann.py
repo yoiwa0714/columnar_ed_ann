@@ -116,7 +116,7 @@ def parse_args():
                              help='学習完了後に重みを保存するディレクトリ（例: weights/run1）\n'
                                   'ディレクトリ内に weights_<名前>.npz と weights_<名前>.yaml を作成')
     weight_group.add_argument('--save_best', type=str, default=None, metavar='PATH',
-                             help='ベスト精度更新時のみ重みを保存するディレクトリ\n'
+                             help='ベスト精度更新時に重みを保存するディレクトリ（注: 上書き保存）\n'
                                   '--save_weights と同時指定可（独立して動作）')
     weight_group.add_argument('--save_overwrite', action='store_true',
                              help='--save_weights / --save_best で同名ファイルへの上書きを許可\n'
