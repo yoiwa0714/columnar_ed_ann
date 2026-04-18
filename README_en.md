@@ -40,7 +40,7 @@
 
 **The Columnar ED Method** is a neural network implementation that extends Isamu Kaneko's Error Diffusion learning algorithm (ED method, hereinafter "the original ED method") by introducing cortical column structure from the cerebral cortex.
 
-The Columnar ED Method **does not use backpropagation based on the chain rule of derivatives at all**, and instead learns through biologically plausible amine diffusion mechanisms. Despite this, it achieves **98.80%** test accuracy on MNIST handwritten digit recognition (6-layer [2048×6], 50,000 training samples).
+The Columnar ED Method **does not use backpropagation based on the chain rule of derivatives at all**, and instead learns through biologically plausible amine diffusion mechanisms. Despite this, it achieves **98.87%** test accuracy on MNIST handwritten digit recognition (6-layer [2048×6], 50,000 training samples).
 
 It is a **self-contained implementation that uses only the `modules/` directory**. It operates with just `columnar_ed_ann.py` and `modules/`, allowing you to understand the ED method and column structure simply.
 
@@ -495,10 +495,10 @@ Results using uniform configuration [1024×N] + layer functional differentiation
 |---------------|---------------|---------------|-------------|
 | 3-layer | [1024×3] | Best 98.50% | ~4.2 hours |
 | 3-layer | [2048×3] | Best 98.56% | ~15.8 hours |
-| 6-layer | [2048×6] | **Best 98.80%** ★ | ~7.9 hours |
+| 6-layer | [2048×6] | **Best 98.87%** ★ | ~10.5 hours |
 
 \* Runtimes measured on an Intel Core i5-11th gen / RTX 3060 system and will vary depending on your environment.
-★ Project best accuracy (seed=42, `--hidden 2048,2048,2048,2048,2048,2048`, `--train 50000`, `--epochs 30`, `--layer_column_neurons 101,101,101,101,101,101`, `--init_scales 0.7,1.2,1.2,1.8,2.2,2.2,0.8`, `--hidden_sparsity 0.6,0.6,0.4,0.4,0.2,0.2`, `--output_lr 0.04`, `--non_column_lr 0.009,0.034,0.137,0.137,0.034,0.009`, `--layer_gc 0.0004,0.0007,0.002,0.007,0.02,0.04`, `--hc_strength 0.1`).
+★ Project best accuracy (seed=42, `--hidden 2048,2048,2048,2048,2048,2048`, `--train 50000`, `--epochs 40` (best at Ep26), `--layer_column_neurons 101,101,101,101,101,101`, `--init_scales 0.7,1.2,1.2,1.8,2.2,2.2,0.8`, `--hidden_sparsity 0.6,0.6,0.4,0.4,0.2,0.2`, `--output_lr 0.04`, `--non_column_lr 0.009,0.034,0.137,0.137,0.034,0.009`, `--layer_gc 0.0004,0.0007,0.002,0.007,0.02,0.04`, `--hc_strength 0.1`).
 
 > **Experimental conditions:** seed=42 (all under identical conditions, fully reproducible). Epoch counts are automatically set from `config/hyperparameters.yaml`.
 
