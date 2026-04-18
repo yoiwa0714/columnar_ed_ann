@@ -414,7 +414,10 @@ class VisualizationManager:
         ax2.tick_params(axis='both', labelsize=tick_fs)
         
         plt.figure(self.fig_viz.number)
-        plt.pause(0.1)
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', UserWarning)
+            plt.pause(0.1)
         plt.draw()
     
     def set_gabor_info(self, gabor_info):
@@ -810,7 +813,10 @@ class VisualizationManager:
             add_cbar(im, ax)
         
         plt.figure(self.fig_heatmap.number)
-        plt.pause(0.1)
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', UserWarning)
+            plt.pause(0.1)
         plt.draw()
     
     def save_figures(self):
