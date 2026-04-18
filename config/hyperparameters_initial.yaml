@@ -245,3 +245,52 @@ gabor_params:
   kernel_size: 11                 # カーネルサイズ（Phase A検証: k11が最良）
   pool_size: 4                    # 平均プーリングウィンドウサイズ
   pool_stride: 4                  # プーリングストライド
+
+# データセット別差分パラメータ
+# layer_params をベースに、ここに記載した値だけを上書きする。
+# 記載のないデータセット・層数は layer_params の値をそのまま使用。
+# 新しいデータセット: dataset_overrides に新エントリを追加するだけでよい。
+dataset_overrides:
+
+  # MNIST（デフォルト基準）: layer_params と同一のため空エントリ
+  mnist: {}
+
+  # Fashion-MNIST: MNISTより複雑。gradient_clip をやや緩めに設定
+  fashion:
+    1:
+      gradient_clip: 0.001        # 1層: MNISTより複雑なため緩めに
+    2:
+      gradient_clip: 0.001        # 2層: MNIST最適値(0.0001)より緩めに
+    3:
+      gradient_clip: 0.001        # 3層: MNIST最適値(0.0001)より緩めに
+    4:
+      gradient_clip: 0.001
+    5:
+      gradient_clip: 0.001
+    6:
+      gradient_clip: 0.001
+
+  # CIFAR-10: カラー3チャンネル, 32×32。隠れ層を大きく取る必要あり
+  cifar10:
+    1:
+      hidden: [4096]
+      gradient_clip: 0.001
+    2:
+      hidden: [4096, 2048]
+      gradient_clip: 0.001
+    3:
+      hidden: [2048, 1024, 1024]
+      gradient_clip: 0.001
+    4:
+      hidden: [2048, 1024, 1024, 1024]
+      gradient_clip: 0.001
+    5:
+      hidden: [2048, 1024, 1024, 1024, 1024]
+      gradient_clip: 0.001
+    6:
+      hidden: [2048, 1024, 1024, 1024, 1024, 1024]
+      gradient_clip: 0.001
+
+  # 未知データセットのデフォルト: layer_params と同一（差分なし）
+  # 自動複雑さ判定で「mnistに近い」「fashionに近い」が選ばれた場合はそちらを使用
+  default: {}

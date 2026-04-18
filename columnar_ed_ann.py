@@ -12,6 +12,7 @@ import time
 import sys
 
 from modules.hyperparameters import HyperParams
+from modules.dataset_config import DatasetConfig
 from modules.data_loader import load_dataset
 from modules.ed_network import SimpleColumnEDNetwork
 
@@ -520,7 +521,7 @@ def main():
 
     # --lh / --list_hyperparams: ハイパーパラメータ一覧を表示して終了
     if args.list_hyperparams is not None:
-        hp = HyperParams()
+        hp = DatasetConfig()
         _show_hyperparams(args.list_hyperparams, hp)
 
     # ========================================
@@ -553,10 +554,10 @@ def main():
     n_layers = len(hidden_sizes)
 
     # ========================================
-    # 2. YAMLから層数別パラメータ自動選択
+    # 2. YAMLから層数別パラメータ自動選択（データセット別差分適用）
     # ========================================
-    hp = HyperParams()
-    config = hp.get_config(n_layers)
+    hp = DatasetConfig()
+    config = hp.get_config(n_layers, dataset=args.dataset)
 
     # CLI指定がない場合は層数依存の隠れ層サイズを使用
     if args.hidden is None:
@@ -606,6 +607,19 @@ def main():
     n_classes = len(np.unique(y_train))
     print(f"入力次元: {n_input}, クラス数: {n_classes}")
 
+    # 未知データセットの場合: データ複雑さを自動推定してパラメータを再取得
+    # 既知データセット（mnist, fashion, cifar10）は推定不要
+    effective_dataset = args.dataset
+    if args.dataset not in DatasetConfig.DATASET_ALIASES:
+        estimated = DatasetConfig.estimate_complexity(x_train, n_input)
+        print(f"未知データセット '{args.dataset}': 複雑さ推定結果 → '{estimated}' に近いパラメータを使用")
+        effective_dataset = estimated
+        config = hp.get_config(n_layers, dataset=effective_dataset)
+        # CLIオーバーライドを再適用（gradient_clip, hidden サイズは既にCLI値が優先済み）
+        if args.gradient_clip is not None:
+            config['gradient_clip'] = args.gradient_clip
+        # hidden_sizes は直後の hidden 変数に反映済みなので config 側は更新不要
+
     # データセット別クラス名
     _CLASS_NAMES = {
         'fashion': ['T-shirt/top', 'Trouser', 'Pullover', 'Dress', 'Coat',
@@ -647,9 +661,29 @@ def main():
                     img_shape = (side, side)
                     n_channels = 3
                 else:
-                    print(f"警告: 入力次元{n_input}の画像形状を推定できません。Gabor無効化。")
-                    use_gabor = False
-                    img_shape = None
+                    # npyディレクトリの metadata.json から画像形状を取得
+                    meta_shape = None
+                    if os.path.isdir(args.dataset):
+                        import json
+                        meta_path = os.path.join(args.dataset, 'metadata.json')
+                        if os.path.exists(meta_path):
+                            with open(meta_path, 'r', encoding='utf-8') as _f:
+                                _meta = json.load(_f)
+                            if 'input_shape' in _meta and len(_meta['input_shape']) >= 2:
+                                h_m, w_m = _meta['input_shape'][0], _meta['input_shape'][1]
+                                if h_m * w_m == n_input:
+                                    meta_shape = (h_m, w_m)
+                                    n_channels = 1
+                                elif h_m * w_m * 3 == n_input:
+                                    meta_shape = (h_m, w_m)
+                                    n_channels = 3
+                    if meta_shape is not None:
+                        img_shape = meta_shape
+                        print(f"  metadata.jsonから画像形状を取得: {img_shape[0]}×{img_shape[1]} (チャネル: {n_channels})")
+                    else:
+                        print(f"警告: 入力次元{n_input}の画像形状を推定できません。Gabor無効化。")
+                        use_gabor = False
+                        img_shape = None
 
     if use_gabor and n_channels == 3:
         # ヒートマップ用にカラー元画像を保持
