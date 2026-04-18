@@ -82,11 +82,11 @@ $$
 d_\ell =
 \begin{cases}
 u_1, & \ell=L \\
-\nu_2, & \ell<L
+u_2, & \ell<L
 \end{cases}
 $$
 
-(With `uniform_amine`, all layers use $d_\ell=\nu_1$.)
+(With `uniform_amine`, all layers use $d_\ell=u_1$.)
 
 Column membership for class $c$:
 
@@ -138,7 +138,7 @@ $$
 With input-side activation $\mathbf{z}^{(\ell-1)}$, base update:
 
 $$
-\Delta W_{j,:}^{(\ell)} = \nu_j^{(\ell)}\,\mathbf{z}^{(\ell-1)\top}
+\Delta W_{j,:}^{(\ell)} = u_j^{(\ell)}\,\mathbf{z}^{(\ell-1)\top}
 $$
 
 Implementation additionally applies:
@@ -206,21 +206,21 @@ This section maps the equations above to concrete implementation locations.
 
 | Equation / Concept | Math (summary) | Implementation | Key implementation point | Observable metric in logs |
 |---|---|---|---|---|
-| Hidden forward pass | $\mathbf{a}^{(\ell)}=W^{(\ell)}\mathbf{z}^{(\ell-1)},\ \mathbf{z}^{(\ell)}=\phi(\mathbf{a}^{(\ell)})$ | [modules/ed_network.py](../../modules/ed_network.py#L997), [modules/ed_network.py](../../modules/ed_network.py#L1014) | `forward()` uses `np.dot` then `tanh_activation` (or leaky ReLU) | Layer activation heatmaps, activation range |
-| Output forward pass | $\mathbf{p}=\mathrm{softmax}(W^{(o)}\mathbf{z}^{(L)})$ | [modules/ed_network.py](../../modules/ed_network.py#L1105), [modules/ed_network.py](../../modules/ed_network.py#L1129), [modules/activation_functions.py](../../modules/activation_functions.py#L66) | Linear map then softmax | Class-wise test accuracy, winner frequency |
-| Output error | $\mathbf{e}^{(o)}=\mathbf{t}-\mathbf{p}$ | [modules/ed_network.py](../../modules/ed_network.py#L1351) | difference between one-hot and predicted prob | early misclassification trend |
-| Output saturation | $\mathbf{s}^{(o)}=|\mathbf{p}|\odot(1-|\mathbf{p}|)$ | [modules/ed_network.py](../../modules/ed_network.py#L1356) | ED saturation term at output | probability saturation ratio |
-| Output update | $\Delta W^{(o)}=\eta_o(\mathbf{e}^{(o)}\odot\mathbf{s}^{(o)})\mathbf{z}^{(L)\top}$ | [modules/ed_network.py](../../modules/ed_network.py#L1364) | direct outer-product update | convergence speed |
-| Correct-only amine | $A_{c,+}^{(o)}=\alpha_0(1-p_y)\mathbf{1}[c=y]$ | [modules/ed_network.py](../../modules/ed_network.py#L1372), [modules/ed_network.py](../../modules/ed_network.py#L1376) | amine only for correct class positive channel | pure-ED vs control comparison |
-| Layer diffusion coeff | $d_\ell\in\{u_1,u_2\}$ | [modules/ed_network.py](../../modules/ed_network.py#L1392) | switch by last vs earlier layers | layer-wise heatmap differences |
-| Column membership | $M_{c,j}^{(\ell)}\in\{0,1\}$ | [modules/column_structure.py](../../modules/column_structure.py#L37), [modules/ed_network.py](../../modules/ed_network.py#L1415) | mask for class-specific learning | class assignment diagnostics |
-| Rank LUT weight | $\lambda_{c,j}^{(\ell)}=g(r_{c,j}^{(\ell)})$ | [modules/ed_network.py](../../modules/ed_network.py#L1432) | rank and `_learning_weight_lut` weighting | best accuracy under LUT settings |
-| NC branch | $\lambda^{NC}_{c,j,\ell}$ | [modules/ed_network.py](../../modules/ed_network.py#L1447), [modules/ed_network.py](../../modules/ed_network.py#L1482), [modules/ed_network.py](../../modules/ed_network.py#L1486) | nearest assignment / spatial decay / uniform micro signal | NC on/off, `nc_amine_strength` sweep |
-| Hidden saturation | $q_j^{(\ell)}=\max(|z_j^{(\ell)}|(1-|z_j^{(\ell)}|),\varepsilon)$ | [modules/ed_network.py](../../modules/ed_network.py#L1533) | minimum floor `1e-3` for stability | update stagnation / saturation |
-| Hidden local signal | $\nu_j^{(\ell)}=\eta_\ell\sum H\,q$ | [modules/ed_network.py](../../modules/ed_network.py#L1542), [modules/ed_network.py](../../modules/ed_network.py#L1561) | class/sign summed signal, outer-product update | per-epoch gain, update statistics |
-| Gradient clipping | $\Delta W\leftarrow\mathrm{Clip}(\Delta W)$ | [modules/ed_network.py](../../modules/ed_network.py#L1571) | row-norm clip by `gradient_clip` | stability vs gap |
-| Column LR factor | $\Delta W_{j,:}\leftarrow\beta_\ell\Delta W_{j,:}$ | [modules/ed_network.py](../../modules/ed_network.py#L1582) | suppress only column rows using `column_lr_factors` | overfitting suppression / class balance |
-| Weight application | $W^{(\ell)}\leftarrow W^{(\ell)}+\Delta W^{(\ell)}$ | [modules/ed_network.py](../../modules/ed_network.py#L1640), [modules/ed_network.py](../../modules/ed_network.py#L1648) | sequential additive updates | train/test trajectory |
+| Hidden forward pass | $\mathbf{a}^{(\ell)}=W^{(\ell)}\mathbf{z}^{(\ell-1)},\ \mathbf{z}^{(\ell)}=\phi(\mathbf{a}^{(\ell)})$ | [modules/ed_network.py](../../modules/ed_network.py#L348), [modules/ed_network.py](../../modules/ed_network.py#L349) | `forward()` uses `np.dot` then `tanh_activation` | Layer activation heatmaps, activation range |
+| Output forward pass | $\mathbf{p}=\mathrm{softmax}(W^{(o)}\mathbf{z}^{(L)})$ | [modules/ed_network.py](../../modules/ed_network.py#L399), [modules/activation_functions.py](../../modules/activation_functions.py#L24) | Linear map then softmax | Class-wise test accuracy, winner frequency |
+| Output error | $\mathbf{e}^{(o)}=\mathbf{t}-\mathbf{p}$ | [modules/ed_network.py](../../modules/ed_network.py#L579) | difference between one-hot and predicted prob | early misclassification trend |
+| Output saturation | $\mathbf{s}^{(o)}=|\mathbf{p}|\odot(1-|\mathbf{p}|)$ | [modules/ed_network.py](../../modules/ed_network.py#L582) | ED saturation term at output | probability saturation ratio |
+| Output update | $\Delta W^{(o)}=\eta_o(\mathbf{e}^{(o)}\odot\mathbf{s}^{(o)})\mathbf{z}^{(L)\top}$ | [modules/ed_network.py](../../modules/ed_network.py#L585) | direct outer-product update | convergence speed |
+| Correct-only amine | $A_{c,+}^{(o)}=\alpha_0(1-p_y)\mathbf{1}[c=y]$ | [modules/ed_network.py](../../modules/ed_network.py#L595), [modules/ed_network.py](../../modules/ed_network.py#L605) | amine only for correct class positive channel | pure-ED vs control comparison |
+| Layer diffusion coeff | $d_\ell\in\{u_1,u_2\}$ | [modules/ed_network.py](../../modules/ed_network.py#L615) | switch by last vs earlier layers | layer-wise heatmap differences |
+| Column membership | $M_{c,j}^{(\ell)}\in\{0,1\}$ | [modules/column_structure.py](../../modules/column_structure.py#L16), [modules/ed_network.py](../../modules/ed_network.py#L645) | mask for class-specific learning | class assignment diagnostics |
+| Rank LUT weight | $\lambda_{c,j}^{(\ell)}=g(r_{c,j}^{(\ell)})$ | [modules/ed_network.py](../../modules/ed_network.py#L655) | rank and `_learning_weight_lut` weighting | best accuracy under LUT settings |
+| NC branch | $\lambda^{NC}_{c,j,\ell} = 0$ | [modules/ed_network.py](../../modules/ed_network.py#L658) | non-column neurons do not learn (frozen random weights) | — |
+| Hidden saturation | $q_j^{(\ell)}=\max(|z_j^{(\ell)}|(1-|z_j^{(\ell)}|),\varepsilon)$ | [modules/ed_network.py](../../modules/ed_network.py#L679) | minimum floor `1e-3` for stability | update stagnation / saturation |
+| Hidden local signal | $u_j^{(\ell)}=\eta_\ell\sum H\,q$ | [modules/ed_network.py](../../modules/ed_network.py#L679), [modules/ed_network.py](../../modules/ed_network.py#L693) | class/sign summed signal, outer-product update | per-epoch gain, update statistics |
+| Gradient clipping | $\Delta W\leftarrow\mathrm{Clip}(\Delta W)$ | [modules/ed_network.py](../../modules/ed_network.py#L703) | row-norm clip by `gradient_clip` | stability vs gap |
+| Column LR factor | $\Delta W_{j,:}\leftarrow\beta_\ell\Delta W_{j,:}$ | [modules/ed_network.py](../../modules/ed_network.py#L716) | suppress only column rows using `column_lr_factors` | overfitting suppression / class balance |
+| Weight application | $W^{(\ell)}\leftarrow W^{(\ell)}+\Delta W^{(\ell)}$ | [modules/ed_network.py](../../modules/ed_network.py#L744), [modules/ed_network.py](../../modules/ed_network.py#L755) | sequential additive updates | train/test trajectory |
 
 Notes:
 

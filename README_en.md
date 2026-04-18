@@ -487,7 +487,7 @@ Results using uniform configuration [1024×N] + layer functional differentiation
 | 4-layer | [1024×4] | Best 97.78% | ~10 min |
 | 5-layer | [1024×5] | Best 97.80% | ~13 min |
 | 6-layer | [1024×6] | Best 98.03% | ~37 min |
-| 6-layer (deep expansion) | [1024×4, 2048×2] | **Best 98.11%** | ~40 min |
+| 6-layer (deep expansion) | [1024×4, 2048×2] | Best 98.11% | ~40 min |
 
 ### With Gabor Features — 50k samples
 
@@ -525,9 +525,13 @@ columnar_ed_ann/
 │   ├── ja/ED法_解説資料.md          #   Detailed explanation of original ED method (Japanese)
 │   ├── ja/EDLA_金子勇氏.md          #   Academic background & Isamu Kaneko's achievements (Japanese)
 │   ├── ja/コラムED法_動作の流れ.md  #   Core function details of Columnar ED Method (Japanese)
+│   ├── ja/コラムED法の動作原理詳細.md#   Equation-level formalization (Japanese)
+│   ├── ja/ed_learning_mechanism_anchors.md # Code-anchored flow diagrams (Japanese)
 │   ├── en/ED_Method_Explanation.md  #   Detailed explanation of original ED method (English)
 │   ├── en/EDLA_Isamu_Kaneko.md      #   Academic background & Isamu Kaneko's achievements (English)
-│   └── en/Columnar_ED_Method_Flow.md#   Core function details of Columnar ED Method (English)
+│   ├── en/Columnar_ED_Method_Flow.md#   Core function details of Columnar ED Method (English)
+│   ├── en/Columnar_ED_Method_Detailed_Principles.md # Equation-level formalization (English)
+│   └── en/ed_learning_mechanism_anchors_en.md # Code-anchored flow diagrams (English)
 ├── images/                         # Column structure diagrams
 └── original-c-source-code/         # Isamu Kaneko's original C source code
 ```
@@ -597,8 +601,10 @@ The implementation has been verified against Isamu Kaneko's C source code as a r
 
 ## References
 
-- [Original ED Method Explanation (Japanese)](docs/ja/ED法_解説資料.md) — Detailed explanation of the theory and operation of the original ED method
-- [EDLA — Isamu Kaneko's Error Diffusion Learning Algorithm (Japanese)](docs/ja/EDLA_金子勇氏.md) — Academic background of the ED method and Isamu Kaneko's contributions
+- [Original ED Method Explanation (English)](docs/en/ED_Method_Explanation.md) — Detailed explanation of the theory and operation of the original ED method
+- [Original ED Method Explanation (Japanese)](docs/ja/ED法_解説資料.md) — Same document in Japanese
+- [EDLA — Isamu Kaneko's Error Diffusion Learning Algorithm (English)](docs/en/EDLA_Isamu_Kaneko.md) — Academic background of the ED method and Isamu Kaneko's contributions
+- [EDLA — Isamu Kaneko (Japanese)](docs/ja/EDLA_金子勇氏.md) — Same document in Japanese
 - [ED Learning Mechanism (Mermaid Anchors, EN)](docs/en/ed_learning_mechanism_anchors_en.md) — Code-anchored execution and feature flow diagrams
 - [ED Learning Mechanism (Mermaid Anchors, Japanese)](docs/ja/ed_learning_mechanism_anchors.md) — Code-anchored execution and feature flow diagrams (Japanese)
 - [Columnar ED Method: Detailed Principles](docs/en/Columnar_ED_Method_Detailed_Principles.md) — Implementation-aligned mathematical formalization (English)

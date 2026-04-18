@@ -139,4 +139,6 @@ While backpropagation has dominated artificial neural networks due to its comput
 
 **Note**: This document is based on Isamu Kaneko's original research and implementation from 1999. The ED method continues to inspire research into biologically plausible learning algorithms and neuromorphic computing systems.
 
+**Translation Note**: The first half of this document is a faithful translation of Kaneko's original Japanese web page ([EDLA_金子勇氏.md](../ja/EDLA_金子勇氏.md)). The "Technical Implementation" and "Experimental Validation" sections in the latter half are supplementary material added to the English version to provide additional context for non-Japanese readers. For the complete original content, refer to the Japanese version.
+
 **Historical Links**: The original links in this document point to archived versions of Kaneko's original materials, preserved for historical and research purposes.

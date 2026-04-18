@@ -25,6 +25,7 @@
   - [コラム構造](#コラム構造)
   - [Gabor特徴抽出](#gabor特徴抽出)
   - [リザバーコンピューティング的特性](#リザバーコンピューティング的特性)
+  - [大脳皮質6層構造の機能分化](#大脳皮質6層構造の機能分化)
 - [達成精度](#達成精度)
 - [ディレクトリ構成](#ディレクトリ構成)
 - [パラメータ自動設定](#パラメータ自動設定)
@@ -524,9 +525,13 @@ columnar_ed_ann/
 │   ├── ja/ED法_解説資料.md          #   オリジナルED法の詳細解説（日本語）
 │   ├── ja/EDLA_金子勇氏.md          #   ED法の学術的背景と金子勇氏の業績（日本語）
 │   ├── ja/コラムED法_動作の流れ.md  #   コラムED法のコア関数詳細解説（日本語）
+│   ├── ja/コラムED法の動作原理詳細.md#   数式ベースの実装整合型定式化（日本語）
+│   ├── ja/ed_learning_mechanism_anchors.md # コードアンカー付きフロー図（日本語）
 │   ├── en/ED_Method_Explanation.md  #   オリジナルED法の詳細解説（英語）
 │   ├── en/EDLA_Isamu_Kaneko.md      #   ED法の学術的背景と金子勇氏の業績（英語）
-│   └── en/Columnar_ED_Method_Flow.md#   コラムED法のコア関数詳細解説（英語）
+│   ├── en/Columnar_ED_Method_Flow.md#   コラムED法のコア関数詳細解説（英語）
+│   ├── en/Columnar_ED_Method_Detailed_Principles.md # 数式ベース定式化（英語）
+│   └── en/ed_learning_mechanism_anchors_en.md # コードアンカー付きフロー図（英語）
 ├── images/                         # コラム構造図
 └── original-c-source-code/         # 金子勇氏オリジナルCソースコード
 ```
