@@ -42,7 +42,7 @@
 
 The Columnar ED Method **does not use backpropagation based on the chain rule of derivatives at all**, and instead learns through biologically plausible amine diffusion mechanisms. Despite this, it achieves **98.87%** test accuracy on MNIST handwritten digit recognition (6-layer [2048×6], 50,000 training samples).
 
-It is a **self-contained implementation that uses only the `modules/` directory**. It operates with just `columnar_ed_ann.py` and `modules/`, allowing you to understand the ED method and column structure simply.
+It is a **self-contained implementation using the `modules/` and `config/` directories**. It operates with just `columnar_ed_ann.py`, `modules/`, and `config/` (which contains the default hyperparameter settings), allowing you to understand the ED method and column structure simply.
 
 ## Target Reader and Fast Path
 
