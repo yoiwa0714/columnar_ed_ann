@@ -9,7 +9,7 @@
 
 - [Overview](#overview)
 - [Target Reader and Fast Path](#target-reader-and-fast-path)
-- [Features](#features)
+- [Columnar ED Method Features](#columnar-ed-method-features)
 - [Quick Start](#quick-start)
 - [Reproducibility Checklist](#reproducibility-checklist)
 - [Usage Examples](#usage-examples)
@@ -57,7 +57,7 @@ Recommended reading order:
 
 ---
 
-## Features
+## Columnar ED Method Features
 
 ### 1. No Backpropagation Based on the Chain Rule
 
