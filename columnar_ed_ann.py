@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+]633;E;echo '#!/usr/bin/env python3';a8caf50e-93ff-4be5-a1ab-2bc37fe50e02]633;C#!/usr/bin/env python3
 """Columnar ED-ANN v1.2.0"""
 
 __version__ = "1.2.0"
@@ -99,6 +99,10 @@ def parse_args():
                                '数値省略時は1（--viz == --viz 1）')
     viz_group.add_argument('--heatmap', action='store_true',
                           help='活性化ヒートマップの表示（--vizと併用）')
+    viz_group.add_argument('--weight_heatmap', action='store_true',
+                          help='重みL2ノルムヒートマップの表示（--vizと併用）\n'
+                               '各層ニューロンの入力重みL2ノルムをヒートマップ表示。\n'
+                               '--heatmapと同じ配置・更新タイミングで別ウィンドウに表示。')
     viz_group.add_argument('--save_viz', type=str, nargs='?', const='viz_results',
                           default=None, metavar='PATH',
                           help='可視化結果を保存（パス指定可）')
@@ -136,6 +140,28 @@ def parse_args():
                        help='不確実性変調の強度（0.0で無効）。出力エントロピーに比例してアミン信号を増強')
     parser.add_argument('--hc_strength', type=float, default=0.0,
                        help='D4水平結合の強度（0.0で無効）。同クラスコラムニューロン間のゲイン変調')
+    parser.add_argument('--pv_nc_gain', type=float, default=0.0,
+                       help='PV型NCゲイン変調の強度（0.0で無効）。NCの集団活性でコラムニューロンをゲイン変調')
+    parser.add_argument('--pv_pool_mode', type=str, default='nc', choices=['nc', 'all'],
+                       help='PV参照プール。nc=非コラムのみ、all=全ニューロン')
+    parser.add_argument('--pv_gain_mode', type=str, default='multiplicative',
+                       choices=['multiplicative', 'divisive'],
+                       help='PVゲイン方式。multiplicative=現行、divisive=除算正規化型')
+    parser.add_argument('--homeostatic_rate', type=float, default=None,
+                       help='Phase 2 ホメオスタティック調整のスケール幅（0.0で無効）。'
+                            'NCニューロンの平均活性外れ値をエポック媻に正規化'
+                            '（デフォルト: YAML common_paramsの値、省略時は0.02）')
+    parser.add_argument('--vip_modulation', type=float, default=0.0,
+                       help='Phase 3 VIP型学習率変調の強度（0.0で無効）。'
+                            '最終隠れ層のコラム-NC整合度でアミン信号を脱抑制変調'
+                            '（推奨探索範囲: 0.1〜0.5）。'
+                            'uncertainty_modulationと同時有効時は最大(1+um)*(1+vm)倍に増幅')
+    parser.add_argument('--sst_rate', type=float, default=0.0,
+                       help='Phase 4 SST型動的バイアス補正率（0.0で無効）。'
+                            '全ニューロンの平均発火率を目標値(sst_target)に近づけるバイアス更新'
+                            '（推奨探索範囲: 0.005〜0.1）')
+    parser.add_argument('--sst_target', type=float, default=0.3,
+                       help='Phase 4 SST目標平均活性（tanh絶対値、デフォルト0.3）')
     parser.add_argument('--skip', type=str, action='append', default=None,
                        help='D7-4スキップ接続。src,dst,alpha形式。複数指定可\n'
                             '例: --skip 0,3,0.1 --skip 1,4,0.1')
@@ -588,6 +614,11 @@ def main():
     # layer_learning_rates: non_column_lr + output_lr
     layer_lrs = list(non_column_lr) + [output_lr]
 
+    # homeostatic_rate: CLI未指定ならYAML common_params の値を使用（省略時は0.0=無効）
+    homeostatic_rate = args.homeostatic_rate
+    if homeostatic_rate is None:
+        homeostatic_rate = float(config.get('homeostatic_rate', 0.0))
+
     # ========================================
     # 3. 乱数シード設定
     # ========================================
@@ -788,6 +819,13 @@ def main():
         output_gradient_clip=args.output_gradient_clip,
         uncertainty_modulation=args.uncertainty_modulation,
         hc_strength=args.hc_strength,
+        pv_nc_gain=args.pv_nc_gain,
+        pv_pool_mode=args.pv_pool_mode,
+        pv_gain_mode=args.pv_gain_mode,
+        homeostatic_rate=homeostatic_rate,
+        vip_modulation=args.vip_modulation,
+        sst_rate=args.sst_rate,
+        sst_target=args.sst_target,
         skip_connections=skip_connections,
         li_strength=args.li_strength,
         li_soft_temp=args.li_soft_temp,
@@ -841,6 +879,7 @@ def main():
             viz_manager = VisualizationManager(
                 enable_viz=True,
                 enable_heatmap=args.heatmap,
+                enable_weight_heatmap=args.weight_heatmap,
                 save_path=args.save_viz,
                 total_epochs=epochs,
                 verbose=False,
@@ -883,6 +922,17 @@ def main():
         _p("uncertainty_mod:", args.uncertainty_modulation, "uncertainty_modulation")
     if args.hc_strength > 0:
         _p("hc_strength:", args.hc_strength, "hc_strength")
+    if args.pv_nc_gain > 0:
+        _p("pv_nc_gain:", args.pv_nc_gain, "pv_nc_gain")
+        _p("pv_pool_mode:", args.pv_pool_mode, "pv_pool_mode")
+        _p("pv_gain_mode:", args.pv_gain_mode, "pv_gain_mode")
+    if homeostatic_rate > 0:
+        _p("homeostatic_rate:", homeostatic_rate, "homeostatic_rate")
+    if args.vip_modulation > 0:
+        _p("vip_modulation:", args.vip_modulation, "vip_modulation")
+    if args.sst_rate > 0:
+        _p("sst_rate:", args.sst_rate, "sst_rate")
+        _p("sst_target:", args.sst_target, "sst_target")
     if skip_connections:
         _p("skip:", skip_connections, "skip")
     if args.li_strength > 0:
@@ -954,6 +1004,24 @@ def main():
                 sample_x_raw=x_test_raw[idx] if x_test_raw is not None else None,
                 progress=f"{sample_i}/{n_samples}"
             )
+            if args.weight_heatmap:
+                viz_manager.update_weight_heatmap(
+                    epoch=epoch_ref[0],
+                    network=net,
+                    progress=f"{sample_i}/{n_samples}"
+                )
+
+    # 重みヒートマップコールバック（--heatmapなしで--weight_heatmapのみの場合）
+    weight_heatmap_callback = None
+    if viz_manager is not None and args.weight_heatmap and not args.heatmap:
+        weight_heatmap_epoch_ref = [0]
+
+        def weight_heatmap_callback(net, sample_i, n_samples):
+            viz_manager.update_weight_heatmap(
+                epoch=weight_heatmap_epoch_ref[0],
+                network=net,
+                progress=f"{sample_i}/{n_samples}"
+            )
 
     pbar = tqdm(range(1, epochs + 1), desc="Training", ncols=100)
     for epoch in pbar:
@@ -961,14 +1029,17 @@ def main():
 
         if heatmap_callback is not None:
             epoch_ref[0] = epoch
+        if weight_heatmap_callback is not None:
+            weight_heatmap_epoch_ref[0] = epoch
 
         # 統計リセット
         network.reset_winner_selection_stats()
         network.reset_class_training_stats()
 
         # 訓練（オンライン学習: 1サンプルずつ順伝播→重み更新）
+        cb = heatmap_callback or weight_heatmap_callback
         train_acc, train_loss = network.train_epoch(
-            x_train, y_train, progress_callback=heatmap_callback
+            x_train, y_train, progress_callback=cb
         )
 
         # テスト評価
@@ -1052,6 +1123,12 @@ def main():
                     sample_y_pred=y_pred,
                     sample_y_pred_name=class_names[y_pred] if class_names else str(y_pred),
                     sample_x_raw=x_test_raw[sample_idx] if x_test_raw is not None else None,
+                )
+
+            if args.weight_heatmap:
+                viz_manager.update_weight_heatmap(
+                    epoch=epoch,
+                    network=network,
                 )
 
     # ========================================

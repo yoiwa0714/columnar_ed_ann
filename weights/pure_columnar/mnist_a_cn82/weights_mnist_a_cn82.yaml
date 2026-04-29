@@ -1,0 +1,29 @@
+# ネットワーク構成
+hidden: [2048, 2048, 2048]
+n_input: 882
+n_output: 10
+column_neurons: [82, 82, 82]
+init_scales: [0.7, 1.8, 1.8, 0.8]
+hidden_sparsity: [0.4, 0.4, 0.4]
+output_lr: 0.15
+gradient_clip: 0.0001
+u1: 0.5
+u2: 0.8
+
+# 学習条件
+dataset: 'mnist'
+n_train: 50000
+n_test: 10000
+gabor_features: true
+seed: 42
+
+# 達成精度
+best_test_acc: 0.9836
+best_epoch: 7
+final_train_acc: 0.9861
+final_test_acc: 0.9836
+
+# 保存情報
+saved_at: '2026-04-28T23:06:41'
+version: '1.2.0'
+

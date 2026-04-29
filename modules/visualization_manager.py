@@ -167,17 +167,21 @@ class VisualizationManager:
     - 学習曲線表示（訓練/テスト精度）
     - 混同行列表示
     - 層別活性化ヒートマップ表示
+    - 層別重みL2ノルムヒートマップ表示
     - 図の保存
     """
     
-    def __init__(self, enable_viz=False, enable_heatmap=False, save_path=None, total_epochs=100, verbose=False, window_scale=1.0):
+    def __init__(self, enable_viz=False, enable_heatmap=False, enable_weight_heatmap=False,
+                 save_path=None, total_epochs=100, verbose=False, window_scale=1.0):
         """
         Parameters:
         -----------
         enable_viz : bool
             学習曲線表示の有効化
         enable_heatmap : bool
-            ヒートマップ表示の有効化
+            活性化ヒートマップ表示の有効化
+        enable_weight_heatmap : bool
+            重みL2ノルムヒートマップ表示の有効化
         save_path : str or None
             保存パス（ディレクトリまたはベースファイル名）
             - None: 保存なし
@@ -190,6 +194,7 @@ class VisualizationManager:
         """
         self.enable_viz = enable_viz
         self.enable_heatmap = enable_heatmap
+        self.enable_weight_heatmap = enable_weight_heatmap
         # 0以下は不正値のため従来サイズにフォールバック
         self.window_scale = window_scale if window_scale > 0 else 1.0
         
@@ -223,6 +228,7 @@ class VisualizationManager:
         self.verbose = verbose
         self.fig_viz = None
         self.fig_heatmap = None
+        self.fig_weight_heatmap = None
 
         # 1920x1080基準の1/4をviz=1の基準サイズとする
         base_viz_px = (540, 270)
@@ -256,6 +262,12 @@ class VisualizationManager:
             # ウィンドウタイトルを日本語に変更
             self.fig_heatmap.canvas.manager.set_window_title('層別活性化ヒートマップ')
             self._enforce_window_size(self.fig_heatmap, heatmap_figsize)
+
+        if self.enable_weight_heatmap:
+            plt.ion()
+            self.fig_weight_heatmap = plt.figure(figsize=heatmap_figsize)
+            self.fig_weight_heatmap.canvas.manager.set_window_title('層別重みL2ノルム ヒートマップ')
+            self._enforce_window_size(self.fig_weight_heatmap, heatmap_figsize)
         
         # Gabor特徴情報（set_gabor_info()で設定）
         self.gabor_info = None
@@ -819,50 +831,191 @@ class VisualizationManager:
             plt.pause(0.1)
         plt.draw()
     
+    def update_weight_heatmap(self, epoch, network, progress=None):
+        """
+        層別重みL2ノルムヒートマップを更新
+
+        各隠れ層ニューロンの入力重みのL2ノルム（行ごと）と
+        出力層ニューロンの入力重みのL2ノルムを可視化する。
+        --heatmapと同じレイアウト・更新タイミングで表示。
+
+        Parameters:
+        -----------
+        epoch : int
+            現在のエポック番号
+        network : EDNetwork
+            ネットワークオブジェクト（w_hidden, w_output を参照）
+        progress : str or None
+            進捗文字列（例: "500/50000"）
+        """
+        if not self.enable_weight_heatmap or self.fig_weight_heatmap is None:
+            return
+
+        self.fig_weight_heatmap.clear()
+
+        from matplotlib import pyplot
+
+        # 各層のL2ノルムを収集
+        # w_hidden[i] shape: (n_out, n_in) → 行ごとのL2ノルム = shape (n_out,)
+        w_norms_hidden = [np.linalg.norm(w, axis=1) for w in network.w_hidden]
+        # w_output shape: (n_output, n_in) → 行ごとのL2ノルム = shape (n_output,)
+        w_norm_output = np.linalg.norm(network.w_output, axis=1)
+
+        # 層パネル: 隠れ層1..N + 出力層
+        n_hidden = len(w_norms_hidden)
+        if n_hidden <= 6:
+            bottom_layers = list(range(n_hidden)) + [-1]
+        else:
+            bottom_layers = list(range(3)) + list(range(n_hidden - 3, n_hidden)) + [-1]
+        n_bottom = len(bottom_layers)
+
+        # 外側GridSpec: 2行（上段=テキスト情報、下段=層パネル）
+        outer_gs = gridspec.GridSpec(2, 1, figure=self.fig_weight_heatmap,
+                                     height_ratios=[1, 1],
+                                     top=0.92, bottom=0.08,
+                                     left=0.06, right=0.94,
+                                     hspace=0.35)
+        top_gs = gridspec.GridSpecFromSubplotSpec(
+            1, 1, subplot_spec=outer_gs[0])
+        bottom_gs = gridspec.GridSpecFromSubplotSpec(
+            1, n_bottom, subplot_spec=outer_gs[1], wspace=0.3)
+
+        if self.window_scale <= 1.0:
+            cbar_tick_fs = 5
+        elif self.window_scale <= 1.3:
+            cbar_tick_fs = 6
+        else:
+            cbar_tick_fs = 7
+
+        def add_cbar(image, axis):
+            cbar = pyplot.colorbar(image, ax=axis, fraction=0.046, pad=0.04)
+            cbar.ax.tick_params(labelsize=cbar_tick_fs)
+            return cbar
+
+        # ---- 上段: テキスト情報パネル ----
+        ax_info = self.fig_weight_heatmap.add_subplot(top_gs[0, 0])
+        ax_info.axis('off')
+
+        if self.window_scale <= 1.0:
+            info_font = 9
+        elif self.window_scale <= 1.3:
+            info_font = 10
+        else:
+            info_font = 11
+
+        epoch_text = f'エポック: {epoch}'
+        progress_text = f'学習データ: {progress}' if progress else None
+
+        # 各層の統計情報
+        stats_lines = []
+        for li, norms in enumerate(w_norms_hidden):
+            stats_lines.append(
+                f'隠れ層{li+1}: mean={np.mean(norms):.3f}, max={np.max(norms):.3f}')
+        stats_lines.append(
+            f'出力層: mean={np.mean(w_norm_output):.3f}, max={np.max(w_norm_output):.3f}')
+
+        y_pos = 0.95
+        ax_info.text(0.02, y_pos, epoch_text,
+                     fontsize=info_font, fontweight='bold',
+                     ha='left', va='top', transform=ax_info.transAxes)
+        y_pos -= 0.18
+        if progress_text:
+            ax_info.text(0.02, y_pos, progress_text,
+                         fontsize=info_font, fontweight='bold',
+                         ha='left', va='top', transform=ax_info.transAxes)
+            y_pos -= 0.18
+
+        # 統計情報は2列で表示（層数が多い場合を考慮）
+        mid = (len(stats_lines) + 1) // 2
+        for i, line in enumerate(stats_lines):
+            col = i // mid
+            row = i % mid
+            x_col = 0.02 + col * 0.50
+            y_row = y_pos - row * 0.18
+            ax_info.text(x_col, y_row, line,
+                         fontsize=max(info_font - 1, 7),
+                         ha='left', va='top', transform=ax_info.transAxes)
+
+        # ---- 下段: 層パネル ----
+        for i, layer_idx in enumerate(bottom_layers):
+            ax = self.fig_weight_heatmap.add_subplot(bottom_gs[0, i])
+
+            if layer_idx == -1:
+                w_norms = w_norm_output
+                layer_name = f'出力層 ({len(w_norms)})'
+            else:
+                w_norms = w_norms_hidden[layer_idx]
+                layer_name = f'隠れ層{layer_idx+1} ({len(w_norms)})'
+
+            # 2Dグリッドに整形
+            n_neurons = len(w_norms)
+            side = int(np.ceil(np.sqrt(n_neurons)))
+            grid = np.zeros((side, side))
+            for j in range(n_neurons):
+                grid[j // side, j % side] = w_norms[j]
+
+            vmax_dynamic = max(0.01, np.max(w_norms) * 1.1)
+            im = ax.imshow(grid, cmap='viridis', aspect='equal',
+                           vmin=0, vmax=vmax_dynamic)
+            ax.set_xticks([])
+            ax.set_yticks([])
+            ax.set_title(layer_name, fontsize=10)
+            pyplot.figure(self.fig_weight_heatmap.number)
+            add_cbar(im, ax)
+
+        plt.figure(self.fig_weight_heatmap.number)
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', UserWarning)
+            plt.pause(0.1)
+        plt.draw()
+
     def save_figures(self):
         """
         可視化図を保存
         
         Returns:
         --------
-        tuple[str, str] or tuple[None, None]
-            (学習曲線保存パス, ヒートマップ保存パス)
+        tuple[str, str, str] or tuple[None, None, None]
+            (学習曲線保存パス, 活性化ヒートマップ保存パス, 重みヒートマップ保存パス)
         """
-        if not (self.enable_viz or self.enable_heatmap):
-            return None, None
+        if not (self.enable_viz or self.enable_heatmap or self.enable_weight_heatmap):
+            return None, None, None
         
         if self.save_path is None:
-            return None, None
+            return None, None, None
         
         plt.ioff()
         
         save_path_viz = None
         save_path_heatmap = None
-        
-        # 両方有効な場合は区別のため接尾辞を追加、片方のみの場合は.pngのみ
+        save_path_weight_heatmap = None
+
+        has_multiple = sum([
+            self.enable_viz and self.fig_viz is not None,
+            self.enable_heatmap and self.fig_heatmap is not None,
+            self.enable_weight_heatmap and self.fig_weight_heatmap is not None,
+        ]) > 1
+
         if self.enable_viz and self.fig_viz is not None:
-            if self.enable_heatmap and self.fig_heatmap is not None:
-                # 両方有効な場合は区別のため _viz.png を追加
-                save_path_viz = f"{self.save_path}_viz.png"
-            else:
-                # 学習曲線のみの場合は .png のみ追加
-                save_path_viz = f"{self.save_path}.png"
+            save_path_viz = f"{self.save_path}_viz.png" if has_multiple else f"{self.save_path}.png"
             plt.figure(self.fig_viz.number)
             plt.savefig(save_path_viz, dpi=150, bbox_inches='tight')
             print(f"[学習曲線保存] {save_path_viz}")
         
         if self.enable_heatmap and self.fig_heatmap is not None:
-            if self.enable_viz and self.fig_viz is not None:
-                # 両方有効な場合は区別のため _heatmap.png を追加
-                save_path_heatmap = f"{self.save_path}_heatmap.png"
-            else:
-                # ヒートマップのみの場合は .png のみ追加
-                save_path_heatmap = f"{self.save_path}.png"
+            save_path_heatmap = f"{self.save_path}_heatmap.png" if has_multiple else f"{self.save_path}.png"
             plt.figure(self.fig_heatmap.number)
             plt.savefig(save_path_heatmap, dpi=150, bbox_inches='tight')
             print(f"[ヒートマップ保存] {save_path_heatmap}")
+
+        if self.enable_weight_heatmap and self.fig_weight_heatmap is not None:
+            save_path_weight_heatmap = f"{self.save_path}_weight_heatmap.png" if has_multiple else f"{self.save_path}.png"
+            plt.figure(self.fig_weight_heatmap.number)
+            plt.savefig(save_path_weight_heatmap, dpi=150, bbox_inches='tight')
+            print(f"[重みヒートマップ保存] {save_path_weight_heatmap}")
         
-        return save_path_viz, save_path_heatmap
+        return save_path_viz, save_path_heatmap, save_path_weight_heatmap
     
     def close(self):
         """可視化ウィンドウを閉じる"""
@@ -870,6 +1023,8 @@ class VisualizationManager:
             plt.close(self.fig_viz)
         if self.fig_heatmap is not None:
             plt.close(self.fig_heatmap)
+        if self.fig_weight_heatmap is not None:
+            plt.close(self.fig_weight_heatmap)
 
 
 def show_train_errors(error_list, x_display, y_train, class_names, img_shape, max_per_class=20):

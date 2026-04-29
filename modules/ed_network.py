@@ -49,6 +49,13 @@ class SimpleColumnEDNetwork:
                  lut_base_rate=0.0,
                  uncertainty_modulation=0.0,
                  hc_strength=0.0,
+                 pv_nc_gain=0.0,
+                pv_pool_mode='nc',
+                pv_gain_mode='multiplicative',
+                 homeostatic_rate=0.0,
+                 vip_modulation=0.0,
+                 sst_rate=0.0,
+                 sst_target=0.3,
                  skip_connections=None,
                  li_strength=0.0,
                  li_soft_temp=0.0,
@@ -122,6 +129,13 @@ class SimpleColumnEDNetwork:
         self.output_weight_decay = output_weight_decay
         self.uncertainty_modulation = uncertainty_modulation
         self.hc_strength = hc_strength
+        self.pv_nc_gain = pv_nc_gain
+        self.pv_pool_mode = pv_pool_mode
+        self.pv_gain_mode = pv_gain_mode
+        self.homeostatic_rate = homeostatic_rate
+        self.vip_modulation = vip_modulation
+        self.sst_rate = sst_rate
+        self.sst_target = sst_target
 
         # D7-4: スキップ接続 [(src_layer, dst_layer, alpha), ...]
         if skip_connections is not None:
@@ -197,6 +211,20 @@ class SimpleColumnEDNetwork:
             self.column_membership_all_layers.append(membership)
             self.neuron_positions_all_layers.append(positions)
             self.class_coords_all_layers.append(coords)
+
+        # PV型NCゲイン変調用: 事前計算
+        self.nc_mask_all_layers = []
+        self.pv_membership_f = []
+        self.pv_col_sizes = []
+        self.pv_n_memberships = []
+        for layer_idx in range(self.n_layers):
+            membership = self.column_membership_all_layers[layer_idx]
+            is_column = np.any(membership, axis=0)
+            self.nc_mask_all_layers.append(~is_column)
+            membership_f = membership.astype(np.float64)
+            self.pv_membership_f.append(membership_f)
+            self.pv_col_sizes.append(np.sum(membership_f, axis=1))  # (n_output,)
+            self.pv_n_memberships.append(np.sum(membership, axis=0).astype(np.float64))  # (n_hidden,)
 
         # コラム構造の表示
         for layer_idx in range(self.n_layers):
@@ -308,9 +336,30 @@ class SimpleColumnEDNetwork:
         # NCゲートマスク（互換性用、simple版では未使用）
         self._nc_gate_mask = None
 
+        # Phase 2: ホメオスタティック調整用累積バッファ
+        # エポック内でNCニューロンの平均絶対活性を集計し、外れ値を正規化
+        self._nc_act_accum = [np.zeros(self.n_hidden[l]) for l in range(self.n_layers)]
+        self._nc_act_count = 0
+
+        # Phase 4: SST型動的バイアス補正バッファ
+        self._sst_bias = [np.zeros(self.n_hidden[l]) for l in range(self.n_layers)]
+        self._sst_act_accum = [np.zeros(self.n_hidden[l]) for l in range(self.n_layers)]
+        self._sst_act_count = 0
+
         # ============================================
         # 統計カウンタ（続き）
         # ============================================
+
+    def _compute_pv_gains(self, relative_strength):
+        """PV型ゲイン変調のゲインを計算する。"""
+        if self.pv_gain_mode == 'divisive':
+            gains = (
+                (1.0 + self.pv_nc_gain) * relative_strength /
+                (relative_strength + self.pv_nc_gain + 1e-8)
+            )
+        else:
+            gains = 1.0 + self.pv_nc_gain * (relative_strength - 1.0)
+        return np.clip(gains, 1.0 - self.pv_nc_gain, 1.0 + self.pv_nc_gain)
 
     # ================================================================
     # 順伝播
@@ -347,6 +396,27 @@ class SimpleColumnEDNetwork:
         for layer_idx in range(self.n_layers):
             a_hidden = np.dot(self.w_hidden[layer_idx], z_current)
             z_hidden = tanh_activation(a_hidden)
+
+            # PV型NCゲイン変調: NCの集団活性を参照信号としてコラムニューロンをゲイン変調
+            if self.pv_nc_gain > 0.0:
+                nc_mask = self.nc_mask_all_layers[layer_idx]
+                membership_f = self.pv_membership_f[layer_idx]
+                col_sizes = self.pv_col_sizes[layer_idx]
+                n_memberships = self.pv_n_memberships[layer_idx]
+                abs_z = np.abs(z_hidden)
+                if self.pv_pool_mode == 'all':
+                    pool_mean = np.mean(abs_z) + 1e-8
+                else:
+                    pool_mean = np.mean(abs_z[nc_mask]) + 1e-8
+                col_means = (membership_f @ abs_z) / (col_sizes + 1e-8)  # (n_output,)
+                relative_strength = col_means / pool_mean
+                gains = self._compute_pv_gains(relative_strength)
+                gain_map = membership_f.T @ gains  # (n_hidden,)
+                multi = n_memberships > 1
+                if np.any(multi):
+                    gain_map[multi] /= n_memberships[multi]
+                gain_map[nc_mask] = 1.0
+                z_hidden *= gain_map
 
             # P1: 層間予測エラー（上位層からの逆投影による変調）
             # 前回の上位層活性との予測エラーを用いて現在の活性を変調
@@ -386,6 +456,12 @@ class SimpleColumnEDNetwork:
             # D6: 隠れ層内側抑制（コラム間コントラスト強化）
             if self.li_strength > 0.0 or self.li_soft_temp > 0.0:
                 z_hidden = self._apply_lateral_inhibition(z_hidden, layer_idx)
+
+            # Phase 4: SST型動的バイアス補正（高活性ニューロンを選択的に抑制）
+            # 生物学的背景: SSTニューロンが主細胞の過剰発火を動的フィードバック抑制
+            # バイアスは end_of_epoch_regularize() でエポック終了後に更新
+            if self.sst_rate > 0.0:
+                z_hidden = np.clip(z_hidden - self._sst_bias[layer_idx], -1.0, 1.0)
 
             z_hiddens.append(z_hidden)
             z_current = z_hidden
@@ -504,6 +580,27 @@ class SimpleColumnEDNetwork:
             a_hidden = np.dot(z_current, self.w_hidden[layer_idx].T)
             z_hidden = tanh_activation(a_hidden)
 
+            # PV型NCゲイン変調（バッチ版・ベクトル化）
+            if self.pv_nc_gain > 0.0:
+                nc_mask = self.nc_mask_all_layers[layer_idx]
+                membership_f = self.pv_membership_f[layer_idx]
+                col_sizes = self.pv_col_sizes[layer_idx]
+                n_memberships = self.pv_n_memberships[layer_idx]
+                abs_z = np.abs(z_hidden)  # (batch, n_hidden)
+                if self.pv_pool_mode == 'all':
+                    pool_mean = np.mean(abs_z, axis=1, keepdims=True) + 1e-8
+                else:
+                    pool_mean = np.mean(abs_z[:, nc_mask], axis=1, keepdims=True) + 1e-8
+                col_means = (abs_z @ membership_f.T) / (col_sizes[np.newaxis, :] + 1e-8)  # (batch, n_output)
+                relative_strength = col_means / pool_mean
+                gains = self._compute_pv_gains(relative_strength)
+                gain_map = gains @ membership_f  # (batch, n_hidden)
+                multi = n_memberships > 1
+                if np.any(multi):
+                    gain_map[:, multi] /= n_memberships[multi]
+                gain_map[:, nc_mask] = 1.0
+                z_hidden *= gain_map
+
             # D7-4: スキップ接続（バッチ版）
             for src, dst, alpha in self.skip_connections:
                 if dst == layer_idx and src < layer_idx:
@@ -515,6 +612,10 @@ class SimpleColumnEDNetwork:
             if self.li_strength > 0.0 or self.li_soft_temp > 0.0:
                 for i in range(z_hidden.shape[0]):
                     z_hidden[i] = self._apply_lateral_inhibition(z_hidden[i], layer_idx)
+
+            # Phase 4: SST型動的バイアス補正（バッチ版）
+            if self.sst_rate > 0.0:
+                z_hidden = np.clip(z_hidden - self._sst_bias[layer_idx], -1.0, 1.0)
 
             z_hiddens_batch.append(z_hidden)
             z_current = z_hidden
@@ -602,6 +703,26 @@ class SimpleColumnEDNetwork:
                 max_entropy = np.log(self.n_output)
                 normalized_entropy = entropy / max_entropy  # 0(確信)～1(最大不確実)
                 amine_signal *= (1.0 + self.uncertainty_modulation * normalized_entropy)
+            # Phase 3: VIP型学習率変調（コラム-NC整合度による脱抑制）
+            # 生物学的背景: VIPニューロン→SSTを抑制→主細胞の脱抑制（学習強化）
+            # 最終隠れ層で正解クラスのコラム活性がNCより強いほどアミンを増強（脱抑制）
+            # 弱いほど抑制（SSTが主細胞を抑制している状態をモデル化）
+            # NOTE: vip_modulation > 1.0 は非推奨。下限クリップが負値になり
+            # そのサンプルの隠れ層学習が停止する可能性がある。推奨範囲: 0.1〜0.5
+            if self.vip_modulation > 0.0:
+                z_last = z_hiddens[-1]
+                col_mask = self.column_membership_all_layers[-1][y_true]
+                nc_mask = self.nc_mask_all_layers[-1]
+                if np.any(col_mask) and np.any(nc_mask):
+                    col_act = np.mean(np.abs(z_last[col_mask]))
+                    nc_act = np.mean(np.abs(z_last[nc_mask])) + 1e-8
+                    coherence = col_act / nc_act  # 1.0が等活性基準
+                    vip_factor = np.clip(
+                        1.0 + self.vip_modulation * (coherence - 1.0),
+                        1.0 - self.vip_modulation,
+                        1.0 + self.vip_modulation
+                    )
+                    amine_signal *= vip_factor
             amine_concentration[y_true, 0] = amine_signal
 
         # --------------------------------------------------
@@ -857,11 +978,57 @@ class SimpleColumnEDNetwork:
         self.layer_lrs = list(lrs)
 
     def end_of_epoch_regularize(self):
-        """エポック終了後の正則化処理（output weight decay）
-        サンプル単位OWDが有効な場合はスキップ（重複適用防止）
+        """エポック終了後の正則化処理（output weight decay + ホメオスタティック調整）
+        サンプル単位OWDが有効な場合はOWDをスキップ（重複適用防止）
         """
         if self.output_weight_decay > 0 and not hasattr(self, '_n_train_samples'):
             self.w_output *= (1.0 - self.output_weight_decay)
+
+        # Phase 2: ホメオスタティック調整
+        # エポック全体の平均絶対活性を基準に、外れ値NCニューロンの重みをスケーリング
+        # D8-3崩壊との違い: エポック単位 × 外れ値のみ × 双方向スケール（増強も抑制も）
+        if self.homeostatic_rate > 0.0 and self._nc_act_count > 0:
+            for l in range(self.n_layers):
+                avg_act = self._nc_act_accum[l] / self._nc_act_count
+                nc_mask = self.nc_mask_all_layers[l]
+                if not np.any(nc_mask):
+                    continue
+                nc_avg = avg_act[nc_mask]
+                global_mean = np.mean(nc_avg) + 1e-8
+                ratio = nc_avg / global_mean  # 1.0が基準
+                # 外れ値のみスケール（全体平均の2倍超 or 0.1倍未満）
+                outlier = (ratio > 2.0) | (ratio < 0.1)
+                if not np.any(outlier):
+                    continue
+                scale = np.ones_like(nc_avg)
+                # 1/ratio でスケール（高活性なら縮小、低活性なら拡大）
+                # homeostatic_rate でクリップして急激な変化を防止
+                scale[outlier] = np.clip(
+                    1.0 / ratio[outlier],
+                    1.0 - self.homeostatic_rate,
+                    1.0 + self.homeostatic_rate
+                )
+                nc_indices = np.where(nc_mask)[0]
+                outlier_indices = nc_indices[outlier]
+                self.w_hidden[l][outlier_indices] *= scale[outlier, np.newaxis]
+            # バッファリセット
+            self._nc_act_accum = [np.zeros(self.n_hidden[l]) for l in range(self.n_layers)]
+            self._nc_act_count = 0
+
+        # Phase 4: SST型動的バイアス更新
+        # 平均活性が目標(sst_target)より高いニューロンのバイアスを増やし次エポックで抑制
+        if self.sst_rate > 0.0 and self._sst_act_count > 0:
+            for l in range(self.n_layers):
+                mean_act = self._sst_act_accum[l] / self._sst_act_count
+                delta = self.sst_rate * (mean_act - self.sst_target)
+                # ±sst_rateでクリップ（1エポックの最大変化幅を制限）
+                delta = np.clip(delta, -self.sst_rate, self.sst_rate)
+                self._sst_bias[l] = np.clip(
+                    self._sst_bias[l] + delta,
+                    -0.5, 0.5  # バイアス上限（tanh出力域の半分）
+                )
+            self._sst_act_accum = [np.zeros(self.n_hidden[l]) for l in range(self.n_layers)]
+            self._sst_act_count = 0
 
     def collect_epoch_diagnostics(self, x_sample, y_sample, n_diag=500):
         """エポック終了時に診断情報を収集する（学習には影響しない読み取り専用）
@@ -986,6 +1153,18 @@ class SimpleColumnEDNetwork:
         self.update_weights(x_paired, z_hiddens, z_output, y_true, y_pred=y_pred)
         self.class_training_counts[y_true] += 1
 
+        # Phase 2: ホメオスタティック調整用NCニューロン活性累積
+        if self.homeostatic_rate > 0.0:
+            for l, z in enumerate(z_hiddens):
+                self._nc_act_accum[l] += np.abs(z)
+            self._nc_act_count += 1
+
+        # Phase 4: SST型動的バイアス補正用 全ニューロン活性累積
+        if self.sst_rate > 0.0:
+            for l, z in enumerate(z_hiddens):
+                self._sst_act_accum[l] += np.abs(z)
+            self._sst_act_count += 1
+
         return loss, correct
 
     def train_epoch(self, x_train, y_train, return_true_accuracy=True,
@@ -1011,6 +1190,16 @@ class SimpleColumnEDNetwork:
 
         # エポック開始時に視床ゲート状態をリセット（shuffle後に前エポックの文脈を持ち込まない）
         self._prev_error = 0.0
+
+        # Phase 2: ホメオスタティック累積バッファをエポック開始時にリセット
+        if self.homeostatic_rate > 0.0:
+            self._nc_act_accum = [np.zeros(self.n_hidden[l]) for l in range(self.n_layers)]
+            self._nc_act_count = 0
+
+        # Phase 4: SST累積バッファをエポック開始時にリセット
+        if self.sst_rate > 0.0:
+            self._sst_act_accum = [np.zeros(self.n_hidden[l]) for l in range(self.n_layers)]
+            self._sst_act_count = 0
 
         for i in range(n_samples):
             loss, correct = self.train_one_sample(x_train[i], y_train[i])
