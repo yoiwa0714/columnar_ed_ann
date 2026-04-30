@@ -116,11 +116,6 @@ common_params:
   init_method: 'he'              # 重み初期化方式
   use_hexagonal: true             # ハニカム配置（コラム構造の生物学的配置）
 
-  # --- ホメオスタティック調整 ---
-  # 有無の精度差が有意でないため標準パラメータから除外（2026-04-29）
-  # 必要な場合は CLI で --homeostatic_rate 0.02 を指定すること
-  # homeostatic_rate: 0.02  # （不採用: homeostatic_rate=0.0 との差 -0.09%、誤差範囲）
-
 # Gabor特徴抽出パラメータ（V1単純型細胞モデル）
 gabor_params:
   orientations: 8                 # 方位数（V1の方位選択性コラムに対応）
