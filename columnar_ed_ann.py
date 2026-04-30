@@ -142,6 +142,7 @@ def parse_args():
         '大脳皮質機構パラメータ (コマンドラインオプションで指定する必要あり)',
         '以下は大脳皮質の神経機構を模倣した追加改善オプションです。\n'
         '純粋版（コラムED法+Gabor）をベースに追加効果を得たい場合に使用してください。\n'
+        'これらの機能は通常無効となっており、コマンドラインオプションで指定した場合のみ有効化されます。\n'
         'いずれも10kサンプルでの検証結果です。50kサンプルでは効果が異なる場合があります。\n'
         '複数のパラメータを同時に指定すると学習精度が下がる場合があります。\n'
         'それぞれのパラメータの動作内容の詳細についてはREADME.mdをご覧ください。'
@@ -151,49 +152,49 @@ def parse_args():
                             '（"--skip 0,3,0.1 --skip 1,4,0.1"で+0.57%%/Fashion 6層 10k）。\n'
                             'src,dst,alpha形式。複数指定可。')
     cortex_group.add_argument('--hc_strength', type=float, default=0.0,
-                       help='水平結合の強度（0.0で無効）\n'
+                       help='水平結合の強度\n'
                             '（"--hc_strength 0.1"で+0.48%%/Fashion 6層 10k）。\n'
                             '同クラスコラムニューロン間のゲイン変調。')
     cortex_group.add_argument('--li_strength', type=float, default=0.0,
-                       help='側抑制の強度（0.0で無効）\n'
+                       help='側抑制の強度\n'
                             '（"--li_strength 0.01"で+0.55%%/Fashion 6層 10k）。\n'
                             '勝者コラム以外を微弱減衰。注意: 0.03以上は逆効果。')
     cortex_group.add_argument('--li_soft_temp', type=float, default=0.0,
-                       help='ソフト側抑制の温度（0.0で無効、--li_strengthと併用）。大=弱い抑制、小=強い抑制')
+                       help='ソフト側抑制の温度（--li_strengthと併用）。大=弱い抑制、小=強い抑制')
     cortex_group.add_argument('--uncertainty_modulation', type=float, default=0.0,
-                       help='不確実性変調の強度（0.0で無効）\n'
+                       help='不確実性変調の強度\n'
                             '（"--uncertainty_modulation 0.2"で+0.78%%/Fashion 6層 combo）。\n'
                             '出力エントロピーに比例してアミン信号を増強。')
     cortex_group.add_argument('--pv_nc_gain', type=float, default=0.0,
-                       help='PV型NCゲイン変調の強度（0.0で無効）\n'
+                       help='PV型NCゲイン変調の強度\n'
                             '（"--pv_nc_gain 0.2 --pv_pool_mode nc --pv_gain_mode multiplicative"\n'
                             ' で+0.99%%/Fashion 6層 10k）。\n'
                             '注意: 50kサンプルでは逆効果。')
+    cortex_group.add_argument('--homeostatic_rate', type=float, default=None,
+                       help='homeostatic調整のスケール幅\n'
+                            '（"--homeostatic_rate 0.02"で+0.36%%/Fashion 6層 10k）。\n'
+                            '注意: cn=10（NC比率90%%超）では効果なし。cn>=30の場合に有効。')
     cortex_group.add_argument('--pv_pool_mode', type=str, default='nc', choices=['nc', 'all'],
                        help='PV参照プール（--pv_nc_gainと併用）。nc=非コラムのみ、all=全ニューロン')
     cortex_group.add_argument('--pv_gain_mode', type=str, default='multiplicative',
                        choices=['multiplicative', 'divisive'],
                        help='PVゲイン方式（--pv_nc_gainと併用）。multiplicative=乗算型、divisive=除算正規化型')
-    cortex_group.add_argument('--homeostatic_rate', type=float, default=None,
-                       help='homeostatic調整のスケール幅（0.0で無効）\n'
-                            '（"--homeostatic_rate 0.02"で+0.36%%/Fashion 6層 10k）。\n'
-                            '注意: cn=10（NC比率90%%超）では効果なし。cn>=30の場合に有効。')
     cortex_group.add_argument('--vip_modulation', type=float, default=0.0,
-                       help='VIP型学習率変調の強度（0.0で無効）')
+                       help='VIP型学習率変調の強度')
     cortex_group.add_argument('--sst_rate', type=float, default=0.0,
-                       help='SST型動的バイアス補正率（0.0で無効）')
+                       help='SST型動的バイアス補正率')
     cortex_group.add_argument('--sst_target', type=float, default=0.3,
                        help='SST目標平均活性（tanh絶対値、デフォルト0.3）')
     cortex_group.add_argument('--hebb_strength', type=float, default=0.0,
-                       help='コラム内ヘブ強化の強度（0.0で無効）')
+                       help='コラム内ヘブ強化の強度')
     cortex_group.add_argument('--nc_hebb_lr', type=float, default=0.0,
-                       help='NCヘブ自己組織化の学習率（0.0で無効）')
+                       help='NCヘブ自己組織化の学習率')
     cortex_group.add_argument('--prediction_error_strength', type=float, default=0.0,
-                       help='層間予測エラー伝播の強度（0.0で無効）')
+                       help='層間予測エラー伝播の強度')
     cortex_group.add_argument('--input_gate_strength', type=float, default=0.0,
-                       help='L6フィードバック入力ゲートの強度（0.0で無効）')
+                       help='L6フィードバック入力ゲートの強度')
     cortex_group.add_argument('--attention_boost_strength', type=float, default=0.0,
-                       help='L1注意ブーストの強度（0.0で無効）')
+                       help='L1注意ブーストの強度')
     parser.add_argument('--diagnose_plateau', action='store_true',
                        help='各エポック終了時に学習停滞診断情報を出力する')
 
