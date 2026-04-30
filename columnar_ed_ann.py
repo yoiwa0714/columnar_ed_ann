@@ -1,4 +1,4 @@
-]633;E;echo '#!/usr/bin/env python3';a8caf50e-93ff-4be5-a1ab-2bc37fe50e02]633;C#!/usr/bin/env python3
+#!/usr/bin/env python3
 """Columnar ED-ANN v1.2.0"""
 
 __version__ = "1.2.0"
@@ -136,49 +136,64 @@ def parse_args():
                        help='出力層の重み減衰率（0.0で無効、推奨: 0.00001）')
     parser.add_argument('--output_gradient_clip', type=float, default=0.0,
                        help='出力層の勾配クリッピング閾値（0.0で無効）')
-    parser.add_argument('--uncertainty_modulation', type=float, default=0.0,
-                       help='不確実性変調の強度（0.0で無効）。出力エントロピーに比例してアミン信号を増強')
-    parser.add_argument('--hc_strength', type=float, default=0.0,
-                       help='D4水平結合の強度（0.0で無効）。同クラスコラムニューロン間のゲイン変調')
-    parser.add_argument('--pv_nc_gain', type=float, default=0.0,
-                       help='PV型NCゲイン変調の強度（0.0で無効）。NCの集団活性でコラムニューロンをゲイン変調')
-    parser.add_argument('--pv_pool_mode', type=str, default='nc', choices=['nc', 'all'],
-                       help='PV参照プール。nc=非コラムのみ、all=全ニューロン')
-    parser.add_argument('--pv_gain_mode', type=str, default='multiplicative',
+
+    # --- 大脳皮質機構パラメータ (コマンドラインオプションで指定する必要あり) ---
+    cortex_group = parser.add_argument_group(
+        '大脳皮質機構パラメータ (コマンドラインオプションで指定する必要あり)',
+        '以下は大脳皮質の神経機構を模倣した追加改善オプションです。\n'
+        '純粋版（コラムED法+Gabor）をベースに追加効果を得たい場合に使用してください。\n'
+        'いずれも10kサンプルでの検証結果です。50kサンプルでは効果が異なる場合があります。\n'
+        '複数のパラメータを同時に指定すると学習精度が下がる場合があります。\n'
+        'それぞれのパラメータの動作内容の詳細についてはREADME.mdをご覧ください。'
+    )
+    cortex_group.add_argument('--skip', type=str, action='append', default=None,
+                       help='スキップ接続\n'
+                            '（"--skip 0,3,0.1 --skip 1,4,0.1"で+0.57%%/Fashion 6層 10k）。\n'
+                            'src,dst,alpha形式。複数指定可。')
+    cortex_group.add_argument('--hc_strength', type=float, default=0.0,
+                       help='水平結合の強度（0.0で無効）\n'
+                            '（"--hc_strength 0.1"で+0.48%%/Fashion 6層 10k）。\n'
+                            '同クラスコラムニューロン間のゲイン変調。')
+    cortex_group.add_argument('--li_strength', type=float, default=0.0,
+                       help='側抑制の強度（0.0で無効）\n'
+                            '（"--li_strength 0.01"で+0.55%%/Fashion 6層 10k）。\n'
+                            '勝者コラム以外を微弱減衰。注意: 0.03以上は逆効果。')
+    cortex_group.add_argument('--li_soft_temp', type=float, default=0.0,
+                       help='ソフト側抑制の温度（0.0で無効、--li_strengthと併用）。大=弱い抑制、小=強い抑制')
+    cortex_group.add_argument('--uncertainty_modulation', type=float, default=0.0,
+                       help='不確実性変調の強度（0.0で無効）\n'
+                            '（"--uncertainty_modulation 0.2"で+0.78%%/Fashion 6層 combo）。\n'
+                            '出力エントロピーに比例してアミン信号を増強。')
+    cortex_group.add_argument('--pv_nc_gain', type=float, default=0.0,
+                       help='PV型NCゲイン変調の強度（0.0で無効）\n'
+                            '（"--pv_nc_gain 0.2 --pv_pool_mode nc --pv_gain_mode multiplicative"\n'
+                            ' で+0.99%%/Fashion 6層 10k）。\n'
+                            '注意: 50kサンプルでは逆効果。')
+    cortex_group.add_argument('--pv_pool_mode', type=str, default='nc', choices=['nc', 'all'],
+                       help='PV参照プール（--pv_nc_gainと併用）。nc=非コラムのみ、all=全ニューロン')
+    cortex_group.add_argument('--pv_gain_mode', type=str, default='multiplicative',
                        choices=['multiplicative', 'divisive'],
-                       help='PVゲイン方式。multiplicative=現行、divisive=除算正規化型')
-    parser.add_argument('--homeostatic_rate', type=float, default=None,
-                       help='Phase 2 ホメオスタティック調整のスケール幅（0.0で無効）。'
-                            'NCニューロンの平均活性外れ値をエポック媻に正規化'
-                            '（デフォルト: YAML common_paramsの値、省略時は0.02）')
-    parser.add_argument('--vip_modulation', type=float, default=0.0,
-                       help='Phase 3 VIP型学習率変調の強度（0.0で無効）。'
-                            '最終隠れ層のコラム-NC整合度でアミン信号を脱抑制変調'
-                            '（推奨探索範囲: 0.1〜0.5）。'
-                            'uncertainty_modulationと同時有効時は最大(1+um)*(1+vm)倍に増幅')
-    parser.add_argument('--sst_rate', type=float, default=0.0,
-                       help='Phase 4 SST型動的バイアス補正率（0.0で無効）。'
-                            '全ニューロンの平均発火率を目標値(sst_target)に近づけるバイアス更新'
-                            '（推奨探索範囲: 0.005〜0.1）')
-    parser.add_argument('--sst_target', type=float, default=0.3,
-                       help='Phase 4 SST目標平均活性（tanh絶対値、デフォルト0.3）')
-    parser.add_argument('--skip', type=str, action='append', default=None,
-                       help='D7-4スキップ接続。src,dst,alpha形式。複数指定可\n'
-                            '例: --skip 0,3,0.1 --skip 1,4,0.1')
-    parser.add_argument('--li_strength', type=float, default=0.0,
-                       help='D6-1ハード側抑制の強度（0.0で無効）。勝者コラム以外を減衰')
-    parser.add_argument('--li_soft_temp', type=float, default=0.0,
-                       help='D6-2ソフト側抑制の温度（0.0で無効）。大=弱い抑制、小=強い抑制')
-    parser.add_argument('--hebb_strength', type=float, default=0.0,
-                       help='D8-1コラム内ヘブ強化の強度（0.0で無効）')
-    parser.add_argument('--nc_hebb_lr', type=float, default=0.0,
-                       help='D8-3 NCヘブ自己組織化の学習率（0.0で無効）')
-    parser.add_argument('--prediction_error_strength', type=float, default=0.0,
-                       help='P1層間予測エラー伝播の強度（0.0で無効）。上位層逆投影でアミン変調')
-    parser.add_argument('--input_gate_strength', type=float, default=0.0,
-                       help='P2 L6フィードバック入力ゲートの強度（0.0で無効）。深層活性で入力ゲーティング')
-    parser.add_argument('--attention_boost_strength', type=float, default=0.0,
-                       help='P3 L1注意ブーストの強度（0.0で無効）。出力不確実時に浅層ブースト')
+                       help='PVゲイン方式（--pv_nc_gainと併用）。multiplicative=乗算型、divisive=除算正規化型')
+    cortex_group.add_argument('--homeostatic_rate', type=float, default=None,
+                       help='homeostatic調整のスケール幅（0.0で無効）\n'
+                            '（"--homeostatic_rate 0.02"で+0.36%%/Fashion 6層 10k）。\n'
+                            '注意: cn=10（NC比率90%%超）では効果なし。cn>=30の場合に有効。')
+    cortex_group.add_argument('--vip_modulation', type=float, default=0.0,
+                       help='VIP型学習率変調の強度（0.0で無効）')
+    cortex_group.add_argument('--sst_rate', type=float, default=0.0,
+                       help='SST型動的バイアス補正率（0.0で無効）')
+    cortex_group.add_argument('--sst_target', type=float, default=0.3,
+                       help='SST目標平均活性（tanh絶対値、デフォルト0.3）')
+    cortex_group.add_argument('--hebb_strength', type=float, default=0.0,
+                       help='コラム内ヘブ強化の強度（0.0で無効）')
+    cortex_group.add_argument('--nc_hebb_lr', type=float, default=0.0,
+                       help='NCヘブ自己組織化の学習率（0.0で無効）')
+    cortex_group.add_argument('--prediction_error_strength', type=float, default=0.0,
+                       help='層間予測エラー伝播の強度（0.0で無効）')
+    cortex_group.add_argument('--input_gate_strength', type=float, default=0.0,
+                       help='L6フィードバック入力ゲートの強度（0.0で無効）')
+    cortex_group.add_argument('--attention_boost_strength', type=float, default=0.0,
+                       help='L1注意ブーストの強度（0.0で無効）')
     parser.add_argument('--diagnose_plateau', action='store_true',
                        help='各エポック終了時に学習停滞診断情報を出力する')
 
