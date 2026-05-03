@@ -110,10 +110,10 @@ pip install -r requirements.txt
 ### 2. Run
 
 ```bash
-# Default configuration (2-layer + Gabor features, ~10 minutes)
+# Default configuration (3-layer + Gabor features)
 python columnar_ed_ann.py --train 10000 --test 10000
 
-# 1-layer configuration (~3 minutes)
+# 1-layer configuration
 python columnar_ed_ann.py --hidden 2048 --train 5000 --test 5000
 
 # With visualization (learning curve, confusion matrix, activation heatmap)
@@ -153,21 +153,25 @@ Best Accuracy:  Test=0.9685 (Epoch 10)
 ### Basic Execution Patterns
 
 ```bash
-# 1-layer + Gabor features (~3 minutes)
+# 1-layer + Gabor features
 python columnar_ed_ann.py --hidden 2048 --train 10000 --test 10000
-# → Best ≈ 96.13% / Final ≈ 96.13%
+# → Best ≈ 96.83% / Final ≈ 96.83%
 
-# 2-layer + Gabor features (default configuration, ~10 minutes)
+# 2-layer + Gabor features
+python columnar_ed_ann.py --hidden 2048,2048 --train 10000 --test 10000
+# → Best ≈ 97.70% / Final ≈ 97.70%
+
+# 3-layer + Gabor features (default configuration)
 python columnar_ed_ann.py --train 10000 --test 10000
-# → Best ≈ 96.85% / Final ≈ 96.84%
+# → Best ≈ TBD% / Final ≈ TBD%
 
-# 3-layer + Gabor features (~30 minutes)
-python columnar_ed_ann.py --hidden 1024,1024,1024 --train 10000 --test 10000
-# → Best ≈ 96.78% / Final ≈ 96.78%
+# 6-layer + Gabor features
+python columnar_ed_ann.py --hidden 2048[6] --train 10000 --test 10000
+# → Best ≈ TBD% / Final ≈ TBD%
 
 # Without Gabor (to verify the pure learning capability of the original ED method)
 python columnar_ed_ann.py --hidden 2048 --train 10000 --test 10000 --no_gabor
-# → Best ≈ 90.37% / Final ≈ 90.37%
+# → Best ≈ TBD% / Final ≈ TBD%
 ```
 
 ### Visualization
@@ -225,11 +229,16 @@ python columnar_ed_ann.py \
 
 Short forms (e.g., `--gc`) are shown next to each argument. `--gradient_clip 0.001` and `--gc 0.001` are equivalent.
 
+> **Repeat notation**: Write `value[N]` (e.g., `2048[6]`, `0.4[6]`) to expand the same value N times. Mixing with comma-separated values is supported (e.g., `0.7,1.8[5],0.8`). Supported by: `--hidden`, `--lcn`, `--is`, `--hs`, `--ncl`, `--clf`, `--lgc`.
+
+<details>
+<summary>▶ Expand argument list</summary>
+
 **Execution Settings:**
 
 | Argument | Short Form | Default | Description |
 |----------|------------|---------|-------------|
-| `--hidden` | | `2048,1024` | Hidden layer neuron count (comma-separated, e.g., `2048`=1 layer, `2048,1024`=2 layers) |
+| `--hidden` | | `2048[3]` | Hidden layer neuron count (comma-separated, repeat notation supported: `2048[6]`=6 uniform layers)<br>e.g., `2048`=1 layer, `2048,2048`=2 layers, `2048[3]`=3 layers (default), `2048[6]`=6 layers |
 | `--train` | | `10000` | Number of training samples |
 | `--test` | | `10000` | Number of test samples |
 | `--epochs` | | Auto (YAML) | Number of epochs |
@@ -240,17 +249,18 @@ Short forms (e.g., `--gc`) are shown next to each argument. `--gradient_clip 0.0
 
 | Argument | Short Form | Default | Description |
 |----------|------------|---------|-------------|
-| `--init_scales` | `--is` | Auto (YAML) | Per-layer weight initialization scales (comma-separated, length = num_layers + 1) |
-| `--hidden_sparsity` | `--hs` | Auto (YAML) | Per-layer non-column weight sparsity (comma-separated) |
-| `--layer_column_neurons` | `--lcn` | Auto (YAML) | Per-layer column neuron count (comma-separated, 0 = all neurons become column neurons) |
+| `--init_scales` | `--is` | Auto (YAML) | Per-layer weight initialization scales (comma-separated, repeat notation supported, length = num_layers + 1)<br>e.g., `0.7,1.8[5],0.8` → `[0.7, 1.8, 1.8, 1.8, 1.8, 1.8, 0.8]` |
+| `--hidden_sparsity` | `--hs` | Auto (YAML) | Per-layer non-column weight sparsity (comma-separated, repeat notation supported)<br>e.g., `0.4[6]` → apply 0.4 to all 6 layers |
+| `--layer_column_neurons` | `--lcn` | Auto (YAML) | Per-layer column neuron count (comma-separated, repeat notation supported, 0 = all neurons become column neurons)<br>e.g., `82[6]` → cn=82 for all 6 layers |
+| `--column_ratio` | `--cr` | None | Column neuron ratio (0.0–1.0). Maintains CN:NC ratio regardless of hidden size.<br>Formula: `cn = round(hidden × ratio / n_classes)` e.g., `--cr 0.8` hidden=1024, 10 classes → cn=82 |
 
 **Learning Rate:**
 
 | Argument | Short Form | Default | Description |
 |----------|------------|---------|-------------|
 | `--output_lr` | `--olr` | Auto (YAML) | Output layer learning rate |
-| `--non_column_lr` | `--ncl` | Auto (YAML) | Per-layer non-column learning rate (comma-separated) |
-| `--column_lr_factors` | `--clf` | Auto (YAML) | Column neuron learning rate multiplier (per layer, comma-separated) |
+| `--non_column_lr` | `--ncl` | Auto (YAML) | Per-layer non-column learning rate (comma-separated, repeat notation supported)<br>e.g., `0.04[6]` → apply 0.04 to all 6 layers |
+| `--column_lr_factors` | `--clf` | Auto (YAML) | Column neuron learning rate multiplier (per layer, comma-separated, repeat notation supported)<br>e.g., `0.005,0.004,0.003,0.002[2],0.001` |
 | `--gradient_clip` | `--gc` | Auto (YAML) | Gradient clipping threshold |
 | `--u1` | | Auto (YAML) | Amine diffusion coefficient u1 (output layer → last hidden layer) |
 | `--u2` | | Auto (YAML) | Amine diffusion coefficient u2 (between hidden layers, for multi-layer) |
@@ -288,7 +298,7 @@ The following parameters default to `0.0` (disabled). They are activated when sp
 
 | Argument | Short Form | Default | Description |
 |----------|------------|---------|-------------|
-| `--layer_gc` | `--lgc` | None | Per-layer gradient clipping (comma-separated, overrides `--gc`) |
+| `--layer_gc` | `--lgc` | None | Per-layer gradient clipping (comma-separated, repeat notation supported, overrides `--gc`)<br>e.g., `0.001[6]` → apply 0.001 to all 6 layers |
 | `--lut_base_rate` | | `0.0` | LUT base learning rate (minimum learning rate for unranked neurons) |
 | `--output_weight_decay` | | `0.0` | Output layer weight decay rate |
 | `--output_gradient_clip` | | `0.0` | Output layer gradient clipping threshold |
@@ -311,6 +321,8 @@ The following parameters default to `0.0` (disabled). They are activated when sp
 | `--show_train_errors` | | Display misclassified samples from the final epoch after training |
 | `--max_errors_per_class` | | Maximum number of misclassified samples displayed per class (default: 20) |
 | `--diagnose_plateau` | | Output learning plateau diagnostic information at the end of each epoch |
+
+</details>
 
 ## Claims and Verifiability (FAQ)
 
@@ -486,7 +498,7 @@ Results using uniform configuration [1024×N] + layer functional differentiation
 | 3-layer | [1024×3] | Best 97.66% | ~8 min |
 | 4-layer | [1024×4] | Best 97.78% | ~10 min |
 | 5-layer | [1024×5] | Best 97.80% | ~13 min |
-| 6-layer | [1024×6] | Best 98.03% | ~37 min |
+| 6-layer | [2048×6] | Best 98.30% | ~5.3 hours |
 | 6-layer (deep expansion) | [1024×4, 2048×2] | Best 98.11% | ~40 min |
 
 ### With Gabor Features — 50k samples
@@ -494,7 +506,7 @@ Results using uniform configuration [1024×N] + layer functional differentiation
 | Configuration | Hidden Layers | Test Accuracy | Runtime (*) |
 |---------------|---------------|---------------|-------------|
 | 3-layer | [1024×3] | Best 98.50% | ~4.2 hours |
-| 3-layer | [2048×3] | Best 98.56% | ~15.8 hours |
+| 3-layer | [2048×3] | Best 98.56% | --- |
 | 6-layer | [2048×6] | **Best 98.87%** ★ | ~10.5 hours |
 
 \* Runtimes measured on an Intel Core i5-11th gen / RTX 3060 system and will vary depending on your environment.
@@ -541,7 +553,7 @@ columnar_ed_ann/
 
 ## Automatic Parameter Configuration
 
-Optimal parameters are automatically loaded from `config/hyperparameters.yaml` based on the number of hidden layers. Users only need to specify minimal arguments: hidden layer configuration, data size, and epoch count.
+Optimal parameters are automatically loaded from `config/hyperparameters.yaml` based on the number of hidden layers. Users only need to specify minimal arguments: hidden layer configuration and data size. Specifying only data size automatically selects the default 3-layer configuration.
 
 ### Key Automatically Configured Parameters
 

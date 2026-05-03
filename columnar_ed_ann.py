@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Columnar ED-ANN v1.2.0"""
+"""Columnar ED-ANN v1.3.0"""
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
@@ -31,65 +31,91 @@ def parse_args():
     parser.add_argument('--ver', '-V', action='version',
                        version=f'columnar_ed_ann.py v{__version__}')
 
-    parser.add_argument('--hidden', type=str, default=None,
+    # --- 実行設定 ---
+    run_group = parser.add_argument_group('実行設定')
+    run_group.add_argument('--hidden', type=str, default=None,
                        help='隠れ層ニューロン数（カンマ区切り）\n'
-                            '例: 2048=1層, 2048,1024=2層, 2048,1024,1024=3層\n'
-                            '未指定時: 2層構成 [2048,1024]')
-    parser.add_argument('--train', type=int, default=10000,
+                            '繰り返し記法: 2048[6] = 2048,2048,2048,2048,2048,2048\n'
+                            '例: 2048=1層, 2048,2048=2層, 2048[3]=3層均一, 2048[6]=6層均一\n'
+                            '未指定時: 3層構成 [2048,2048,2048]')
+    run_group.add_argument('--train', type=int, default=10000,
                        help='訓練サンプル数（デフォルト: 10000）')
-    parser.add_argument('--test', type=int, default=10000,
+    run_group.add_argument('--test', type=int, default=10000,
                        help='テストサンプル数（デフォルト: 10000）')
-    parser.add_argument('--epochs', type=int, default=None,
+    run_group.add_argument('--epochs', type=int, default=None,
                        help='エポック数（未指定時: 層数に応じた自動設定）')
-    parser.add_argument('--seed', type=int, default=42,
+    run_group.add_argument('--seed', type=int, default=42,
                        help='乱数シード（デフォルト: 42）')
-    parser.add_argument('--dataset', type=str, default='mnist',
+    run_group.add_argument('--dataset', type=str, default='mnist',
                        help='データセット（mnist, fashion, cifar10）')
-    parser.add_argument('--no_gabor', action='store_true',
+
+    # --- コラム構造 ---
+    column_group = parser.add_argument_group('コラム構造')
+    column_group.add_argument('--lcn', '--layer_column_neurons', dest='layer_column_neurons', type=str, default=None,
+                       help='層別コラムニューロン数（カンマ区切り、0=全コラム化）\n'
+                            '例: 0,0,0,10,10,10 → 浅層3層を全コラム化、深層3層はcn=10\n'
+                            '--lcn と --cr を同時指定した場合は --lcn が優先される')
+    column_group.add_argument('--cr', '--column_ratio', dest='column_ratio', type=float, default=None,
+                       help='コラムニューロン比率（0.0〜1.0）。hidden サイズに関わらず CN:NC 比率を維持する\n'
+                            '計算式: cn = round(hidden × ratio / n_classes)\n'
+                            '生物学的根拠: 大脳新皮質の興奮性:抑制性ニューロン比 ≈ 8:2\n'
+                            '例: --cr 0.8  hidden=1024, 10クラス → cn=82 (CN:NC ≈ 8:2)\n'
+                            '         --cr 0.8  hidden=2048, 10クラス → cn=164 (CN:NC = 8:2)\n'
+                            '--lcn が同時指定された場合は --lcn が優先される')
+    column_group.add_argument('--is', '--init_scales', dest='init_scales', type=str, default=None,
+                       help='層別重み初期化スケール（カンマ区切り、繰り返し記法対応、長さ=層数+1）\n'
+                            '例: 0.7,1.8,1.8,1.8,1.8,1.8,0.8\n'
+                            '繰り返し例: 0.7,1.8[5],0.8 → [0.7, 1.8, 1.8, 1.8, 1.8, 1.8, 0.8]')
+    column_group.add_argument('--hs', '--hidden_sparsity', dest='hidden_sparsity', type=str, default=None,
+                       help='層別非コラム重みスパース率（カンマ区切り、繰り返し記法対応）\n'
+                            '例: 0.2,0.2,0.4,0.4,0.6,0.6\n'
+                            '繰り返し例: 0.4[6] → 六層全てに0.4を適用')
+
+    # --- Gabor特徴抽出 ---
+    gabor_group = parser.add_argument_group('Gabor特徴抽出')
+    gabor_group.add_argument('--no_gabor', action='store_true',
                        help='Gabor特徴抽出を無効化（デフォルト: Gabor ON）')
-    parser.add_argument('--gc', '--gradient_clip', dest='gradient_clip', type=float, default=None,
-                       help='勾配クリッピング閾値（未指定時: YAML設定値）　短縮形: --gc')
-    parser.add_argument('--lgc', '--layer_gc', dest='layer_gc', type=str, default=None,
-                       help='層別勾配クリッピング（カンマ区切り、長さ=層数）\n'
-                            '例: 0.001,0.005,0.01,0.03,0.05,0.1　短縮形: --lgc\n'
+    gabor_group.add_argument('--gks', '--gabor_kernel_size', dest='gabor_kernel_size', type=int, default=None,
+                       help='Gaborフィルタのカーネルサイズ（未指定時: YAML設定値）')
+    gabor_group.add_argument('--go', '--gabor_orientations', dest='gabor_orientations', type=int, default=None,
+                       help='Gaborフィルタの方位数（未指定時: YAML設定値）')
+    gabor_group.add_argument('--gf', '--gabor_frequencies', dest='gabor_frequencies', type=int, default=None,
+                       help='Gaborフィルタの周波数帯域数（未指定時: YAML設定値）')
+
+    # --- 学習率・アミン拡散 (ED法) ---
+    lr_group = parser.add_argument_group('学習率・アミン拡散 (ED法)')
+    lr_group.add_argument('--ncl', '--non_column_lr', dest='non_column_lr', type=str, default=None,
+                       help='層別非コラム学習率（カンマ区切り、繰り返し記法対応、長さ=層数）\n'
+                            '例: 0.08,0.08,0.04,0.04,0.02,0.02\n'
+                            '繰り返し例: 0.04[6] → 六層全てに0.04を適用')
+    lr_group.add_argument('--olr', '--output_lr', dest='output_lr', type=float, default=None,
+                       help='出力層学習率（未指定時: YAML設定値）')
+    lr_group.add_argument('--clf', '--column_lr_factors', dest='column_lr_factors', type=str, default=None,
+                       help='コラムニューロンの学習率倍率（カンマ区切り、繰り返し記法対応、長さ=層数）\n'
+                            '例: 0.005,0.003\n'
+                            '繰り返し例: 0.005[6] → 六層全てに0.005を適用')
+    lr_group.add_argument('--u1', type=float, default=None,
+                       help='アミン拡散係数u1（出力層→最終隠れ層、未指定時: YAML設定値）')
+    lr_group.add_argument('--u2', type=float, default=None,
+                       help='アミン拡散係数u2（隠れ層間、多層時に使用、未指定時: YAML設定値）')
+
+    # --- 勾配制御・訓練安定化 ---
+    grad_group = parser.add_argument_group('勾配制御・訓練安定化')
+    grad_group.add_argument('--gc', '--gradient_clip', dest='gradient_clip', type=float, default=None,
+                       help='勾配クリッピング閾値（未指定時: YAML設定値）')
+    grad_group.add_argument('--lgc', '--layer_gc', dest='layer_gc', type=str, default=None,
+                       help='層別勾配クリッピング（カンマ区切り、繰り返し記法対応、長さ=層数）\n'
+                            '例: 0.001,0.005,0.01,0.03,0.05,0.1\n'
+                            '繰り返し例: 0.001[6] → 六層全てに0.001を適用\n'
                             '指定時は--gcより優先される')
-    parser.add_argument('--lut_base_rate', type=float, default=0.0,
+    grad_group.add_argument('--lut_base_rate', type=float, default=0.0,
                        help='LUTのベース学習率（ランク外ニューロンの最低学習率、デフォルト: 0.0）\n'
                             '例: 0.01 → ランクcn以降も学習率=0.01で学習に参加')
-    parser.add_argument('--is', '--init_scales', dest='init_scales', type=str, default=None,
-                       help='層別重み初期化スケール（カンマ区切り、長さ=層数+1）\n'
-                            '例: 0.7,1.8,1.8,1.8,1.8,1.8,0.8　短縮形: --is')
-    parser.add_argument('--hs', '--hidden_sparsity', dest='hidden_sparsity', type=str, default=None,
-                       help='層別非コラム重みスパース率（カンマ区切り）\n'
-                            '例: 0.2,0.2,0.4,0.4,0.6,0.6　短縮形: --hs')
-    parser.add_argument('--ncl', '--non_column_lr', dest='non_column_lr', type=str, default=None,
-                       help='層別非コラム学習率（カンマ区切り、長さ=層数）\n'
-                            '例: 0.08,0.08,0.04,0.04,0.02,0.02　短縮形: --ncl')
-    parser.add_argument('--olr', '--output_lr', dest='output_lr', type=float, default=None,
-                       help='出力層学習率（未指定時: YAML設定値）　短縮形: --olr')
-    parser.add_argument('--clf', '--column_lr_factors', dest='column_lr_factors', type=str, default=None,
-                       help='コラムニューロンの学習率倍率（カンマ区切り、長さ=層数）\n'
-                            '例: 0.005,0.003　短縮形: --clf')
-    parser.add_argument('--u1', type=float, default=None,
-                       help='アミン拡散係数u1（出力層→最終隠れ層、未指定時: YAML設定値）')
-    parser.add_argument('--u2', type=float, default=None,
-                       help='アミン拡散係数u2（隠れ層間、多層時に使用、未指定時: YAML設定値）')
-    parser.add_argument('--lcn', '--layer_column_neurons', dest='layer_column_neurons', type=str, default=None,
-                       help='層別コラムニューロン数（カンマ区切り、0=全コラム化）\n'
-                            '例: 0,0,0,10,10,10 → 浅層3層を全コラム化、深層3層はcn=10　短縮形: --lcn')
-    parser.add_argument('--gks', '--gabor_kernel_size', dest='gabor_kernel_size', type=int, default=None,
-                       help='Gaborフィルタのカーネルサイズ（未指定時: YAML設定値）　短縮形: --gks')
-    parser.add_argument('--go', '--gabor_orientations', dest='gabor_orientations', type=int, default=None,
-                       help='Gaborフィルタの方位数（未指定時: YAML設定値）　短縮形: --go')
-    parser.add_argument('--gf', '--gabor_frequencies', dest='gabor_frequencies', type=int, default=None,
-                       help='Gaborフィルタの周波数帯域数（未指定時: YAML設定値）　短縮形: --gf')
-    # ハイパーパラメータ一覧
-    parser.add_argument('--lh', '--list_hyperparams', dest='list_hyperparams',
-                       type=int, nargs='?', const=0, default=None,
-                       help='ハイパーパラメータ一覧を表示して終了\n'
-                            '層数なし: 全層数の簡易一覧\n'
-                            '層数指定: その層数の詳細表示\n'
-                            '例: --lh (=全層一覧), --lh 2 (=2層詳細)　短縮形: --lh')
+    grad_group.add_argument('--output_weight_decay', type=float, default=0.0,
+                       help='出力層の重み減衰率（0.0で無効、推奨: 0.00001）')
+    grad_group.add_argument('--output_gradient_clip', type=float, default=0.0,
+                       help='出力層の勾配クリッピング閾値（0.0で無効）')
+
     # 可視化
     viz_group = parser.add_argument_group('可視化')
     viz_group.add_argument('--viz', type=int, nargs='?', const=1, default=None,
@@ -103,6 +129,10 @@ def parse_args():
                           help='重みL2ノルムヒートマップの表示（--vizと併用）\n'
                                '各層ニューロンの入力重みL2ノルムをヒートマップ表示。\n'
                                '--heatmapと同じ配置・更新タイミングで別ウィンドウに表示。')
+    viz_group.add_argument('--weight_mean_plot', action='store_true',
+                          help='重み平均値折れ線グラフの表示（--vizと併用）\n'
+                               '全隠れ層・出力層の重み絶対値平均をエポック軸で折れ線表示。\n'
+                               '出力層ノルム異常増大などの診断に使用。')
     viz_group.add_argument('--save_viz', type=str, nargs='?', const='viz_results',
                           default=None, metavar='PATH',
                           help='可視化結果を保存（パス指定可）')
@@ -132,10 +162,16 @@ def parse_args():
                              help='複数の重みをカンマ区切りで指定してアンサンブル推論\n'
                                   '（学習は行わず推論のみ。例: weights/run1,weights/run2,weights/run3）')
 
-    parser.add_argument('--output_weight_decay', type=float, default=0.0,
-                       help='出力層の重み減衰率（0.0で無効、推奨: 0.00001）')
-    parser.add_argument('--output_gradient_clip', type=float, default=0.0,
-                       help='出力層の勾配クリッピング閾値（0.0で無効）')
+    # --- ユーティリティ・診断 ---
+    util_group = parser.add_argument_group('ユーティリティ・診断')
+    util_group.add_argument('--lh', '--list_hyperparams', dest='list_hyperparams',
+                       type=int, nargs='?', const=0, default=None,
+                       help='ハイパーパラメータ一覧を表示して終了\n'
+                            '層数なし: 全層数の簡易一覧\n'
+                            '層数指定: その層数の詳細表示\n'
+                            '例: --lh (=全層一覧), --lh 2 (=2層詳細)')
+    util_group.add_argument('--diagnose_plateau', action='store_true',
+                       help='各エポック終了時に学習停滞診断情報を出力する')
 
     # --- 大脳皮質機構パラメータ (コマンドラインオプションで指定する必要あり) ---
     cortex_group = parser.add_argument_group(
@@ -143,7 +179,7 @@ def parse_args():
         '以下は大脳皮質の神経機構を模倣した追加改善オプションです。\n'
         '純粋版（コラムED法+Gabor）をベースに追加効果を得たい場合に使用してください。\n'
         'これらの機能は通常無効となっており、コマンドラインオプションで指定した場合のみ有効化されます。\n'
-        'いずれも10kサンプルでの検証結果です。50kサンプルでは効果が異なる場合があります。\n'
+        'いずれも10kサンプルでの検証結果です。他のサンプル数では効果が異なる場合があります。\n'
         '複数のパラメータを同時に指定すると学習精度が下がる場合があります。\n'
         'それぞれのパラメータの動作内容の詳細についてはREADME.mdをご覧ください。'
     )
@@ -195,8 +231,6 @@ def parse_args():
                        help='L6フィードバック入力ゲートの強度')
     cortex_group.add_argument('--attention_boost_strength', type=float, default=0.0,
                        help='L1注意ブーストの強度')
-    parser.add_argument('--diagnose_plateau', action='store_true',
-                       help='各エポック終了時に学習停滞診断情報を出力する')
 
     args = parser.parse_args()
     # コマンドラインで明示的に指定された引数名セット（" (変更)" 表示用）
@@ -583,15 +617,48 @@ def main():
     # ========================================
     # 1. 隠れ層サイズのパース
     # ========================================
+    def expand_repeated_values(text, name, value_parser):
+        """カンマ区切り文字列を展開。token[k] 形式の繰り返し記法を許可する。
+        例: '2048[6]' → [2048, 2048, 2048, 2048, 2048, 2048]
+            '82[6]'   → [82, 82, 82, 82, 82, 82]
+        """
+        if text is None:
+            raise ValueError(f"--{name} が未指定です")
+        expanded = []
+        for idx, token in enumerate(tok.strip() for tok in text.split(',')):
+            if token == '':
+                raise ValueError(f"--{name} の第{idx+1}要素が空です")
+            repeat = 1
+            value_text = token
+            if token.endswith(']') and '[' in token:
+                value_text, repeat_text = token.rsplit('[', 1)
+                repeat_text = repeat_text[:-1].strip()
+                value_text = value_text.strip()
+                if value_text == '' or repeat_text == '':
+                    raise ValueError(f"--{name} の繰り返し記法が不正です: '{token}'")
+                try:
+                    repeat = int(repeat_text)
+                except ValueError as e:
+                    raise ValueError(f"--{name} の繰り返し回数は整数である必要があります: '{token}'") from e
+                if repeat <= 0:
+                    raise ValueError(f"--{name} の繰り返し回数は1以上である必要があります: '{token}'")
+            try:
+                value = value_parser(value_text)
+            except ValueError as e:
+                raise ValueError(f"--{name} の値を数値に変換できません: '{value_text}'") from e
+            expanded.extend([value] * repeat)
+        return expanded
+
     if args.hidden is not None:
         try:
-            hidden_sizes = [int(x.strip()) for x in args.hidden.split(',')]
-        except ValueError:
+            hidden_sizes = expand_repeated_values(args.hidden, 'hidden', int)
+        except ValueError as e:
             print(f"エラー: --hidden の値が不正です: {args.hidden}")
-            print("例: --hidden 2048 (1層), --hidden 2048,1024 (2層)")
+            print(f"  詳細: {e}")
+            print("例: --hidden 2048 (1層), --hidden 2048,1024 (2層), --hidden 2048[6] (6層)")
             sys.exit(1)
     else:
-        hidden_sizes = [2048, 1024]  # デフォルト: 2層
+        hidden_sizes = [2048, 2048, 2048]  # デフォルト: 3層
 
     n_layers = len(hidden_sizes)
 
@@ -620,9 +687,9 @@ def main():
     if args.output_lr is not None:
         output_lr = args.output_lr
     if args.non_column_lr is not None:
-        non_column_lr = [float(x) for x in args.non_column_lr.split(',')]
+        non_column_lr = expand_repeated_values(args.non_column_lr, 'non_column_lr', float)
     if args.column_lr_factors is not None:
-        column_lr_factors = [float(x) for x in args.column_lr_factors.split(',')]
+        column_lr_factors = expand_repeated_values(args.column_lr_factors, 'column_lr_factors', float)
     if args.u1 is not None:
         config['u1'] = args.u1
     if args.u2 is not None:
@@ -790,20 +857,42 @@ def main():
     # 層別コラムニューロン数
     cn_config = config['column_neurons']
     if args.layer_column_neurons is not None:
-        cn_config = [int(x) for x in args.layer_column_neurons.split(',')]
+        try:
+            cn_config = expand_repeated_values(args.layer_column_neurons, 'layer_column_neurons', int)
+        except ValueError as e:
+            print(f"エラー: --lcn の値が不正です: {args.layer_column_neurons}")
+            print(f"  詳細: {e}")
+            print("例: --lcn 82,82,82,82,82,82 または --lcn 82[6]")
+            sys.exit(1)
+    elif args.column_ratio is not None:
+        # --cr から cn を計算（--lcn 未指定時のみ）
+        ratio = args.column_ratio
+        if not (0.0 < ratio <= 1.0):
+            print(f"エラー: --cr の値は 0.0 より大きく 1.0 以下である必要があります: {ratio}")
+            sys.exit(1)
+        cn_list = []
+        for hs in hidden_sizes:
+            cn = round(hs * ratio / n_classes)
+            if cn < 1:
+                print(f"エラー: --cr {ratio} は hidden={hs}, クラス数={n_classes} の条件でcn<1になります")
+                print(f"  計算: round({hs} × {ratio} / {n_classes}) = {cn}")
+                print(f"  より大きい --cr 値を指定するか、--lcn で直接cn数を指定してください")
+                sys.exit(1)
+            cn_list.append(cn)
+        cn_config = cn_list
 
     # CLIからのinit_scales/hidden_sparsityパース
     actual_init_scales = config['weight_init_scales']
     if args.init_scales is not None:
-        actual_init_scales = [float(x) for x in args.init_scales.split(',')]
+        actual_init_scales = expand_repeated_values(args.init_scales, 'init_scales', float)
     actual_hidden_sparsity = config.get('hidden_sparsity', 0.4)
     if args.hidden_sparsity is not None:
-        actual_hidden_sparsity = [float(x) for x in args.hidden_sparsity.split(',')]
+        actual_hidden_sparsity = expand_repeated_values(args.hidden_sparsity, 'hidden_sparsity', float)
 
     # 層別勾配クリッピング
     layer_gc_list = None
     if args.layer_gc is not None:
-        layer_gc_list = [float(x) for x in args.layer_gc.split(',')]
+        layer_gc_list = expand_repeated_values(args.layer_gc, 'layer_gc', float)
 
     # D7-4: スキップ接続の解析
     skip_connections = []
@@ -896,6 +985,7 @@ def main():
                 enable_viz=True,
                 enable_heatmap=args.heatmap,
                 enable_weight_heatmap=args.weight_heatmap,
+                enable_weight_mean_plot=args.weight_mean_plot,
                 save_path=args.save_viz,
                 total_epochs=epochs,
                 verbose=False,
@@ -922,6 +1012,8 @@ def main():
     print(f"  # --- ネットワーク構成 ---")
     _p("hidden:",            hidden_sizes,            "hidden")
     _p("column_neurons:",    cn_config,               "layer_column_neurons")
+    if args.column_ratio is not None and args.layer_column_neurons is None:
+        _p("column_ratio:",  args.column_ratio,       "column_ratio")
     _p("init_scales:",       actual_init_scales,      "init_scales")
     _p("hidden_sparsity:",   actual_hidden_sparsity,  "hidden_sparsity")
     print(f"  # --- 学習率 ---")
@@ -1143,6 +1235,13 @@ def main():
 
             if args.weight_heatmap:
                 viz_manager.update_weight_heatmap(
+                    epoch=epoch,
+                    network=network,
+                )
+
+            # weight_heatmapと同時使用時はupdate_weight_heatmap内で呼び出し済み
+            if args.weight_mean_plot and not args.weight_heatmap:
+                viz_manager.update_weight_mean_plot(
                     epoch=epoch,
                     network=network,
                 )

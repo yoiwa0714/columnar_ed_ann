@@ -172,6 +172,7 @@ class VisualizationManager:
     """
     
     def __init__(self, enable_viz=False, enable_heatmap=False, enable_weight_heatmap=False,
+                 enable_weight_mean_plot=False,
                  save_path=None, total_epochs=100, verbose=False, window_scale=1.0):
         """
         Parameters:
@@ -182,6 +183,8 @@ class VisualizationManager:
             活性化ヒートマップ表示の有効化
         enable_weight_heatmap : bool
             重みL2ノルムヒートマップ表示の有効化
+        enable_weight_mean_plot : bool
+            重み平均値折れ線グラフ表示の有効化
         save_path : str or None
             保存パス（ディレクトリまたはベースファイル名）
             - None: 保存なし
@@ -195,6 +198,9 @@ class VisualizationManager:
         self.enable_viz = enable_viz
         self.enable_heatmap = enable_heatmap
         self.enable_weight_heatmap = enable_weight_heatmap
+        self.enable_weight_mean_plot = enable_weight_mean_plot
+        # 重み平均値履歴: {layer_name: [val_per_epoch]}
+        self._weight_mean_history = {}
         # 0以下は不正値のため従来サイズにフォールバック
         self.window_scale = window_scale if window_scale > 0 else 1.0
         
@@ -229,6 +235,7 @@ class VisualizationManager:
         self.fig_viz = None
         self.fig_heatmap = None
         self.fig_weight_heatmap = None
+        self.fig_weight_mean = None
 
         # 1920x1080基準の1/4をviz=1の基準サイズとする
         base_viz_px = (540, 270)
@@ -268,7 +275,13 @@ class VisualizationManager:
             self.fig_weight_heatmap = plt.figure(figsize=heatmap_figsize)
             self.fig_weight_heatmap.canvas.manager.set_window_title('層別重みL2ノルム ヒートマップ')
             self._enforce_window_size(self.fig_weight_heatmap, heatmap_figsize)
-        
+
+        if self.enable_weight_mean_plot:
+            plt.ion()
+            self.fig_weight_mean = plt.figure(figsize=viz_figsize)
+            self.fig_weight_mean.canvas.manager.set_window_title('層別重み平均値推移')
+            self._enforce_window_size(self.fig_weight_mean, viz_figsize)
+
         # Gabor特徴情報（set_gabor_info()で設定）
         self.gabor_info = None
 
@@ -831,6 +844,90 @@ class VisualizationManager:
             plt.pause(0.1)
         plt.draw()
     
+    def update_weight_mean_plot(self, epoch, network, append_history=True):
+        """
+        層別重み平均値の折れ線グラフを更新。
+
+        重みL2ノルムヒートマップと同じ計算式（行ごとのL2ノルムの平均）を使用する。
+        update_weight_heatmap から呼び出される場合は append_history=False で
+        再描画のみ行い、エポック終了時のみ履歴を追記する。
+
+        Parameters:
+        -----------
+        epoch : int
+            現在のエポック番号
+        network : EDNetwork
+            ネットワークオブジェクト（w_hidden, w_output を参照）
+        append_history : bool
+            True のとき履歴に追記する（エポック終了時のみ True）
+        """
+        if not self.enable_weight_mean_plot or self.fig_weight_mean is None:
+            return
+
+        # 重みL2ノルムヒートマップと同じ計算式: 行ごとL2ノルムの平均
+        if append_history:
+            for i, w in enumerate(network.w_hidden):
+                key = f'隠れ層{i + 1}'
+                self._weight_mean_history.setdefault(key, []).append(
+                    float(np.mean(np.linalg.norm(w, axis=1))))
+            w_out_mean = float(np.mean(np.linalg.norm(network.w_output, axis=1)))
+            self._weight_mean_history.setdefault('出力層', []).append(w_out_mean)
+
+        self.fig_weight_mean.clear()
+        ax = self.fig_weight_mean.add_subplot(1, 1, 1)
+        self.fig_weight_mean.subplots_adjust(left=0.10, right=0.78, bottom=0.14, top=0.88)
+
+        if self.window_scale <= 1.0:
+            fs = 8
+        elif self.window_scale <= 1.3:
+            fs = 9
+        else:
+            fs = 10
+
+        # 隠れ層の色: 隠れ層1〜5は識別しやすい濃いめの色、隠れ層6は濃い青、出力層は赤
+        _LAYER_COLORS = [
+            '#2CA02C',  # 隠れ層1: 濃い緑
+            '#9467BD',  # 隠れ層2: 濃い紫
+            '#8C564B',  # 隠れ層3: 濃い茶
+            '#E377C2',  # 隠れ層4: 濃いピンク
+            '#BCBD22',  # 隠れ層5: 濃い黄緑
+            '#1F77B4',  # 隠れ層6: 濃い青（変更なし）
+        ]
+
+        n_hidden = len(network.w_hidden)
+        cmap = plt.get_cmap('Blues')
+        for i in range(n_hidden):
+            key = f'隠れ層{i + 1}'
+            vals = self._weight_mean_history.get(key, [])
+            if i < len(_LAYER_COLORS):
+                color = _LAYER_COLORS[i]
+            else:
+                color = cmap(0.4 + 0.55 * i / max(n_hidden - 1, 1))
+            ax.plot(range(1, len(vals) + 1), vals, marker='o', markersize=3,
+                    linewidth=1.2, label=key, color=color)
+
+        out_vals = self._weight_mean_history.get('出力層', [])
+        ax.plot(range(1, len(out_vals) + 1), out_vals, marker='s', markersize=3,
+                linewidth=1.5, label='出力層', color='red')
+
+        ax.set_xlabel('エポック', fontsize=fs)
+        ax.set_ylabel('重みL2ノルム平均', fontsize=fs)
+        ax.set_title(f'層別重み平均値推移（Ep {epoch}）', fontsize=fs + 1)
+        ax.tick_params(labelsize=fs - 1)
+        ax.legend(fontsize=fs - 1, loc='upper left', bbox_to_anchor=(1.01, 1.0),
+                  borderaxespad=0)
+        ax.grid(True, alpha=0.3)
+        # 横軸: 学習曲線と同様に最初から最大エポック数を固定表示、整数目盛りのみ
+        ax.set_xlim(0, self.total_epochs)
+        import matplotlib.ticker as ticker
+        ax.xaxis.set_major_locator(ticker.MaxNLocator(integer=True))
+
+        plt.figure(self.fig_weight_mean.number)
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', UserWarning)
+            plt.pause(0.1)
+
     def update_weight_heatmap(self, epoch, network, progress=None):
         """
         層別重みL2ノルムヒートマップを更新
@@ -970,6 +1067,15 @@ class VisualizationManager:
             plt.pause(0.1)
         plt.draw()
 
+        # weight_mean_plot が有効な場合は同じタイミングで更新
+        # 訓練中コールバック（progress あり）は再描画のみ、エポック終了時のみ履歴追記
+        if self.enable_weight_mean_plot and self.fig_weight_mean is not None:
+            self.update_weight_mean_plot(
+                epoch=epoch,
+                network=network,
+                append_history=(progress is None),
+            )
+
     def save_figures(self):
         """
         可視化図を保存
@@ -979,7 +1085,8 @@ class VisualizationManager:
         tuple[str, str, str] or tuple[None, None, None]
             (学習曲線保存パス, 活性化ヒートマップ保存パス, 重みヒートマップ保存パス)
         """
-        if not (self.enable_viz or self.enable_heatmap or self.enable_weight_heatmap):
+        if not (self.enable_viz or self.enable_heatmap or self.enable_weight_heatmap
+                or self.enable_weight_mean_plot):
             return None, None, None
         
         if self.save_path is None:
@@ -990,11 +1097,13 @@ class VisualizationManager:
         save_path_viz = None
         save_path_heatmap = None
         save_path_weight_heatmap = None
+        save_path_weight_mean = None
 
         has_multiple = sum([
             self.enable_viz and self.fig_viz is not None,
             self.enable_heatmap and self.fig_heatmap is not None,
             self.enable_weight_heatmap and self.fig_weight_heatmap is not None,
+            self.enable_weight_mean_plot and self.fig_weight_mean is not None,
         ]) > 1
 
         if self.enable_viz and self.fig_viz is not None:
@@ -1014,7 +1123,13 @@ class VisualizationManager:
             plt.figure(self.fig_weight_heatmap.number)
             plt.savefig(save_path_weight_heatmap, dpi=150, bbox_inches='tight')
             print(f"[重みヒートマップ保存] {save_path_weight_heatmap}")
-        
+
+        if self.enable_weight_mean_plot and self.fig_weight_mean is not None:
+            save_path_weight_mean = f"{self.save_path}_weight_mean.png" if has_multiple else f"{self.save_path}.png"
+            plt.figure(self.fig_weight_mean.number)
+            plt.savefig(save_path_weight_mean, dpi=150, bbox_inches='tight')
+            print(f"[重み平均値グラフ保存] {save_path_weight_mean}")
+
         return save_path_viz, save_path_heatmap, save_path_weight_heatmap
     
     def close(self):
@@ -1025,6 +1140,8 @@ class VisualizationManager:
             plt.close(self.fig_heatmap)
         if self.fig_weight_heatmap is not None:
             plt.close(self.fig_weight_heatmap)
+        if self.fig_weight_mean is not None:
+            plt.close(self.fig_weight_mean)
 
 
 def show_train_errors(error_list, x_display, y_train, class_names, img_shape, max_per_class=20):
